@@ -1,0 +1,463 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Multipart Upload Backend: API Gateway + Lambdas (Existing Bucket, New Role)'
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+    Description: API Gateway Stage Name
+  
+  BucketName:
+    Type: String
+    Default: letransferbucket
+    Description: Name of the existing S3 bucket
+  
+  SharedTableName:
+    Type: String
+    Default: SharedFiles
+    Description: Name of the DynamoDB table for shared files
+
+Resources:
+  # -------------------------------------------------------------------------
+  # IAM Role for Lambdas (Created by Stack)
+  # -------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3MultipartAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:CreateMultipartUpload
+                  - s3:UploadPart
+                  - s3:CompleteMultipartUpload
+                  - s3:AbortMultipartUpload
+                  - s3:ListMultipartUploadParts
+                Resource: !Sub 'arn:aws:s3:::${BucketName}/*'
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SharedTableName}'
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # -------------------------------------------------------------------------
+  # API Gateway
+  # -------------------------------------------------------------------------
+  MultipartApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: S3MultipartUploadApi
+      Description: API for S3 Multipart Uploads
+
+  # -------------------------------------------------------------------------
+  # Lambda Functions (Inline Code for Simplicity - Node.js 18.x)
+  # -------------------------------------------------------------------------
+  
+  # 1. Initiate Upload
+  InitiateUploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 10
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Code:
+        ZipFile: |
+          const { S3Client, CreateMultipartUploadCommand } = require("@aws-sdk/client-s3");
+          const s3 = new S3Client({});
+          exports.handler = async (event) => {
+              // Force update 1
+              const headers = {
+                  "Access-Control-Allow-Origin": "*",
+                  "Access-Control-Allow-Headers": "*",
+                  "Access-Control-Allow-Methods": "OPTIONS,POST"
+              };
+              try {
+                  const body = JSON.parse(event.body);
+                  const { fileName, fileType, userId } = body;
+                  const bucketName = process.env.BUCKET_NAME;
+          
+                  if (!fileName || !fileType || !userId) {
+                      return {
+                          statusCode: 400,
+                          headers,
+                          body: JSON.stringify({ message: "Missing fileName, fileType or userId" })
+                      };
+                  }
+          
+                  const fileKey = `uploads/files/${userId}/${fileName}`;
+                  const command = new CreateMultipartUploadCommand({
+                      Bucket: bucketName,
+                      Key: fileKey,
+                      ContentType: fileType,
+                  });
+          
+                  const { UploadId } = await s3.send(command);
+                  return {
+                      statusCode: 200,
+                      headers,
+                      body: JSON.stringify({ uploadId: UploadId, fileKey }),
+                  };
+              } catch (error) {
+                  console.error("Error:", error);
+                  return {
+                      statusCode: 500,
+                      headers,
+                      body: JSON.stringify({ message: "Internal Server Error", error: error.message }),
+                  };
+              }
+          };
+
+  # 2. Get Presigned URLs
+  GetPresignedUrlsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 10
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Code:
+        ZipFile: |
+          const { S3Client, UploadPartCommand } = require("@aws-sdk/client-s3");
+          const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+          const s3 = new S3Client({});
+          exports.handler = async (event) => {
+            const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "OPTIONS,POST" };
+            try {
+              const { fileKey, uploadId, partNumbers } = JSON.parse(event.body);
+              const urls = {};
+              await Promise.all(partNumbers.map(async (part) => {
+                const cmd = new UploadPartCommand({ Bucket: process.env.BUCKET_NAME, Key: fileKey, UploadId: uploadId, PartNumber: part });
+                urls[part] = await getSignedUrl(s3, cmd, { expiresIn: 3600 });
+              }));
+              return { statusCode: 200, headers, body: JSON.stringify({ urls }) };
+            } catch (e) { return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) }; }
+          };
+
+  # 3. Complete Upload
+  CompleteUploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 10
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          SHARED_TABLE_NAME: !Ref SharedTableName
+      Code:
+        ZipFile: |
+          const { S3Client, CompleteMultipartUploadCommand } = require("@aws-sdk/client-s3");
+          const s3 = new S3Client({});
+          exports.handler = async (event) => {
+            const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "OPTIONS,POST" };
+            try {
+              const { fileKey, uploadId, parts } = JSON.parse(event.body);
+              
+              if (!fileKey || !uploadId || !parts) {
+                 throw new Error("Missing required parameters: fileKey, uploadId, parts");
+              }
+
+              const sortedParts = parts.sort((a, b) => a.PartNumber - b.PartNumber);
+              const cmd = new CompleteMultipartUploadCommand({ Bucket: process.env.BUCKET_NAME, Key: fileKey, UploadId: uploadId, MultipartUpload: { Parts: sortedParts } });
+              const { Location, Key } = await s3.send(cmd);
+              return { statusCode: 200, headers, body: JSON.stringify({ location: Location, key: Key }) };
+            } catch (e) { 
+              return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) }; 
+            }
+          };
+
+  # 4. Abort Upload
+  AbortUploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 10
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+      Code:
+        ZipFile: |
+          const { S3Client, AbortMultipartUploadCommand } = require("@aws-sdk/client-s3");
+          const s3 = new S3Client({});
+          exports.handler = async (event) => {
+            const headers = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "OPTIONS,POST" };
+            try {
+              const { fileKey, uploadId } = JSON.parse(event.body);
+              const cmd = new AbortMultipartUploadCommand({ Bucket: process.env.BUCKET_NAME, Key: fileKey, UploadId: uploadId });
+              await s3.send(cmd);
+              return { statusCode: 200, headers, body: JSON.stringify({ status: "aborted" }) };
+            } catch (e) { return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) }; }
+          };
+
+  # -------------------------------------------------------------------------
+  # API Resources & Methods
+  # -------------------------------------------------------------------------
+  MultipartResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt MultipartApi.RootResourceId
+      PathPart: upload
+      RestApiId: !Ref MultipartApi
+
+  MultipartSubResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref MultipartResource
+      PathPart: multipart
+      RestApiId: !Ref MultipartApi
+
+  # /upload/multipart/init
+  InitResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref MultipartSubResource
+      PathPart: init
+      RestApiId: !Ref MultipartApi
+  InitMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref InitResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${InitiateUploadFunction.Arn}/invocations
+  InitOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      ResourceId: !Ref InitResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # /upload/multipart/urls
+  UrlsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref MultipartSubResource
+      PathPart: urls
+      RestApiId: !Ref MultipartApi
+  UrlsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref UrlsResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetPresignedUrlsFunction.Arn}/invocations
+  UrlsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      ResourceId: !Ref UrlsResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # /upload/multipart/complete
+  CompleteResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref MultipartSubResource
+      PathPart: complete
+      RestApiId: !Ref MultipartApi
+  CompleteMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref CompleteResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CompleteUploadFunction.Arn}/invocations
+  CompleteOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      ResourceId: !Ref CompleteResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # /upload/multipart/abort
+  AbortResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref MultipartSubResource
+      PathPart: abort
+      RestApiId: !Ref MultipartApi
+  AbortMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref AbortResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AbortUploadFunction.Arn}/invocations
+  AbortOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      ResourceId: !Ref AbortResource
+      RestApiId: !Ref MultipartApi
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # -------------------------------------------------------------------------
+  # Permissions (Allow API Gateway to invoke Lambdas)
+  # -------------------------------------------------------------------------
+  InitPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref InitiateUploadFunction
+      Principal: apigateway.amazonaws.com
+  UrlsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetPresignedUrlsFunction
+      Principal: apigateway.amazonaws.com
+  CompletePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CompleteUploadFunction
+      Principal: apigateway.amazonaws.com
+  AbortPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AbortUploadFunction
+      Principal: apigateway.amazonaws.com
+
+  # -------------------------------------------------------------------------
+  # Deployment
+  # -------------------------------------------------------------------------
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - InitMethod
+      - InitOptionsMethod
+      - UrlsMethod
+      - UrlsOptionsMethod
+      - CompleteMethod
+      - CompleteOptionsMethod
+      - AbortMethod
+      - AbortOptionsMethod
+    Properties:
+      RestApiId: !Ref MultipartApi
+      StageName: !Ref StageName
+
+Outputs:
+  ApiBaseUrl:
+    Description: "Base URL for the API"
+    Value: !Sub "https://${MultipartApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/upload/multipart"

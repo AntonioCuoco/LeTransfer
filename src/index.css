@@ -1,0 +1,161 @@
+@import "tailwindcss";
+
+.ant-modal .ant-modal-content {
+    background-color: #2c2638;
+}
+
+.ant-modal-header {
+    background-color: #2c2638 !important;
+}
+
+.ant-modal-title {
+    color: #DBD4D3 !important;
+}
+
+.ant-modal-close-x {
+    color: #DBD4D3 !important;
+}
+
+.ant-modal-close-icon {
+    color: #DBD4D3 !important;
+}
+
+.ant-modal-close-icon:hover {
+    color: #DBD4D3 !important;
+}
+
+.ant-modal-close-icon:active {
+    color: #DBD4D3 !important;
+}
+
+/* Stili Tabs Ant Design - testo bianco */
+.ant-tabs .ant-tabs-tab {
+    color: #fff !important;
+}
+
+.ant-tabs .ant-tabs-tab:hover {
+    color: #DBD4D3 !important;
+}
+
+.ant-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+    color: #724CF9 !important;
+}
+
+.ant-tabs .ant-tabs-tab-btn {
+    color: inherit !important;
+}
+
+/* Linea sotto i tabs - viola quando attivo, grigio altrimenti */
+.ant-tabs .ant-tabs-ink-bar {
+    background-color: #724CF9 !important;
+}
+
+.ant-tabs .ant-tabs-nav::before {
+    border-bottom-color: #fff !important;
+}
+
+/* Header della tabella - sfondo trasparente/tema scuro */
+.ant-table-thead>tr>th {
+    background-color: transparent !important;
+    color: #DBD4D3 !important;
+    border-bottom: 1px solid #4a4554 !important;
+}
+
+.ant-table-thead>tr>th::before {
+    background-color: #4a4554 !important;
+}
+
+
+/* DatePicker */
+
+.ant-picker .ant-picker-suffix {
+    color: #DBD4D3 !important;
+}
+
+.ant-picker .ant-picker-clear {
+    color: #DBD4D3 !important;
+}
+
+/* Now link - white text */
+.ant-picker-now-btn {
+    color: #fff !important;
+}
+
+.ant-picker-now-btn:hover {
+    color: #724CF9 !important;
+}
+
+/* OK button - violet background, white text */
+.ant-picker-ok button {
+    background-color: #724CF9 !important;
+    border-color: #724CF9 !important;
+    color: #fff !important;
+}
+
+.ant-picker-ok button:hover {
+    background-color: #5a3fd1 !important;
+    border-color: #5a3fd1 !important;
+}
+
+/* Time panel selected item background */
+.ant-picker-time-panel-column>li.ant-picker-time-panel-cell-selected .ant-picker-time-panel-cell-inner {
+    background-color: #724CF9 !important;
+    color: #fff !important;
+}
+
+/* Selected date border - violet */
+.ant-picker-cell-selected .ant-picker-cell-inner,
+.ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner {
+    border-color: #724CF9 !important;
+    background-color: #724CF9 !important;
+}
+
+/* Today indicator */
+.ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-cell-inner::before {
+    border-color: #724CF9 !important;
+}
+
+/* Hover state */
+.ant-picker-cell:hover:not(.ant-picker-cell-selected) .ant-picker-cell-inner {
+    background-color: rgba(114, 76, 249, 0.2) !important;
+}
+
+.ant-input-affix-wrapper .anticon.ant-input-password-icon {
+    color: white !important;
+}
+
+.ant-input-number .ant-input-number-input {
+    color: white !important;
+}
+
+.ant-input-number .ant-input-number-input::placeholder {
+    color: #4a4554 !important;
+}
+
+.ant-input::placeholder {
+    color: #4a4554 !important;
+}
+
+/* RecoveryKeySetup modal component*/
+
+.ant-steps-item-title {
+    color: #fff !important;
+}
+
+.ant-steps .ant-steps-item-process .ant-steps-item-icon {
+    background-color: #724CF9 !important;
+    border-color: #724CF9 !important;
+}
+
+.ant-steps .ant-steps-item-wait .ant-steps-item-icon>.ant-steps-icon {
+    color: #724CF9 !important;
+}
+
+/* Ant Design Alert component */
+.ant-alert-with-description .ant-alert-description {
+    color: #fff !important;
+}
+
+.ant-alert-with-description .ant-alert-message {
+    color: #fff !important;
+}
