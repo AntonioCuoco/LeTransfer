@@ -2,6 +2,9 @@
  * Tipi centralizzati per l'applicazione LeTransfer
  */
 
+// Waitlist Types
+export * from '@/src/constants/waitlist';
+
 // ==================== FILE TYPES ====================
 
 export interface DynamoDBFile {

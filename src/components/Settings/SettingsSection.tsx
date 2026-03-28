@@ -2,11 +2,11 @@ import React from 'react';
 
 interface SettingsSectionProps {
     /** Section title */
-    title: string;
+    title?: string;
     /** Optional section description */
     description?: string;
     /** Section icon */
-    icon: React.ReactNode;
+    icon?: React.ReactNode;
     /** Children components (toggles, inputs, etc.) */
     children: React.ReactNode;
 }

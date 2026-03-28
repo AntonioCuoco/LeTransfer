@@ -5,9 +5,12 @@ import type {
     NotificationSettings,
     PrivacySettings,
     AppearanceSettings,
-    TransferSettings
+    TransferSettings,
+    ProfileSettings,
+    PasswordSettings
 } from '../types/settings';
 import { DEFAULT_SETTINGS } from '../types/settings';
+import { getCurrentUser } from '../components/getCurrentUser/getCurrentUser';
 
 // Storage key for localStorage
 const SETTINGS_STORAGE_KEY = 'letransfer_user_settings';
@@ -27,6 +30,10 @@ interface UseSettingsReturn {
     updateAppearance: (updates: Partial<AppearanceSettings>) => void;
     /** Update transfer settings */
     updateTransfer: (updates: Partial<TransferSettings>) => void;
+    /** Update profile settings */
+    updateProfile: (updates: Partial<ProfileSettings>) => void;
+    /** Update password settings */
+    updatePassword: (updates: Partial<PasswordSettings>) => void;
     /** Save all settings to storage/backend */
     saveSettings: () => Promise<void>;
     /** Reset settings to defaults */
@@ -40,6 +47,7 @@ interface UseSettingsReturn {
  * Persiste le impostazioni in localStorage e sincronizza con il backend (quando disponibile).
  */
 export const useSettings = (): UseSettingsReturn => {
+
     const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
     const [originalSettings, setOriginalSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
     const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +72,9 @@ export const useSettings = (): UseSettingsReturn => {
                     notifications: { ...DEFAULT_SETTINGS.notifications, ...parsed.notifications },
                     privacy: { ...DEFAULT_SETTINGS.privacy, ...parsed.privacy },
                     appearance: { ...DEFAULT_SETTINGS.appearance, ...parsed.appearance },
-                    transfer: { ...DEFAULT_SETTINGS.transfer, ...parsed.transfer }
+                    transfer: { ...DEFAULT_SETTINGS.transfer, ...parsed.transfer },
+                    profile: { ...DEFAULT_SETTINGS.profile, ...parsed.profile },
+                    password: { ...DEFAULT_SETTINGS.password, ...parsed.password }
                 };
                 setSettings(merged);
                 setOriginalSettings(merged);
@@ -118,6 +128,26 @@ export const useSettings = (): UseSettingsReturn => {
     }, []);
 
     /**
+     * Aggiorna le impostazioni del profilo
+     */
+    const updateProfile = useCallback((updates: Partial<ProfileSettings>) => {
+        setSettings(prev => ({
+            ...prev,
+            profile: { ...prev.profile, ...updates }
+        }));
+    }, []);
+
+    /**
+     * Aggiorna le impostazioni di password
+     */
+    const updatePassword = useCallback((updates: Partial<PasswordSettings>) => {
+        setSettings(prev => ({
+            ...prev,
+            password: { ...prev.password, ...updates }
+        }));
+    }, []);
+
+    /**
      * Salva le impostazioni in localStorage (e in futuro sul backend)
      */
     const saveSettings = useCallback(async () => {
@@ -160,6 +190,8 @@ export const useSettings = (): UseSettingsReturn => {
         updatePrivacy,
         updateAppearance,
         updateTransfer,
+        updateProfile,
+        updatePassword,
         saveSettings,
         resetSettings,
         hasUnsavedChanges

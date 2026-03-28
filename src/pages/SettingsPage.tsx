@@ -1,28 +1,17 @@
-import { useState } from 'react';
 import { Button, Spin, Modal, message, Tabs } from 'antd';
 import type { TabsProps } from 'antd';
 import {
     SettingOutlined,
-    BellOutlined,
-    LockOutlined,
-    FormatPainterOutlined,
-    CloudSyncOutlined,
-    SafetyCertificateOutlined,
     SaveOutlined,
     UndoOutlined,
     ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { useSettings } from '../hooks/useSettings';
-import { useEncryption } from '../contexts/EncryptionContext';
-import { RecoveryKeySetup } from '../components/RecoveryKeySetup';
 import {
-    SettingsSection,
-    SettingsToggle,
-    SettingsNumberInput,
-    SettingsSelect,
     GeneralSection
 } from '../components/Settings';
 import NotificationSection from '../components/Settings/NotificationSection';
+import IntegrationSettings from '../components/Settings/integrationSettings';
 
 const items: TabsProps['items'] = [
     {
@@ -37,8 +26,13 @@ const items: TabsProps['items'] = [
     },
     {
         key: '3',
-        label: 'Tab 3',
-        children: 'Content of Tab Pane 3',
+        label: 'Integrazioni',
+        children: <IntegrationSettings />,
+    },
+    {
+        key: '4',
+        label: 'Organizzazione',
+        children: <IntegrationSettings />,
     },
 ];
 
@@ -55,13 +49,8 @@ const items: TabsProps['items'] = [
 export default function SettingsPage() {
 
     const {
-        settings,
         isLoading,
         isSaving,
-        updateNotifications,
-        updatePrivacy,
-        updateAppearance,
-        updateTransfer,
         saveSettings,
         resetSettings,
         hasUnsavedChanges

@@ -41,6 +41,7 @@ export const useRecoveryKeyAPI = () => {
 
             const { data } = await axios.get(
                 `${import.meta.env.VITE_API_URL}/user/recovery-key/status`,
+                { headers: { Authorization: `Bearer ${token}` } }
             );
             return data;
         } catch (err: any) {

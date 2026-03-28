@@ -1,11 +1,10 @@
 import { Button, Modal, message } from "antd";
 import { SettingsSection } from "./SettingsSection"
-import { FormatPainterOutlined, SafetyCertificateOutlined } from "@ant-design/icons"
+import { FormatPainterOutlined, LockOutlined, SafetyCertificateOutlined, UserOutlined } from "@ant-design/icons"
 import { useEncryption } from "@/src/contexts/EncryptionContext";
 import { useState } from "react";
 import { RecoveryKeySetup } from "../RecoveryKeySetup";
-import { SettingsSelect } from "./SettingsInputs";
-import { SettingsToggle } from "./SettingsToggle";
+import { SettingsInput, SettingsSelect } from "./SettingsInputs";
 import { useSettings } from "@/src/hooks/useSettings";
 
 export default function GeneralSection() {
@@ -15,12 +14,65 @@ export default function GeneralSection() {
     const {
         settings,
         updateAppearance,
+        updateProfile,
+        updatePassword
     } = useSettings();
 
     const [securityModalVisible, setSecurityModalVisible] = useState(false);
 
     return (
         <div className="flex flex-col gap-4">
+            <SettingsSection
+                title="Profilo"
+                description="Modifica i dati riguardanti il tuo profilo"
+                icon={<UserOutlined />}
+            >
+                <SettingsInput
+                    label="Nome"
+                    description="Il tuo nome"
+                    value={settings.profile.name}
+                    onChange={(value) => updateProfile({ name: value })}
+                />
+                <SettingsInput
+                    label="Cognome"
+                    description="Il tuo cognome"
+                    value={settings.profile.surname}
+                    onChange={(value) => updateProfile({ surname: value })}
+                />
+                <SettingsInput
+                    label="Email"
+                    description="La tua email"
+                    value={settings.profile.email}
+                    onChange={(value) => updateProfile({ email: value })}
+                    disabled={true}
+                />
+            </SettingsSection>
+
+            <SettingsSection
+                title="Password"
+                description="Modifica la tua password"
+                icon={<LockOutlined />}
+            >
+                <SettingsInput
+                    label="Password Attuale"
+                    description="La tua password attuale"
+                    value={settings.password.actualPassword}
+                    onChange={(value) => updatePassword({ actualPassword: value })}
+                />
+                <SettingsInput
+                    label="Password Nuova"
+                    description="La tua password nuova"
+                    value={settings.password.newPassword}
+                    onChange={(value) => updatePassword({ newPassword: value })}
+                />
+                <SettingsInput
+                    label="Conferma Password Nuova"
+                    description="Conferma la tua password nuova"
+                    value={settings.password.newPasswordConfirm}
+                    onChange={(value) => updatePassword({ newPasswordConfirm: value })}
+                />
+            </SettingsSection>
+
             <SettingsSection
                 title="Aspetto"
                 description="Personalizza l'interfaccia"
@@ -51,7 +103,7 @@ export default function GeneralSection() {
 
             <SettingsSection
                 title="Sicurezza"
-                description="Crittografia end-to-end e recovery key"
+                description="Gestisci la crittografia end-to-end con la recovery key e il 2FA"
                 icon={<SafetyCertificateOutlined />}
             >
                 <div className="py-4">
@@ -71,8 +123,9 @@ export default function GeneralSection() {
                             danger={isSetupRequired}
                             className={isSetupRequired
                                 ? ''
-                                : '!bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9]'
+                                : '!bg-transparent disabled:!bg-[#2c2638]/50 !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9]'
                             }
+                            disabled={!isSetupRequired}
                         >
                             {isSetupRequired ? 'Configura Ora' : 'Gestisci'}
                         </Button>
@@ -85,6 +138,43 @@ export default function GeneralSection() {
                             </p>
                         </div>
                     )}
+                </div>
+
+                {/* 2FA */}
+                <div className="py-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h4 className="text-white font-medium m-0">2FA</h4>
+                            <p className="text-[#9ca3af] text-xs mt-1">
+                                Attiva la 2FA per usare il tuo telefono come ulteriore misura di sicurezza
+                            </p>
+                        </div>
+                        <Button
+                            type="default"
+                            className="!bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9]"
+                        >
+                            Configura Ora
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Cancella account */}
+                <div className="py-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h4 className="text-white font-medium m-0">Elimina il tuo account</h4>
+                            <p className="text-[#9ca3af] text-xs mt-1">
+                                Elimina il tuo account definitivamente
+                            </p>
+                        </div>
+                        <Button
+                            type="default"
+                            danger
+                            className="!bg-red-500 !border-white !text-white hover:!border-[#724CF9]/10"
+                        >
+                            Elimina Definitivamente
+                        </Button>
+                    </div>
                 </div>
             </SettingsSection>
 

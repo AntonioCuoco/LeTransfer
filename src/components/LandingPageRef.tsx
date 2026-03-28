@@ -1,145 +1,14 @@
 import React, { useRef, useLayoutEffect, useState } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useNavigate } from 'react-router';
-import { Float, PerspectiveCamera, Environment, ContactShadows, MeshTransmissionMaterial } from '@react-three/drei';
+import { WaitlistSection } from './WaitlistForm';
+import { BackgroundAnimated } from './BackgroundAnimated';
 
 gsap.registerPlugin(ScrollTrigger);
 
-// -----------------------------------------------------------------------------
-// SHADER BACKGROUND (HERO) - Kept subtle
-// -----------------------------------------------------------------------------
 
-const FluidShaderMaterial = {
-    uniforms: {
-        uTime: { value: 0 },
-        uColor1: { value: new THREE.Color('#f4f3ef') },
-        uColor2: { value: new THREE.Color('#e0e0e0') }, // Slightly more contrast
-        uResolution: { value: new THREE.Vector2() }
-    },
-    vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = vec4(position, 1.0);
-    }
-  `,
-    fragmentShader: `
-    uniform float uTime;
-    uniform vec3 uColor1;
-    uniform vec3 uColor2;
-    varying vec2 vUv;
 
-    // Simplex 2D noise
-    vec3 permute(vec3 x) { return mod(((x*34.0)+1.0)*x, 289.0); }
-    float snoise(vec2 v){
-      const vec4 C = vec4(0.211324865405187, 0.366025403784439,
-               -0.577350269189626, 0.024390243902439);
-      vec2 i  = floor(v + dot(v, C.yy) );
-      vec2 x0 = v -   i + dot(i, C.xx);
-      vec2 i1;
-      i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-      vec4 x12 = x0.xyxy + C.xxzz;
-      x12.xy -= i1;
-      i = mod(i, 289.0);
-      vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
-      + i.x + vec3(0.0, i1.x, 1.0 ));
-      vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-      m = m*m ;
-      m = m*m ;
-      vec3 x = 2.0 * fract(p * C.www) - 1.0;
-      vec3 h = abs(x) - 0.5;
-      vec3 ox = floor(x + 0.5);
-      vec3 a0 = x - ox;
-      m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-      vec3 g;
-      g.x  = a0.x  * x0.x  + h.x  * x0.y;
-      g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-      return 130.0 * dot(m, g);
-    }
-
-    void main() {
-      float noise = snoise(vUv * 2.5 + uTime * 0.05); // Slower, bigger noise
-      float t = noise * 0.5 + 0.5;
-      vec3 color = mix(uColor1, uColor2, t);
-      float grain = (fract(sin(dot(vUv, vec2(12.9898,78.233)*2.0)) * 43758.5453) - 0.5) * 0.03;
-      gl_FragColor = vec4(color + grain, 1.0);
-    }
-  `
-};
-
-function FluidBackground() {
-    const meshRef = useRef<THREE.Mesh>(null);
-    useFrame((state) => {
-        if (meshRef.current && meshRef.current.material) {
-            // @ts-ignore
-            meshRef.current.material.uniforms.uTime.value = state.clock.getElapsedTime();
-        }
-    });
-
-    return (
-        <mesh ref={meshRef} scale={[2, 2, 1]}>
-            <planeGeometry args={[2, 2]} />
-            <shaderMaterial attach="material" args={[FluidShaderMaterial]} />
-        </mesh>
-    );
-}
-
-// -----------------------------------------------------------------------------
-// 3D HERO GRAPHIC (Glass/Abstract)
-// -----------------------------------------------------------------------------
-
-function HeroGraphic() {
-    const group = useRef<THREE.Group>(null);
-
-    useFrame((state) => {
-        if (!group.current) return;
-        const t = state.clock.getElapsedTime();
-        // Gentle floating rotation
-        group.current.rotation.x = Math.sin(t * 0.2) * 0.1;
-        group.current.rotation.y = Math.sin(t * 0.3) * 0.15;
-    });
-
-    return (
-        <group ref={group} position={[2, 0, 0]} rotation={[0, -0.5, 0]}>
-            <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-                {/* Central Core */}
-                <mesh position={[0, 0, 0]}>
-                    <icosahedronGeometry args={[1.5, 0]} />
-                    <MeshTransmissionMaterial
-                        roughness={0.1}
-                        transmission={0.9}
-                        thickness={1.5}
-                        ior={1.5}
-                        chromaticAberration={0.06}
-                        color="#ffffff"
-                        background={new THREE.Color('#f4f3ef')}
-                    />
-                </mesh>
-
-                {/* Orbiting Ring */}
-                <mesh rotation={[1.2, 0.5, 0]}>
-                    <torusGeometry args={[2.2, 0.05, 16, 100]} />
-                    <meshStandardMaterial color="#333" emissive="#000" />
-                </mesh>
-
-                {/* Floating Data Spheres */}
-                <mesh position={[1.8, 1.2, 0.5]}>
-                    <sphereGeometry args={[0.3, 32, 32]} />
-                    <meshStandardMaterial color="#a855f7" roughness={0.2} metalness={0.8} />
-                </mesh>
-                <mesh position={[-1.6, -1.0, 0.8]}>
-                    <sphereGeometry args={[0.2, 32, 32]} />
-                    <meshStandardMaterial color="#3b82f6" roughness={0.2} metalness={0.8} />
-                </mesh>
-            </Float>
-            <Environment preset="city" />
-            <ContactShadows position={[0, -3.5, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
-        </group>
-    );
-}
 
 
 // -----------------------------------------------------------------------------
@@ -353,7 +222,7 @@ export const LandingPageRef = () => {
     const mouse = useRef({ x: 0, y: 0 });
     const containerRef = useRef<HTMLDivElement>(null);
     const heroTextRef = useRef<HTMLDivElement>(null);
-    const canvasContainerRef = useRef<HTMLDivElement>(null);
+
     const navigate = useNavigate();
 
 
@@ -429,18 +298,7 @@ export const LandingPageRef = () => {
         <div ref={containerRef} className="relative w-full min-h-screen overflow-x-hidden font-sans selection:bg-[#a0c0ff] selection:text-white bg-[#f4f3ef] text-[#1a1a1a] transition-colors duration-1000" onMouseMove={onMouseMove}>
 
             {/* 3D Background - Interactive */}
-            <div ref={canvasContainerRef} className="fixed top-0 left-0 w-full h-full z-0 pointer-events-none opacity-100 transition-opacity duration-1000">
-                <Canvas>
-                    <PerspectiveCamera makeDefault position={[0, 0, 5]} />
-                    {/* Background Fluid */}
-                    <group position={[0, 0, -5]}>
-                        <FluidBackground />
-                    </group>
-
-                    {/* 3D Hero Element (Only visible in first section technically, but we keep it) */}
-                    <HeroGraphic />
-                </Canvas>
-            </div>
+            <BackgroundAnimated showHeroGraphic />
 
             {/* Navigation */}
             <nav className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50 mix-blend-difference text-white">
@@ -477,7 +335,7 @@ export const LandingPageRef = () => {
                                 </p>
                                 <div className="flex gap-4">
                                     <button onClick={() => navigate('/login')} className="px-8 py-4 bg-black text-white text-lg rounded-full font-bold hover:bg-gray-800 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1">
-                                        Start Transferring
+                                        Join The Waitlist
                                     </button>
                                     <button onClick={() => document.getElementById('roadmap-section')?.scrollIntoView({ behavior: 'smooth' })} className="px-8 py-4 bg-white text-black border border-black/5 text-lg rounded-full font-bold hover:bg-gray-50 transition-all shadow-sm hover:shadow-md">
                                         View Roadmap
@@ -525,7 +383,7 @@ export const LandingPageRef = () => {
                 </Section>
 
                 {/* 3. MVP FEATURE SECTION (Phase 0) - Dark Mode via CSS */}
-                <Section id="mvp-section" className="bg-[#0a0a0a] text-white rounded-t-[4rem] -mt-12 py-32 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.2)]">
+                <Section id="mvp-section" className="bg-[#0a0a0a] text-white -mt-12 py-32 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.2)]">
                     <div className="text-center max-w-4xl mx-auto mb-20">
                         <span className="inline-block px-4 py-1 rounded-full border border-white/20 text-xs font-bold uppercase tracking-widest mb-6 bg-white/10 backdrop-blur-md text-white">
                             Fase 0 — MVP
@@ -536,34 +394,49 @@ export const LandingPageRef = () => {
                         </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-6xl mx-auto">
-                        {/* Core & Upload */}
-                        <div className="bg-white/5 p-8 rounded-3xl border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-colors">
-                            <h3 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">🚀 Upload & Condivisione</h3>
-                            <ul className="space-y-3 opacity-80 text-gray-300 grid grid-cols-2">
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Upload resumable</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Upload parallelo</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Drag & drop</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Background upload</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Supporto file grandi</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Creazione link</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Scadenza personalizzabile</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Revoca link</li>
-                            </ul>
+                    <div className="flex flex-col gap-12 max-w-6xl mx-auto">
+                        {/* Top row: Upload & Sicurezza */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                            {/* Core & Upload */}
+                            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-colors">
+                                <h3 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">🚀 Upload & Condivisione</h3>
+                                <ul className="space-y-3 opacity-80 text-gray-300 grid grid-cols-2">
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Upload resumable</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Upload parallelo</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Drag & drop</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Background upload</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Supporto file grandi</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Creazione link</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Scadenza personalizzabile</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Revoca link</li>
+                                </ul>
+                            </div>
+
+                            {/* Sharing & Security */}
+                            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-colors">
+                                <h3 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">🛡️ Sicurezza & Features</h3>
+                                <ul className="space-y-3 opacity-80 text-gray-300 grid grid-cols-2">
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> End-to-end encryption</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Password sui link (gratis)</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Preview immagini</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Preview video</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Preview PDF</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Tracking download</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span> Notifica download</li>
+                                </ul>
+                            </div>
                         </div>
 
-                        {/* Sharing & Security */}
-                        <div className="bg-white/5 p-8 rounded-3xl border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-colors">
-                            <h3 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">🛡️ Sicurezza & Features</h3>
-                            <ul className="space-y-3 opacity-80 text-gray-300 grid grid-cols-2">
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> End-to-end encryption</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Password sui link (gratis)</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Preview immagini</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Preview video</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Preview PDF</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Tracking download</li>
-                                <li className="flex gap-3"><span className="text-green-400">✓</span> Notifica download</li>
-                            </ul>
+                        <div className="flex justify-center">
+                            <div className="bg-white/5 p-8 rounded-3xl border border-white/10 backdrop-blur-sm hover:bg-white/10 transition-colors w-full md:w-1/2">
+                                <h3 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">🏢 Organization</h3>
+                                <ul className="space-y-3 opacity-80 text-gray-300 grid grid-cols-2">
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span>Creazione spazi e gruppi</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span>Possibilità di invitare e di rimuovere membri</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span>Gestione permessi utenti,spazi e gruppi</li>
+                                    <li className="flex gap-3"><span className="text-green-400">✓</span>Condivisione file con membri dell'organizzazione tramite gli spazi e i gruppi o con utenti singoli</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </Section>
@@ -586,53 +459,34 @@ export const LandingPageRef = () => {
                                 result="Non è solo invio file, è uno strumento di lavoro."
                                 color="bg-purple-500"
                                 features={[
-                                    { category: 'Security & Control', items: ['Scadenza per numero download', 'Autodistruzione post-download'] },
-                                    { category: 'Creativi', items: ['Commenti su file', 'Commenti su timestamp (AV)', 'Versioning file'] },
-                                    { category: 'Dev / Tech', items: ['API upload/download', 'Checksum file'] }
-                                ]}
-                            />
-
-                            {/* FASE 1.5 */}
-                            <RoadmapItem
-                                phase="Fase 1.5 — v1.5"
-                                title="Tailored Workflows"
-                                result="È fatto apposta per il mio lavoro"
-                                color="bg-pink-500"
-                                features={[
-                                    { category: 'Creativi Avanzate', items: ['Preview audio con waveform', 'Annotazioni visive', 'Stato file (review/approved)', 'Watermark dinamici'] },
-                                    { category: 'Dev / Tech Avanzate', items: ['Webhooks', 'Token temporanei', 'Versioning avanzato', 'Link monouso'] }
+                                    { category: 'Generali', items: ['Commenti su file', 'Commenti su timestamp (AV)', 'Versioning file', 'Annotazioni visive', 'Stato file (review/approved)', 'Watermark dinamici'] },
+                                    { category: 'Organizzazioni', items: ['Storico e Audit log (report accessi, download, modifiche ecc...)', 'Possibilità di applicare un watermark ai file'] },
+                                    { category: 'Dev / Tech', items: ['API upload/download'] },
+                                    { category: 'Creativi', items: ['',] }
                                 ]}
                             />
 
                             {/* FASE 2 */}
                             <RoadmapItem
-                                phase="Fase 2 — v2"
-                                title="The Delivery Hub"
-                                result="È il mio hub di consegna file"
-                                color="bg-amber-500"
+                                phase="Fase 2 - v2"
+                                title="Coming Soon"
+                                result="Arriveranno presto nuove funzionalità"
+                                color="bg-pink-500"
                                 features={[
-                                    { category: 'Sicurezza Avanzata', items: ['Link limitati per IP/Paese', 'Accesso via email specifica'] },
-                                    { category: 'Dev Power', items: ['CLI Tool', 'Integrazione CI/CD', 'Diff tra versioni'] },
-                                    { category: 'Collaborazione', items: ['Chat collegata al file', 'Mention', 'Commenti threaded'] }
-                                ]}
-                            />
-
-                            {/* FASE 3 */}
-                            <RoadmapItem
-                                phase="Fase 3 — Future"
-                                title="Enterprise Intelligence"
-                                result="Strumento professionale completo"
-                                color="bg-green-500"
-                                features={[
-                                    { category: 'AI & Scale', items: ['AI preview assistant', 'AI file summary', 'Firma digitale', 'Audit avanzato', 'Workspace team'] }
+                                    { category: 'Generali', items: [] },
+                                    { category: 'Creativi', items: [] },
+                                    { category: 'Dev/Tech', items: [] },
                                 ]}
                             />
                         </div>
                     </div>
                 </Section>
 
-                {/* 5. FOOTER (Agency Style) */}
-                <footer className="relative w-full bg-black text-white pt-32 pb-12 px-6 md:px-24 mt-24 z-20 overflow-hidden">
+                {/* 5. WAITLIST SECTION */}
+                <WaitlistSection />
+
+                {/* 6. FOOTER (Agency Style) */}
+                <footer className="relative w-full bg-black text-white pt-32 pb-12 px-6 md:px-24 z-20 overflow-hidden">
                     <div className="max-w-7xl mx-auto relative z-10">
                         {/* Top: CTA */}
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-24 gap-12">
@@ -641,18 +495,19 @@ export const LandingPageRef = () => {
                                     Ready to move<br />
                                     <span className="text-gray-500">mountains?</span>
                                 </h3>
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    className="group flex items-center gap-4 text-2xl font-medium hover:gap-6 transition-all duration-300"
-                                >
-                                    <span className="border-b border-white pb-1 group-hover:border-transparent transition-colors">Start Transferring</span>
-                                    <span className="bg-white text-black rounded-full p-3 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="7" y1="17" x2="17" y2="7"></line>
-                                            <polyline points="7 7 17 7 17 17"></polyline>
-                                        </svg>
-                                    </span>
-                                </button>
+                                <a href="#waitlist-section">
+                                    <button
+                                        className="group flex items-center gap-4 text-2xl font-medium hover:gap-6 transition-all duration-300"
+                                    >
+                                        <span className="border-b border-white pb-1 group-hover:border-transparent transition-colors">Join the waitlist</span>
+                                        <span className="bg-white text-black rounded-full p-3 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <line x1="7" y1="17" x2="17" y2="7"></line>
+                                                <polyline points="7 7 17 7 17 17"></polyline>
+                                            </svg>
+                                        </span>
+                                    </button>
+                                </a>
                             </div>
                             <div className="flex flex-col w-full md:w-auto items-start text-left sm:items-end sm:text-right">
                                 <p className="text-gray-400 max-w-xs text-lg mb-8">

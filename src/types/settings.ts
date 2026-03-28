@@ -2,6 +2,8 @@
  * Types for user settings/preferences
  */
 
+import { getCurrentUser } from "../components/getCurrentUser/getCurrentUser";
+
 // Notification preferences
 export interface NotificationSettings {
     emailNotifications: boolean;
@@ -16,6 +18,20 @@ export interface PrivacySettings {
     publicProfile: boolean;
     showActivity: boolean;
     allowSharing: boolean;
+}
+
+// Profile settings
+export interface ProfileSettings {
+    name: string;
+    surname: string;
+    email: string;
+}
+
+// Password settings
+export interface PasswordSettings {
+    actualPassword: string;
+    newPassword: string;
+    newPasswordConfirm: string;
 }
 
 // Appearance settings
@@ -38,7 +54,11 @@ export interface UserSettings {
     privacy: PrivacySettings;
     appearance: AppearanceSettings;
     transfer: TransferSettings;
+    profile: ProfileSettings;
+    password: PasswordSettings;
 }
+
+const user = getCurrentUser();
 
 // Default settings
 export const DEFAULT_SETTINGS: UserSettings = {
@@ -58,6 +78,16 @@ export const DEFAULT_SETTINGS: UserSettings = {
         theme: 'dark',
         language: 'it'
     },
+    profile: {
+        name: user?.name?.split(" ")[0] || '',
+        surname: user?.name?.split(" ")[1] || '',
+        email: user?.email || '',
+    },
+    password: {
+        actualPassword: "",
+        newPassword: "",
+        newPasswordConfirm: "",
+    },
     transfer: {
         maxConcurrentUploads: 3,
         maxConcurrentDownloads: 2,
@@ -67,4 +97,4 @@ export const DEFAULT_SETTINGS: UserSettings = {
 };
 
 // Settings section for UI organization
-export type SettingsSection = 'notifications' | 'privacy' | 'appearance' | 'transfer' | 'security';
+export type SettingsSection = 'notifications' | 'privacy' | 'appearance' | 'transfer' | 'security' | 'profile' | 'password';

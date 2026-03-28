@@ -1,5 +1,6 @@
 import React from 'react';
 import { InputNumber, Slider, Select } from 'antd';
+import CustomInput from '../Input/Input';
 
 interface SettingsNumberInputProps {
     /** Label for the input */
@@ -128,6 +129,51 @@ export const SettingsSelect = <T extends string>({
                 options={options}
                 disabled={disabled}
                 className="!w-36 !bg-[#2c2638]"
+            />
+        </div>
+    );
+};
+
+interface SettingsInputProps {
+    /** Label for the input */
+    label: string;
+    /** Optional description */
+    description?: string;
+    /** Current value */
+    value: string;
+    /** Change handler */
+    onChange: (value: string) => void;
+    /** Disabled state */
+    disabled?: boolean;
+    /** Placeholder */
+    placeholder?: string;
+}
+
+/**
+ * Componente per input testo nelle impostazioni.
+ */
+export const SettingsInput: React.FC<SettingsInputProps> = ({
+    label,
+    description,
+    value,
+    onChange,
+    disabled = false,
+    placeholder
+}) => {
+    return (
+        <div className="flex items-center justify-between py-3 border-b border-[#4a4554]/30 last:border-b-0">
+            <div className="flex-1">
+                <span className="text-white font-medium text-sm">{label}</span>
+                {description && (
+                    <p className="text-[#9ca3af] text-xs mt-0.5">{description}</p>
+                )}
+            </div>
+            <CustomInput
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                disabled={disabled}
+                placeholder={placeholder}
+                className="!w-fit !bg-[#2c2638] border-[#4a4554] text-white focus-visible:ring-offset-0"
             />
         </div>
     );
