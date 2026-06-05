@@ -79,17 +79,6 @@ export default function GeneralSection() {
                 icon={<FormatPainterOutlined />}
             >
                 <SettingsSelect
-                    label="Tema"
-                    description="Scegli il tema dell'applicazione"
-                    value={settings.appearance.theme}
-                    onChange={(value) => updateAppearance({ theme: value })}
-                    options={[
-                        { value: 'dark', label: '🌙 Scuro' },
-                        { value: 'light', label: '☀️ Chiaro' },
-                        { value: 'system', label: '💻 Sistema' }
-                    ]}
-                />
-                <SettingsSelect
                     label="Cambia lingua"
                     description="Cambia la lingua dell'applicazione"
                     value={settings.appearance.language}
@@ -98,6 +87,7 @@ export default function GeneralSection() {
                         { value: 'it', label: '🇮🇹 Italiano' },
                         { value: 'en', label: '🇬🇧 Inglese' }
                     ]}
+                    disabled
                 />
             </SettingsSection>
 

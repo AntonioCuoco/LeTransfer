@@ -129,27 +129,8 @@ export const FilePreviewCard = ({
 
             {/* File Info */}
             <div className="p-6">
-                <div className="flex items-start gap-4">
-                    <div className="w-14 h-14 rounded-xl bg-[#724CF9]/20 flex items-center justify-center flex-shrink-0">
-                        {getFileIcon(fileType)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <h3
-                            className="text-white font-semibold text-lg truncate mb-1"
-                            title={fileName}
-                        >
-                            {fileName}
-                        </h3>
-                        <div className="flex items-center gap-3 text-sm text-[#9ca3af]">
-                            <span className="whitespace-nowrap">{fileSize}</span>
-                            <span className="w-1 h-1 rounded-full bg-[#4a4554] flex-shrink-0"></span>
-                            <span className="truncate" title={fileType}>{fileType}</span>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Action Buttons */}
-                <div className="flex gap-3 mt-6">
+                <div className="flex gap-3">
                     {canPreview && onPreview && (
                         <Button
                             icon={<EyeOutlined />}
