@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* ===== Ant Design Vue =====
+   Theming is driven by the dark algorithm + brand tokens configured in
+   App.vue (<a-config-provider>). Component colors (tables, tabs, modals,
+   date-picker, steps, inputs, alerts) are handled natively from those tokens,
+   so this file stays minimal. Add a rule here only for something the tokens
+   genuinely cannot express. */

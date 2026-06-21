@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
+    "dev": "npm --prefix vue-app run dev",
+    "build": "npm --prefix vue-app run build",
+    "preview": "npm --prefix vue-app run preview",
+    "lint": "npm --prefix vue-app run lint",
     "email": "email dev --dir src/emails"
   },
   "dependencies": {
