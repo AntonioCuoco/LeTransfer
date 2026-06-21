@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { UserOutlined, LockOutlined, LoginOutlined } from '@ant-design/icons-vue'
 
 const props = defineProps<{
   isPasswordProtected: boolean
@@ -26,15 +25,14 @@ const handleSubmit = () => {
     <div>
       <label class="text-[#DBD4D3] font-medium text-sm mb-2 block">Il tuo nome</label>
       <div class="relative">
-        <UserOutlined class="absolute left-3 top-1/2 -translate-y-1/2 !text-[#724CF9] z-10" />
-        <input
+        <i class="pi pi-user absolute left-3 top-1/2 -translate-y-1/2 text-primary z-10" />
+        <InputText
           v-model="visitorName"
           type="text"
           placeholder="Inserisci il tuo nome"
           :disabled="isLoading"
-          minlength="2"
-          required
-          class="w-full p-3 pl-10 rounded-lg focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#1a1625] border border-[#4a4554] placeholder:text-[#676178] text-white disabled:opacity-50"
+          fluid
+          class="!pl-10"
         />
       </div>
       <p class="text-[#676178] text-xs mt-1">Questo nome sarà visibile al proprietario del file</p>
@@ -43,14 +41,15 @@ const handleSubmit = () => {
     <div v-if="isPasswordProtected">
       <label class="text-[#DBD4D3] font-medium text-sm mb-2 block">Password</label>
       <div class="relative">
-        <LockOutlined class="absolute left-3 top-1/2 -translate-y-1/2 !text-[#724CF9] z-10" />
-        <input
+        <i class="pi pi-lock absolute left-3 top-1/2 -translate-y-1/2 text-primary z-10" />
+        <Password
           v-model="password"
-          type="password"
           placeholder="Inserisci la password"
+          :feedback="false"
+          toggle-mask
+          fluid
+          input-class="!pl-10"
           :disabled="isLoading"
-          required
-          class="w-full p-3 pl-10 rounded-lg focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#1a1625] border border-[#4a4554] placeholder:text-[#676178] text-white disabled:opacity-50"
         />
       </div>
     </div>
@@ -59,17 +58,14 @@ const handleSubmit = () => {
       <p class="text-red-400 text-sm m-0">{{ error }}</p>
     </div>
 
-    <a-button
-      type="primary"
-      html-type="submit"
+    <Button
+      type="submit"
+      :label="isLoading ? 'Accesso in corso...' : 'Accedi al file'"
+      :icon="isLoading ? undefined : 'pi pi-sign-in'"
       :disabled="!isFormValid() || isLoading"
       :loading="isLoading"
       size="large"
-      style="border-radius: 10px; height: 48px"
-      class="w-full !bg-[#724CF9] hover:!bg-[#9d7bfa] !text-white !border-[#724CF9] disabled:!bg-[#4a4554] disabled:!border-[#4a4554]"
-    >
-      <template #icon><LoginOutlined v-if="!isLoading" /></template>
-      {{ isLoading ? 'Accesso in corso...' : 'Accedi al file' }}
-    </a-button>
+      class="w-full"
+    />
   </form>
 </template>

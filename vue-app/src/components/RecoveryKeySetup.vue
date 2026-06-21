@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { message } from 'ant-design-vue'
-import { CopyOutlined, SafetyCertificateOutlined } from '@ant-design/icons-vue'
+import { notify } from '@/src/utils/notify'
 import { generateRecoveryKey, deriveMasterKeyFromMnemonic } from '@/src/utils/recovery-key'
 import { generateSalt, arrayBufferToBase64 } from '@/src/utils/crypto'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
@@ -49,12 +48,12 @@ const performSetup = async () => {
 
     const success = await setupRecoveryKey({ salt: saltBase64, verificationHash })
     if (success) {
-      message.success('Sicurezza configurata con successo!')
+      notify.success('Sicurezza configurata con successo!')
       encryptionStore.setMasterKey(masterKey)
       emit('complete')
     }
   } catch {
-    message.error('Errore durante la configurazione.')
+    notify.error('Errore durante la configurazione.')
   } finally {
     isVerifying.value = false
   }
@@ -64,10 +63,15 @@ const handleConfirm = async () => {
   const original = mnemonic.value.trim().toLowerCase()
   const input = confirmMnemonic.value.trim().toLowerCase()
   if (original !== input) {
-    message.error('Le parole inserite non corrispondono. Riprova.')
+    notify.error('Le parole inserite non corrispondono. Riprova.')
     return
   }
   await performSetup()
+}
+
+const copyMnemonic = () => {
+  navigator.clipboard.writeText(mnemonic.value)
+  notify.success('Copiata negli appunti')
 }
 
 const mnemonicWords = () => mnemonic.value.split(' ')
@@ -75,12 +79,23 @@ const mnemonicWords = () => mnemonic.value.split(' ')
 
 <template>
   <div class="w-full px-4 pb-4">
-    <a-steps :current="currentStep" class="!mb-10 p-4" :items="steps.map(s => ({ title: s.title }))" />
+    <!-- Step indicator -->
+    <div class="flex items-center justify-center gap-2 mb-10">
+      <template v-for="(s, i) in steps" :key="i">
+        <div class="flex items-center gap-2">
+          <div :class="['w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold', i <= currentStep ? 'bg-primary text-white' : 'bg-surface-700 text-surface-300']">
+            {{ i + 1 }}
+          </div>
+          <span :class="['text-sm hidden sm:inline', i <= currentStep ? 'text-white' : 'text-[#9ca3af]']">{{ s.title }}</span>
+        </div>
+        <div v-if="i < steps.length - 1" class="w-10 h-px bg-surface-600" />
+      </template>
+    </div>
 
     <!-- Step 0: Genera -->
     <div v-if="currentStep === 0" class="text-center space-y-8 px-4">
       <div class="w-20 h-20 mx-auto bg-[#724CF9]/20 rounded-full flex items-center justify-center ring-4 ring-[#724CF9]/10">
-        <SafetyCertificateOutlined class="!text-[#724CF9] text-4xl" />
+        <i class="pi pi-shield text-primary text-4xl" />
       </div>
       <div class="space-y-3">
         <h3 class="text-white text-2xl font-bold">Proteggi i tuoi file</h3>
@@ -96,8 +111,8 @@ const mnemonicWords = () => mnemonic.value.split(' ')
         </span>
       </div>
       <div class="flex justify-center gap-4 pt-4">
-        <a-button size="large" class="!bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9] hover:!text-white" @click="emit('cancel')">Annulla</a-button>
-        <a-button type="primary" size="large" class="!bg-[#724CF9] hover:!bg-[#5a3fd1] !border-none" @click="handleGenerate">Genera Recovery Key</a-button>
+        <Button label="Annulla" severity="secondary" outlined size="large" @click="emit('cancel')" />
+        <Button label="Genera Recovery Key" size="large" @click="handleGenerate" />
       </div>
     </div>
 
@@ -114,11 +129,8 @@ const mnemonicWords = () => mnemonic.value.split(' ')
         </div>
       </div>
       <div class="flex justify-between items-center mt-6">
-        <a-button class="!bg-[#2c2638] !border-[#4a4554] !text-white hover:!border-[#724CF9]" @click="() => { navigator.clipboard.writeText(mnemonic); message.success('Copiata negli appunti') }">
-          <template #icon><CopyOutlined /></template>
-          Copia tutto
-        </a-button>
-        <a-button type="primary" class="!bg-[#724CF9] hover:!bg-[#5a3fd1] !border-none" @click="currentStep = 2">Ho salvato le parole</a-button>
+        <Button label="Copia tutto" icon="pi pi-copy" severity="secondary" outlined @click="copyMnemonic" />
+        <Button label="Ho salvato le parole" @click="currentStep = 2" />
       </div>
     </div>
 
@@ -128,25 +140,22 @@ const mnemonicWords = () => mnemonic.value.split(' ')
         <h4 class="text-white text-xl font-semibold">Verifica Recovery Key</h4>
         <p class="text-[#DBD4D3]">Per sicurezza, inserisci le parole che hai appena salvato.</p>
       </div>
-      <a-textarea
-        v-model:value="confirmMnemonic"
+      <Textarea
+        v-model="confirmMnemonic"
         :rows="4"
         placeholder="Incolla qui le 24 parole separate da spazio..."
-        class="!bg-[#1a1625] !border-[#4a4554] !text-white"
+        class="font-mono"
+        fluid
       />
       <div class="flex justify-end gap-2">
-        <a-button class="!bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9] hover:!text-white" @click="currentStep = 1">Indietro</a-button>
-        <a-button
-          type="primary"
+        <Button label="Indietro" severity="secondary" outlined @click="currentStep = 1" />
+        <Button
+          label="Verifica e Attiva"
           :loading="isVerifying || isLoading"
           :disabled="!confirmMnemonic"
-          class="!bg-[#724CF9] hover:!bg-[#5a3fd1] !border-none"
           @click="handleConfirm"
-        >
-          Verifica e Attiva
-        </a-button>
+        />
       </div>
     </div>
   </div>
 </template>
-

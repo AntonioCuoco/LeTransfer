@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { shallowRef, ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import { wrapFileKey, unwrapFileKey, arrayBufferToBase64, base64ToArrayBuffer } from '@/src/utils/crypto'
 import { useFileKeysAPI } from '@/src/composables/useFileKeysAPI'
 import type { EncryptionKeyData } from '@/src/types'
@@ -25,7 +25,7 @@ export const useEncryptionStore = defineStore('encryption', () => {
 
   async function storeKey(s3Key: string, keyData: EncryptionKeyData): Promise<boolean> {
     if (!masterKey.value) {
-      message.error('Impossibile salvare la chiave: Master Key non disponibile')
+      notify.error('Impossibile salvare la chiave: Master Key non disponibile')
       return false
     }
     try {
@@ -36,7 +36,7 @@ export const useEncryptionStore = defineStore('encryption', () => {
       if (success) keyCache.value = { ...keyCache.value, [s3Key]: keyData }
       return success
     } catch {
-      message.error('Errore nel salvataggio della chiave di cifratura')
+      notify.error('Errore nel salvataggio della chiave di cifratura')
       return false
     }
   }
@@ -53,7 +53,7 @@ export const useEncryptionStore = defineStore('encryption', () => {
       keyCache.value = { ...keyCache.value, [s3Key]: keyData }
       return keyData
     } catch {
-      message.error('Errore nel recupero della chiave di cifratura')
+      notify.error('Errore nel recupero della chiave di cifratura')
       return null
     }
   }

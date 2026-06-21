@@ -15,12 +15,10 @@ defineEmits<{ 'update:modelValue': [v: boolean] }>()
     <div class="flex-1">
       <div class="flex items-center gap-1">
         <span class="text-sm font-medium text-white">{{ label }}</span>
-        <a-tooltip v-if="tooltip" :title="tooltip">
-          <span class="text-[#9ca3af] cursor-help text-xs">(?)</span>
-        </a-tooltip>
+        <span v-if="tooltip" v-tooltip.top="tooltip" class="text-[#9ca3af] cursor-help text-xs">(?)</span>
       </div>
       <p v-if="description" class="text-xs text-[#9ca3af] mt-0.5">{{ description }}</p>
     </div>
-    <a-switch :checked="modelValue" :disabled="disabled" @change="(v: boolean) => $emit('update:modelValue', v)" />
+    <ToggleSwitch :model-value="modelValue" :disabled="disabled" @update:model-value="$emit('update:modelValue', $event)" />
   </div>
 </template>

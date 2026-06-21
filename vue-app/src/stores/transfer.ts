@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch, shallowRef } from 'vue'
 import type { TransferItem, TransferControl, TransferStatus, TransferProgress } from '@/src/types/transfer'
 import axios from 'axios'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 
 const LIMITS = {
   uploadLarge: { files: 3, parts: 2 },
@@ -18,7 +18,7 @@ class DownloadRunner {
   constructor(
     private transfer: TransferItem,
     private updateTransfer: (id: string, updates: Partial<TransferItem>) => void,
-    private registerControls: (id: string, controls: TransferControl) => void,
+    registerControls: (id: string, controls: TransferControl) => void,
   ) {
     registerControls(transfer.id, {
       pause: () => {},
@@ -53,7 +53,7 @@ class DownloadRunner {
         },
       })
 
-      const blob = new Blob([response.data], { type: response.headers['content-type'] })
+      const blob = new Blob([response.data], { type: (response.headers['content-type'] as string) || undefined })
       const downloadUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = downloadUrl
@@ -68,7 +68,7 @@ class DownloadRunner {
       if (axios.isCancel(err) || (err instanceof Error && err.name === 'AbortError')) {
         this.updateTransfer(this.transfer.id, { status: 'cancelled' })
       } else {
-        message.error('Errore durante il download del file')
+        notify.error('Errore durante il download del file')
         this.updateTransfer(this.transfer.id, { status: 'error', error: err as Error })
       }
     }

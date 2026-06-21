@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { UploadOutlined, SendOutlined, FileOutlined, DeleteOutlined, PlusOutlined, InboxOutlined } from '@ant-design/icons-vue'
+import { notify } from '@/src/utils/notify'
 import Swal from 'sweetalert2'
 import axios from 'axios'
 import Cookies from 'js-cookie'
@@ -97,8 +96,8 @@ const removeFile = (id: string) => { selectedFiles.value = selectedFiles.value.f
 
 const addEmail = () => {
   const email = currentEmail.value.trim()
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { message.error('Email non valida'); return }
-  if (recipientEmails.value.includes(email)) { message.warning('Email già aggiunta'); return }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { notify.error('Email non valida'); return }
+  if (recipientEmails.value.includes(email)) { notify.warning('Email già aggiunta'); return }
   recipientEmails.value.push(email)
   currentEmail.value = ''
 }
@@ -106,8 +105,8 @@ const addEmail = () => {
 const removeEmail = (email: string) => { recipientEmails.value = recipientEmails.value.filter(e => e !== email) }
 
 const handleSend = async () => {
-  if (recipientEmails.value.length === 0) { message.error('Aggiungi almeno un destinatario'); return }
-  if (selectedFiles.value.length === 0) { message.error('Seleziona almeno un file'); return }
+  if (recipientEmails.value.length === 0) { notify.error('Aggiungi almeno un destinatario'); return }
+  if (selectedFiles.value.length === 0) { notify.error('Seleziona almeno un file'); return }
 
   isLoading.value = true
   try {
@@ -123,7 +122,7 @@ const handleSend = async () => {
     customMessage.value = ''
     emit('fileSent')
   } catch {
-    message.error("Errore durante l'invio")
+    notify.error("Errore durante l'invio")
   } finally {
     isLoading.value = false
   }
@@ -136,21 +135,18 @@ const handleSend = async () => {
     <div>
       <h3 class="text-white font-semibold mb-3">Destinatari</h3>
       <div class="flex gap-2 mb-2">
-        <input
+        <InputText
           v-model="currentEmail"
           type="email"
           placeholder="email@esempio.com"
-          class="flex-1 p-2 pl-3 rounded-lg bg-[#1a1625] border border-[#4a4554] text-white placeholder:text-[#676178] focus:outline-none focus:border-[#724CF9]"
+          fluid
+          class="flex-1"
           @keydown.enter.prevent="addEmail"
         />
-        <a-button type="primary" class="!bg-[#724CF9] !border-none" @click="addEmail">
-          <template #icon><PlusOutlined /></template>
-        </a-button>
+        <Button icon="pi pi-plus" @click="addEmail" />
       </div>
       <div class="flex flex-wrap gap-2">
-        <a-tag v-for="email in recipientEmails" :key="email" closable class="!bg-[#724CF9]/20 !text-[#a78bfa] !border-[#724CF9]/30" @close="removeEmail(email)">
-          {{ email }}
-        </a-tag>
+        <Chip v-for="email in recipientEmails" :key="email" :label="email" removable @remove="removeEmail(email)" />
       </div>
     </div>
 
@@ -164,7 +160,7 @@ const handleSend = async () => {
         @click="fileInputRef?.click()"
       >
         <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInput" />
-        <InboxOutlined class="!text-[#724CF9] text-3xl" />
+        <i class="pi pi-inbox text-primary text-3xl" />
         <p class="text-[#DBD4D3] mt-2">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
       </div>
     </div>
@@ -190,10 +186,10 @@ const handleSend = async () => {
       <h4 class="text-[#DBD4D3] font-medium mb-2">File selezionati</h4>
       <div class="space-y-1">
         <div v-for="file in selectedFiles" :key="file.id" class="flex items-center gap-2 p-2 rounded bg-[#1a1625]">
-          <FileOutlined class="!text-[#724CF9] flex-shrink-0" />
+          <i class="pi pi-file text-primary flex-shrink-0" />
           <span class="text-white text-sm truncate flex-1">{{ file.name }}</span>
           <span class="text-[#9ca3af] text-xs">{{ file.size }}</span>
-          <a-button type="text" danger size="small" @click="removeFile(file.id)"><DeleteOutlined /></a-button>
+          <Button icon="pi pi-trash" text severity="danger" size="small" @click="removeFile(file.id)" />
         </div>
       </div>
     </div>
@@ -201,23 +197,19 @@ const handleSend = async () => {
     <!-- Messaggio -->
     <div>
       <label class="block text-[#DBD4D3] font-medium text-sm mb-1">Messaggio (opzionale)</label>
-      <a-textarea v-model:value="customMessage" :rows="2" placeholder="Scrivi un messaggio per i destinatari..." class="!bg-[#1a1625] !border-[#4a4554] !text-white" />
+      <Textarea v-model="customMessage" :rows="2" placeholder="Scrivi un messaggio per i destinatari..." fluid />
     </div>
 
     <!-- Invio -->
     <div class="flex justify-end">
-      <a-button
-        type="primary"
+      <Button
+        :label="isLoading ? 'Invio in corso...' : 'Invia File'"
+        :icon="isLoading ? undefined : 'pi pi-send'"
         size="large"
         :loading="isLoading"
         :disabled="selectedFiles.length === 0 || recipientEmails.length === 0"
-        class="!bg-[#724CF9] hover:!bg-[#5a3fd1] !border-none !text-white"
-        style="border-radius: 10px; height: 48px; padding: 0 32px"
         @click="handleSend"
-      >
-        <template #icon><SendOutlined /></template>
-        {{ isLoading ? 'Invio in corso...' : 'Invia File' }}
-      </a-button>
+      />
     </div>
   </div>
 </template>

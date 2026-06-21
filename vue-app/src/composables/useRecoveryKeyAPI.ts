@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import type { SetupRecoveryKeyRequest, UserRecoveryKeyStatus } from '@/src/types'
 
 export const useRecoveryKeyAPI = () => {
@@ -22,7 +22,7 @@ export const useRecoveryKeyAPI = () => {
       return true
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
-      message.error('Errore durante la configurazione della chiave di ripristino')
+      notify.error('Errore durante la configurazione della chiave di ripristino')
       error.value = e.response?.data?.message || e.message || null
       return false
     } finally {
@@ -42,7 +42,7 @@ export const useRecoveryKeyAPI = () => {
       return data
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
-      message.error('Errore nel recupero dello stato della chiave di ripristino')
+      notify.error('Errore nel recupero dello stato della chiave di ripristino')
       error.value = e.response?.data?.message || e.message || null
       return null
     } finally {

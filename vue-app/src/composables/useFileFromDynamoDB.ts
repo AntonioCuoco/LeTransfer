@@ -5,7 +5,6 @@ import Swal from 'sweetalert2'
 import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/utils/crypto'
-import { useFileKeysAPI } from './useFileKeysAPI'
 
 export const useFileFromDynamoDB = () => {
   const files = ref<DynamoDBFile[]>([])
@@ -17,7 +16,6 @@ export const useFileFromDynamoDB = () => {
   const hasMore = ref(false)
 
   const encryptionStore = useEncryptionStore()
-  const { getFileKey } = useFileKeysAPI()
 
   const getToken = () => Cookies.get('idToken')
 
@@ -147,7 +145,7 @@ export const useFileFromDynamoDB = () => {
       let finalBlob = blob
 
       // Try to decrypt if encryption store is unlocked
-      const keyData = encryptionStore.isUnlocked ? await getFileKey(file.s3Key) : null
+      const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
       if (keyData) {
         try {
           const key = await importKeyFromBase64(keyData.key)

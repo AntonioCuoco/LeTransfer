@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useTransferStore } from '@/src/stores/transfer'
-import { CloudUploadOutlined, InboxOutlined } from '@ant-design/icons-vue'
 import Swal from 'sweetalert2'
 
 const props = defineProps<{
@@ -41,15 +40,12 @@ const handleDrop = (e: DragEvent) => {
     >
       <input ref="fileInputRef" type="file" multiple class="hidden" @change="(e) => handleFiles((e.target as HTMLInputElement).files!)" />
       <div class="flex flex-col items-center space-y-3">
-        <InboxOutlined class="!text-[#724CF9] text-4xl" />
+        <i class="pi pi-inbox text-primary text-4xl" />
         <div>
           <p class="text-[#DBD4D3] font-medium">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
           <p class="text-[#9ca3af] text-sm mt-1">Consigliato per file grandi (>100MB) • Upload multipart automatico</p>
         </div>
-        <a-button type="primary" class="!bg-[#724CF9] !border-none" @click.stop="fileInputRef?.click()">
-          <template #icon><CloudUploadOutlined /></template>
-          Seleziona File
-        </a-button>
+        <Button label="Seleziona File" icon="pi pi-cloud-upload" @click.stop="fileInputRef?.click()" />
       </div>
     </div>
   </div>

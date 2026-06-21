@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import type { SharedLink, CreateSharedLinkRequest, CreateSharedLinkResponse } from '@/src/types'
 import { createKeyHash } from '@/src/utils/crypto'
 
@@ -37,7 +37,7 @@ export const useSharedLinks = () => {
       })
       links.value = Array.isArray(data.data) ? data.data : []
     } catch {
-      message.error('Errore durante il caricamento dei link condivisi')
+      notify.error('Errore durante il caricamento dei link condivisi')
       links.value = []
     } finally {
       isLoading.value = false
@@ -70,7 +70,7 @@ export const useSharedLinks = () => {
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
       const msg = e.response?.data?.message || e.message || 'Errore durante la creazione del link'
-      message.error(msg); error.value = msg
+      notify.error(msg); error.value = msg
       return null
     } finally {
       isCreating.value = false
@@ -82,7 +82,7 @@ export const useSharedLinks = () => {
       await axios.post(`${API_BASE_URL}/shared-links/${linkId}/revoke`, {}, { headers: { Authorization: `Bearer ${getToken()}` } })
       links.value = links.value.map(l => l.id === linkId ? { ...l, revokedAt: new Date().toISOString() } : l)
       return true
-    } catch { message.error('Errore durante la revoca del link'); return false }
+    } catch { notify.error('Errore durante la revoca del link'); return false }
   }
 
   const regenerateLink = async (linkId: string): Promise<boolean> => {
@@ -92,7 +92,7 @@ export const useSharedLinks = () => {
       links.value = links.value.map(l => l.id === linkId ? newLink : l)
       await fetchLinks()
       return true
-    } catch { message.error('Errore durante la rigenerazione del link'); return false }
+    } catch { notify.error('Errore durante la rigenerazione del link'); return false }
   }
 
   const updateLink = async (linkId: string, updates: Partial<SharedLink>): Promise<boolean> => {
@@ -100,7 +100,7 @@ export const useSharedLinks = () => {
       const { data } = await axios.patch<SharedLink>(`${API_BASE_URL}/shared-links/${linkId}`, updates, { headers: { Authorization: `Bearer ${getToken()}` } })
       links.value = links.value.map(l => l.id === linkId ? data : l)
       return true
-    } catch { message.error("Errore durante l'aggiornamento del link"); return false }
+    } catch { notify.error("Errore durante l'aggiornamento del link"); return false }
   }
 
   const deleteLink = async (linkId: string): Promise<boolean> => {
@@ -108,7 +108,7 @@ export const useSharedLinks = () => {
       await axios.delete(`${API_BASE_URL}/shared-links/${linkId}`, { headers: { Authorization: `Bearer ${getToken()}` } })
       links.value = links.value.filter(l => l.id !== linkId)
       return true
-    } catch { message.error("Errore durante l'eliminazione del link"); return false }
+    } catch { notify.error("Errore durante l'eliminazione del link"); return false }
   }
 
   return { links, isLoading, isCreating, error, fetchLinks, createLink, revokeLink, regenerateLink, updateLink, deleteLink }

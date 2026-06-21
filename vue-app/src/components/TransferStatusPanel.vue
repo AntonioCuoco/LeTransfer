@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTransferStore } from '@/src/stores/transfer'
-import {
-  CloudUploadOutlined, CloudDownloadOutlined, PauseCircleOutlined,
-  PlayCircleOutlined, StopOutlined, CheckCircleOutlined, DeleteOutlined,
-} from '@ant-design/icons-vue'
 
 const store = useTransferStore()
 const { transfers, pauseTransfer, resumeTransfer, cancelTransfer, clearCompleted } = store
@@ -41,7 +37,7 @@ const statusLabel = (status: string) => {
         <p v-if="downloadsCount > 0" class="text-xs text-[#724CF9]">{{ downloadsCount }} Download in corso</p>
       </div>
       <button v-if="hasFinished" class="text-xs text-[#9ca3af] hover:text-white flex items-center gap-1" @click="clearCompleted">
-        <DeleteOutlined /> Pulisci
+        <i class="pi pi-trash" /> Pulisci
       </button>
     </div>
 
@@ -52,8 +48,8 @@ const statusLabel = (status: string) => {
       <div v-for="t in transfers" :key="t.id" class="bg-[#2c2638] p-3 rounded border border-[#4a4554] flex flex-col gap-2">
         <div class="flex justify-between items-start">
           <div class="flex items-center gap-2 overflow-hidden">
-            <CloudUploadOutlined v-if="t.type === 'upload'" class="!text-green-400" />
-            <CloudDownloadOutlined v-else class="!text-green-400" />
+            <i v-if="t.type === 'upload'" class="pi pi-cloud-upload text-green-400" />
+            <i v-else class="pi pi-cloud-download text-green-400" />
             <div class="flex flex-col min-w-0">
               <span class="text-[#DBD4D3] font-medium text-sm truncate" :title="t.name">{{ t.name }}</span>
               <span class="text-xs text-[#9ca3af]">{{ formatBytes(t.progress.loadedBytes) }} / {{ formatBytes(t.progress.totalBytes) }}</span>
@@ -87,11 +83,11 @@ const statusLabel = (status: string) => {
           </div>
           <div class="flex gap-2">
             <template v-if="t.status === 'uploading' || t.status === 'downloading'">
-              <button v-if="t.controls?.pause" class="text-yellow-500 hover:text-yellow-400" title="Pausa" @click="pauseTransfer(t.id)"><PauseCircleOutlined /></button>
-              <button class="text-red-500 hover:text-red-400" title="Annulla" @click="cancelTransfer(t.id)"><StopOutlined /></button>
+              <button v-if="t.controls?.pause" class="text-yellow-500 hover:text-yellow-400" title="Pausa" @click="pauseTransfer(t.id)"><i class="pi pi-pause-circle" /></button>
+              <button class="text-red-500 hover:text-red-400" title="Annulla" @click="cancelTransfer(t.id)"><i class="pi pi-stop-circle" /></button>
             </template>
-            <button v-if="t.status === 'paused'" class="text-green-500 hover:text-green-400" title="Riprendi" @click="resumeTransfer(t.id)"><PlayCircleOutlined /></button>
-            <CheckCircleOutlined v-if="['completed', 'cancelled', 'error'].includes(t.status)" :class="t.status === 'completed' ? '!text-green-400' : '!text-transparent'" />
+            <button v-if="t.status === 'paused'" class="text-green-500 hover:text-green-400" title="Riprendi" @click="resumeTransfer(t.id)"><i class="pi pi-play-circle" /></button>
+            <i v-if="['completed', 'cancelled', 'error'].includes(t.status)" class="pi pi-check-circle" :class="t.status === 'completed' ? 'text-green-400' : 'text-transparent'" />
           </div>
         </div>
       </div>

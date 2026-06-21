@@ -82,12 +82,16 @@ const handleConfirm = async () => {
 
 <template>
   <div class="w-full h-full flex flex-row justify-center items-center bg-[#2c2638]">
-    <a-modal :open="isModalOpen" :closable="false" centered ok-text="Conferma" cancel-text="Annulla" @ok="handleConfirm" @cancel="isModalOpen = false">
+    <Dialog v-model:visible="isModalOpen" modal :closable="false" :style="{ width: '450px' }" :pt="{ header: '!hidden' }">
       <div class="flex flex-col items-center justify-center gap-4 py-4">
         <p class="text-[#DBD4D3] text-2xl font-bold">Codice di verifica</p>
-        <input v-model="confirmCode" type="text" placeholder="Codice di verifica" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+        <InputText v-model="confirmCode" type="text" placeholder="Codice di verifica" fluid />
       </div>
-    </a-modal>
+      <template #footer>
+        <Button label="Annulla" severity="secondary" outlined @click="isModalOpen = false" />
+        <Button label="Conferma" @click="handleConfirm" />
+      </template>
+    </Dialog>
 
     <div class="w-1/2 h-full"><AppSlider /></div>
     <div class="w-1/2 h-full flex flex-col gap-12">
@@ -95,22 +99,22 @@ const handleConfirm = async () => {
         <h1 class="text-[#DBD4D3] text-4xl font-bold text-center">Registrati all'applicazione</h1>
         <div class="flex flex-row gap-4 w-full">
           <div class="w-full">
-            <input v-model="name" type="text" placeholder="Nome" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+            <InputText v-model="name" type="text" placeholder="Nome" fluid :invalid="!!nameError" />
             <p v-if="nameError" class="text-[#F4743B] mt-1 text-sm">{{ nameError }}</p>
           </div>
           <div class="w-full">
-            <input v-model="surname" type="text" placeholder="Cognome" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+            <InputText v-model="surname" type="text" placeholder="Cognome" fluid :invalid="!!surnameError" />
             <p v-if="surnameError" class="text-[#F4743B] mt-1 text-sm">{{ surnameError }}</p>
           </div>
         </div>
         <div class="w-full">
-          <input v-model="email" type="email" placeholder="Email" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+          <InputText v-model="email" type="email" placeholder="Email" fluid :invalid="!!emailError" />
           <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
         </div>
         <PasswordInput v-model="password" :error="passwordError" placeholder="Password" :show-tooltip="true" />
         <div class="flex flex-row gap-4 w-full">
-          <button type="submit" class="bg-[#724CF9] w-full text-[#DBD4D3] p-4 rounded-md">Register</button>
-          <button type="button" class="bg-[#724CF9] w-full text-[#DBD4D3] p-4 rounded-md" @click="router.push('/login')">Login</button>
+          <Button type="submit" label="Register" class="w-full" size="large" />
+          <Button type="button" label="Login" variant="outlined" class="w-full" size="large" @click="router.push('/login')" />
         </div>
         <div class="flex flex-row gap-4 w-full items-center">
           <div class="w-full h-[1px] bg-[#DBD4D3]" />

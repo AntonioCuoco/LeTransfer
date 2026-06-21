@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, h } from 'vue'
-import { message } from 'ant-design-vue'
-import { ReloadOutlined, CloudUploadOutlined, InboxOutlined, SafetyCertificateOutlined } from '@ant-design/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { notify } from '@/src/utils/notify'
 import ProfileHeader from '@/src/components/ProfileHeader.vue'
 import FileStatsGrid from '@/src/components/FileStatsGrid.vue'
 import FilesTable from '@/src/components/FilesTable.vue'
@@ -101,14 +100,14 @@ const loadFiles = async (page = 1) => {
     if (selectedFileType.value) options.fileType = selectedFileType.value
     const result = await loadFilesFromDynamo(options)
     if (result) { totalFiles.value = result.count; updateStats(result.count, sharedFiles.value.length) }
-  } catch { message.error('Errore durante il caricamento dei file') }
+  } catch { notify.error('Errore durante il caricamento dei file') }
 }
 
 const loadSharedFiles = async () => {
   try {
     const files = await getSharedWithMe()
     updateStats(dynamoFiles.value.length, files.length)
-  } catch { message.error('Errore durante il caricamento dei file condivisi') }
+  } catch { notify.error('Errore durante il caricamento dei file condivisi') }
 }
 
 const syncAllFiles = () => {
@@ -128,10 +127,10 @@ const currentPageFiles = computed(() => {
 
 const handleDeleteFile = async (fileId: string) => {
   const file = dynamoFiles.value.find(f => f.fileId === fileId || f.s3Key === fileId)
-  if (!file) { message.error('File non trovato'); return }
+  if (!file) { notify.error('File non trovato'); return }
   await deleteFileFromDynamo(file.fileId, file.s3Key, {
-    onSuccess: () => { message.success('File eliminato con successo'); loadFiles(currentPage.value) },
-    onError: () => message.error("Errore durante l'eliminazione"),
+    onSuccess: () => { notify.success('File eliminato con successo'); loadFiles(currentPage.value) },
+    onError: () => notify.error("Errore durante l'eliminazione"),
   })
 }
 
@@ -154,13 +153,13 @@ onMounted(async () => {
     <div v-if="isSetupRequired" class="mx-8 mt-6">
       <div class="bg-[#fff1f0] border border-[#ffa39e] p-4 rounded-lg flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <SafetyCertificateOutlined class="!text-[#cf1322] text-xl" />
+          <i class="pi pi-shield text-[#cf1322] text-xl" />
           <div>
             <h4 class="text-[#cf1322] font-semibold m-0">Sicurezza End-to-End non configurata</h4>
             <p class="text-[#cf1322] text-sm m-0">Per proteggere i tuoi file e accedervi da altri dispositivi, configura la Recovery Key.</p>
           </div>
         </div>
-        <a-button type="primary" danger @click="securitySetupVisible = true">Configura Ora</a-button>
+        <Button label="Configura Ora" severity="danger" @click="securitySetupVisible = true" />
       </div>
     </div>
 
@@ -175,34 +174,21 @@ onMounted(async () => {
               <p v-if="totalFiles > 0" class="text-[#DBD4D3] text-sm mt-1">{{ totalFiles }} file totali</p>
             </div>
             <div class="flex items-center gap-3">
-              <a-select v-model:value="selectedFileType" class="w-48" placeholder="Filtra per tipo" :options="fileTypeOptions" @change="() => { currentPage = 1; loadFiles(1) }" />
-              <a-button :loading="isLoading" class="!bg-[#724CF9] hover:!bg-[#5a3fd1] !border-[#724CF9] !text-white" @click="() => { loadFiles(currentPage); loadSharedFiles(); fetchLinks() }">
-                <template #icon><ReloadOutlined /></template>
-                Aggiorna
-              </a-button>
+              <Select v-model="selectedFileType" class="w-48" placeholder="Filtra per tipo" :options="fileTypeOptions" option-label="label" option-value="value" @change="() => { currentPage = 1; loadFiles(1) }" />
+              <Button :loading="isLoading" icon="pi pi-refresh" label="Aggiorna" @click="() => { loadFiles(currentPage); loadSharedFiles(); fetchLinks() }" />
             </div>
           </div>
 
-          <a-tabs v-model:active-key="activeTab" class="mb-4" @change="(k: string) => { activeTab = k; currentPage = 1 }">
-            <a-tab-pane key="all">
-              <template #tab>
-                <span class="flex items-center gap-2"><CloudUploadOutlined /> Tutti ({{ dynamoFiles.length + sharedFiles.length }})</span>
-              </template>
-            </a-tab-pane>
-            <a-tab-pane key="uploaded">
-              <template #tab>
-                <span class="flex items-center gap-2"><CloudUploadOutlined /> Caricati ({{ dynamoFiles.length }})</span>
-              </template>
-            </a-tab-pane>
-            <a-tab-pane key="received">
-              <template #tab>
-                <span class="flex items-center gap-2"><InboxOutlined /> Ricevuti ({{ sharedFiles.length }})</span>
-              </template>
-            </a-tab-pane>
-          </a-tabs>
+          <Tabs v-model:value="activeTab" class="mb-4" @update:value="currentPage = 1">
+            <TabList>
+              <Tab value="all"><span class="flex items-center gap-2"><i class="pi pi-cloud-upload" /> Tutti ({{ dynamoFiles.length + sharedFiles.length }})</span></Tab>
+              <Tab value="uploaded"><span class="flex items-center gap-2"><i class="pi pi-cloud-upload" /> Caricati ({{ dynamoFiles.length }})</span></Tab>
+              <Tab value="received"><span class="flex items-center gap-2"><i class="pi pi-inbox" /> Ricevuti ({{ sharedFiles.length }})</span></Tab>
+            </TabList>
+          </Tabs>
 
           <div v-if="isLoading" class="flex justify-center items-center py-8">
-            <a-spin size="large" />
+            <ProgressSpinner />
           </div>
           <div v-else-if="allFiles.length === 0" class="text-center py-8">
             <p class="text-[#DBD4D3] text-lg">
@@ -221,14 +207,11 @@ onMounted(async () => {
               :on-share-file="handleShareFile"
             />
             <div v-if="totalFiles > pageSize" class="flex justify-center mt-6">
-              <a-pagination
-                :current="currentPage"
-                :total="totalFiles"
-                :page-size="pageSize"
-                :show-size-changer="false"
-                show-quick-jumper
-                :show-total="(total: number, range: [number, number]) => `${range[0]}-${range[1]} di ${total} file`"
-                @change="(p: number) => { currentPage = p }"
+              <Paginator
+                :rows="pageSize"
+                :total-records="totalFiles"
+                :first="(currentPage - 1) * pageSize"
+                @page="(e) => { currentPage = e.page + 1 }"
               />
             </div>
           </template>
@@ -241,7 +224,7 @@ onMounted(async () => {
             <h2 class="text-2xl font-bold text-white">Link Generati</h2>
             <p class="text-[#DBD4D3] text-sm mt-1">{{ sharedLinks.length }} link attivi</p>
           </div>
-          <div v-if="isLinksLoading" class="flex justify-center items-center py-8"><a-spin size="large" /></div>
+          <div v-if="isLinksLoading" class="flex justify-center items-center py-8"><ProgressSpinner /></div>
           <SharedLinksTable
             v-else
             :links="sharedLinks"
@@ -258,27 +241,22 @@ onMounted(async () => {
       :visible="shareModalVisible"
       :file="fileToShare"
       :on-close="handleShareModalClose"
-      :on-success="() => { loadFiles(currentPage); message.success('File condiviso con successo!') }"
+      :on-success="() => { loadFiles(currentPage); notify.success('File condiviso con successo!') }"
       :on-link-generated="fetchLinks"
     />
 
-    <a-modal
-      :open="securitySetupVisible"
-      :footer="null"
+    <Dialog
+      v-model:visible="securitySetupVisible"
+      modal
       :closable="false"
-      :width="800"
-      centered
-      destroy-on-close
-      :mask-closable="false"
-      :styles="{ content: { backgroundColor: '#1a1625', border: '1px solid #4a4554', borderRadius: '16px', padding: '0' }, mask: { backdropFilter: 'blur(5px)', backgroundColor: 'rgba(0,0,0,0.7)' } }"
-      @cancel="securitySetupVisible = false"
+      :dismissable-mask="false"
+      :style="{ width: '800px' }"
+      :pt="{ header: '!hidden', content: '!p-8' }"
     >
-      <div class="p-8">
-        <RecoveryKeySetup
-          @complete="() => { securitySetupVisible = false; isSetupRequired = false; message.success('Sicurezza configurata!') }"
-          @cancel="securitySetupVisible = false"
-        />
-      </div>
-    </a-modal>
+      <RecoveryKeySetup
+        @complete="() => { securitySetupVisible = false; isSetupRequired = false; notify.success('Sicurezza configurata!') }"
+        @cancel="securitySetupVisible = false"
+      />
+    </Dialog>
   </div>
 </template>

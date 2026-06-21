@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
-import { LockOutlined } from '@ant-design/icons-vue'
+import { notify } from '@/src/utils/notify'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { deriveMasterKeyFromMnemonic } from '@/src/utils/recovery-key'
@@ -44,15 +43,15 @@ const handleVerify = async () => {
     if (decoded !== 'VERIFY') throw new Error('invalid')
 
     encryptionStore.setMasterKey(masterKey)
-    message.success('Recovery Key verificata! File sbloccati.')
+    notify.success('Recovery Key verificata! File sbloccati.')
     visible.value = false
     mnemonic.value = ''
   } catch (err: unknown) {
     const e = err as { name?: string; message?: string }
     if (e?.name === 'OperationError' || e?.message?.includes('operation')) {
-      message.error('Recovery Key errata. Controlla le 24 parole e riprova.')
+      notify.error('Recovery Key errata. Controlla le 24 parole e riprova.')
     } else {
-      message.error('Errore durante la verifica. Riprova.')
+      notify.error('Errore durante la verifica. Riprova.')
     }
   } finally {
     verifying.value = false
@@ -66,30 +65,27 @@ const handleCancel = () => {
 </script>
 
 <template>
-  <a-modal
-    :open="visible"
-    :footer="null"
-    :closable="true"
-    :mask-closable="false"
-    :width="560"
-    centered
-    :styles="{
-      content: { backgroundColor: '#1a1625', border: '1px solid #4a4554', borderRadius: '16px', padding: '0' },
-      mask: { backdropFilter: 'blur(5px)', backgroundColor: 'rgba(0,0,0,0.75)' },
-    }"
-    @cancel="handleCancel"
+  <Dialog
+    v-model:visible="visible"
+    modal
+    :dismissable-mask="false"
+    :style="{ width: '560px' }"
+    :pt="{ content: '!p-8' }"
+    @hide="handleCancel"
   >
-    <div class="p-8 flex flex-col gap-5">
-      <div class="flex items-center gap-3 mb-1">
+    <template #header>
+      <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-full bg-[#724CF9]/20 flex items-center justify-center flex-shrink-0">
-          <LockOutlined class="!text-[#724CF9] text-lg" />
+          <i class="pi pi-lock text-primary text-lg" />
         </div>
         <div>
           <h3 class="text-white text-lg font-semibold m-0">Richiesta Chiave di Sicurezza</h3>
           <p class="text-[#9ca3af] text-sm m-0">Nuovo dispositivo o sessione scaduta</p>
         </div>
       </div>
+    </template>
 
+    <div class="flex flex-col gap-5">
       <div class="p-4 rounded-lg bg-[#724CF9]/15 border border-[#724CF9]/30">
         <p class="text-[#c4b5fd] text-sm m-0">
           Per accedere ai tuoi file cifrati E2E inserisci la Recovery Key (24 parole) generata durante la configurazione.
@@ -98,33 +94,21 @@ const handleCancel = () => {
 
       <div class="flex flex-col gap-2">
         <label class="text-white font-medium text-sm">Recovery Key</label>
-        <a-textarea
-          v-model:value="mnemonic"
+        <Textarea
+          v-model="mnemonic"
           :rows="4"
           placeholder="parola1 parola2 parola3 ..."
-          class="font-mono !bg-[#2c2638] !border-[#4a4554] !text-white placeholder:!text-[#6b7280] focus:!border-[#724CF9]"
+          class="font-mono"
+          fluid
           @keydown.enter.ctrl="handleVerify"
         />
         <p class="text-[#9ca3af] text-xs m-0">Le parole separate da spazio — esattamente come le hai salvate.</p>
       </div>
 
       <div class="flex justify-end gap-3 pt-1">
-        <a-button
-          class="!bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9] hover:!text-white"
-          @click="handleCancel"
-        >
-          Annulla
-        </a-button>
-        <a-button
-          type="primary"
-          :loading="verifying"
-          :disabled="!mnemonic.trim()"
-          class="!bg-[#724CF9] hover:!bg-[#9d7bfa] !border-[#724CF9]"
-          @click="handleVerify"
-        >
-          Sblocca File
-        </a-button>
+        <Button label="Annulla" severity="secondary" outlined @click="handleCancel" />
+        <Button label="Sblocca File" :loading="verifying" :disabled="!mnemonic.trim()" @click="handleVerify" />
       </div>
     </div>
-  </a-modal>
+  </Dialog>
 </template>

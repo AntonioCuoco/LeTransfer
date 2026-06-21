@@ -1,7 +1,7 @@
 import { ref, shallowRef, computed, onMounted } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import {
   generateRSAKeyPair, exportPublicKeyToJWK, importPublicKeyFromJWK,
   exportPrivateKeyToJWK, importPrivateKeyFromJWK,
@@ -50,7 +50,7 @@ export const useUserKeyPair = () => {
     try {
       await axios.post(`${API_BASE_URL}/user/public-key`, { publicKeyJWK: await exportPublicKeyToJWK(pubKey) }, { headers: getHeaders() })
       return true
-    } catch { message.error("Errore nell'invio della chiave pubblica al server"); return false }
+    } catch { notify.error("Errore nell'invio della chiave pubblica al server"); return false }
   }
 
   const checkServerBackup = async (): Promise<KeyPairBackup | null> => {
@@ -60,7 +60,7 @@ export const useUserKeyPair = () => {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } }
       if (e.response?.status === 404) return null
-      message.error('Errore nel controllo del backup sul server')
+      notify.error('Errore nel controllo del backup sul server')
       return null
     }
   }
@@ -82,7 +82,7 @@ export const useUserKeyPair = () => {
       publicKey.value = keyPair.publicKey
       privateKey.value = keyPair.privateKey
     } catch {
-      message.error('Impossibile inizializzare le chiavi di cifratura')
+      notify.error('Impossibile inizializzare le chiavi di cifratura')
       error.value = 'Impossibile inizializzare le chiavi di cifratura'
     } finally {
       isInitializing.value = false
@@ -101,9 +101,9 @@ export const useUserKeyPair = () => {
       const pubKey = await importPublicKeyFromJWK(data.data.publicKeyJWK)
       await saveToLocalStorage(pubKey, privKey)
       publicKey.value = pubKey; privateKey.value = privKey; needsPasswordForRestore.value = false
-      message.success('Chiavi ripristinate con successo dal backup')
+      notify.success('Chiavi ripristinate con successo dal backup')
       return true
-    } catch { message.error('Password non corretta o backup corrotto'); error.value = 'Password non corretta o backup corrotto'; return false }
+    } catch { notify.error('Password non corretta o backup corrotto'); error.value = 'Password non corretta o backup corrotto'; return false }
     finally { isInitializing.value = false }
   }
 
@@ -112,9 +112,9 @@ export const useUserKeyPair = () => {
     try {
       const backup = await encryptPrivateKeyForBackup(privateKey.value, password)
       await axios.post(`${API_BASE_URL}/user/keypair-backup`, backup, { headers: getHeaders() })
-      message.success('Backup delle chiavi salvato sul server')
+      notify.success('Backup delle chiavi salvato sul server')
       return true
-    } catch { message.error('Impossibile salvare il backup sul server'); error.value = 'Impossibile salvare il backup sul server'; return false }
+    } catch { notify.error('Impossibile salvare il backup sul server'); error.value = 'Impossibile salvare il backup sul server'; return false }
   }
 
   const getRecipientPublicKey = async (email: string): Promise<CryptoKey | null> => {
@@ -122,7 +122,7 @@ export const useUserKeyPair = () => {
       const { data } = await axios.get(`${API_BASE_URL}/user/by-email/${encodeURIComponent(email)}/public-key`, { headers: getHeaders() })
       if (data.success && data.data?.publicKeyJWK) return await importPublicKeyFromJWK(data.data.publicKeyJWK)
       return null
-    } catch { message.error(`Impossibile recuperare la chiave pubblica per ${email}`); return null }
+    } catch { notify.error(`Impossibile recuperare la chiave pubblica per ${email}`); return null }
   }
 
   const exportPublicKeyJWK = async (): Promise<JsonWebKey | null> => {

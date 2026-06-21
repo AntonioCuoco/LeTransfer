@@ -3,7 +3,6 @@ import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-
 export const cognitoClient = new CognitoIdentityProviderClient({
   region: import.meta.env.VITE_AWS_REGION || 'eu-central-1',
   maxAttempts: 3,
-  requestTimeout: 30000,
 })
 
 export const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID

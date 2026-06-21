@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { message } from 'ant-design-vue'
+import { useConfirm } from 'primevue/useconfirm'
+import { notify } from '@/src/utils/notify'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import {
-  CopyOutlined, ReloadOutlined, DeleteOutlined, LinkOutlined,
-  SettingOutlined, LockOutlined, UnlockOutlined, ClockCircleOutlined, DownloadOutlined,
-} from '@ant-design/icons-vue'
 import type { SharedLink } from '@/src/types'
 
 dayjs.extend(relativeTime)
@@ -19,10 +16,12 @@ const props = defineProps<{
   onDelete?: (id: string) => Promise<boolean>
 }>()
 
+const confirm = useConfirm()
+
 const settingsModalVisible = ref(false)
 const currentLink = ref<SharedLink | null>(null)
 const newPassword = ref('')
-const newExpiry = ref<dayjs.Dayjs | null>(null)
+const newExpiry = ref<Date | null>(null)
 const updating = ref(false)
 
 const isLinkActive = (link: SharedLink) => !link.revokedAt && !dayjs(link.expiresAt).isBefore(dayjs())
@@ -36,13 +35,13 @@ const renderStatus = (link: SharedLink) => {
 const openSettings = (link: SharedLink) => {
   currentLink.value = link
   newPassword.value = ''
-  newExpiry.value = link.expiresAt ? dayjs(link.expiresAt) : null
+  newExpiry.value = link.expiresAt ? new Date(link.expiresAt) : null
   settingsModalVisible.value = true
 }
 
 const handleCopyLink = (url: string) => {
   navigator.clipboard.writeText(url)
-  message.success('Link copiato negli appunti!')
+  notify.success('Link copiato negli appunti!')
 }
 
 const handleSaveSettings = async () => {
@@ -54,109 +53,135 @@ const handleSaveSettings = async () => {
   if (newPassword.value) updates.password = newPassword.value
   const success = await props.onUpdate(currentLink.value.id, updates)
   updating.value = false
-  if (success) { message.success('Impostazioni aggiornate'); settingsModalVisible.value = false }
-  else message.error("Errore durante l'aggiornamento")
+  if (success) { notify.success('Impostazioni aggiornate'); settingsModalVisible.value = false }
+  else notify.error("Errore durante l'aggiornamento")
 }
 
-const columns = [
-  { title: 'File', key: 'fileName' },
-  { title: 'Sicurezza', key: 'security', align: 'center' },
-  { title: 'Download', key: 'downloads', align: 'center' },
-  { title: 'Scadenza', key: 'expiry' },
-  { title: 'Stato', key: 'status' },
-  { title: 'Creato il', key: 'createdAt' },
-  { title: 'Azioni', key: 'actions' },
-]
+// Inline confirmation anchored to the clicked button (ConfirmPopup group="popup")
+const askConfirm = (event: Event, message: string, danger: boolean, accept: () => void) => {
+  confirm.require({
+    target: event.currentTarget as HTMLElement,
+    group: 'popup',
+    message,
+    icon: 'pi pi-exclamation-triangle',
+    acceptProps: { label: 'Conferma', severity: danger ? 'danger' : 'primary', size: 'small' },
+    rejectProps: { label: 'Annulla', severity: 'secondary', outlined: true, size: 'small' },
+    accept,
+  })
+}
 </script>
 
 <template>
-  <a-table :data-source="links" :columns="columns" row-key="id" :pagination="false" size="small">
-    <template #bodyCell="{ column, record }">
-      <template v-if="column.key === 'fileName'">
-        <div class="flex items-center gap-2">
-          <LinkOutlined class="!text-white" />
-          <a-tooltip :title="record.url">
-            <span class="font-medium text-white truncate cursor-help max-w-[180px]">{{ record.fileName }}</span>
-          </a-tooltip>
-        </div>
-      </template>
-
-      <template v-else-if="column.key === 'security'">
-        <a-tooltip :title="record.isPasswordProtected ? 'Protetto da password' : 'Nessuna password'">
-          <LockOutlined v-if="record.isPasswordProtected" class="!text-white" />
-          <UnlockOutlined v-else class="!text-white" />
-        </a-tooltip>
-      </template>
-
-      <template v-else-if="column.key === 'downloads'">
-        <div class="flex items-center justify-center gap-1 text-[#DBD4D3]">
-          <DownloadOutlined /> {{ record.downloadCount }}{{ record.maxDownloads ? ` / ${record.maxDownloads}` : '' }}
-        </div>
-      </template>
-
-      <template v-else-if="column.key === 'expiry'">
-        <a-tooltip :title="dayjs(record.expiresAt).format('DD/MM/YYYY HH:mm')">
-          <span class="flex items-center gap-1 text-[#DBD4D3] cursor-help">
-            <ClockCircleOutlined /> {{ dayjs(record.expiresAt).fromNow() }}
-          </span>
-        </a-tooltip>
-      </template>
-
-      <template v-else-if="column.key === 'status'">
-        <a-badge :color="renderStatus(record).color" :text="renderStatus(record).text" />
-      </template>
-
-      <template v-else-if="column.key === 'createdAt'">
-        <span class="text-[#DBD4D3]">{{ dayjs(record.createdAt).format('DD/MM/YYYY') }}</span>
-      </template>
-
-      <template v-else-if="column.key === 'actions'">
-        <div class="flex items-center gap-1">
-          <template v-if="isLinkActive(record)">
-            <a-tooltip title="Copia Link">
-              <a-button type="text" class="!text-[#DBD4D3]" @click="handleCopyLink(record.url)"><CopyOutlined /></a-button>
-            </a-tooltip>
-            <a-tooltip title="Impostazioni">
-              <a-button type="text" class="!text-[#DBD4D3]" @click="openSettings(record)"><SettingOutlined /></a-button>
-            </a-tooltip>
-            <a-popconfirm title="Rigenera Link" description="Il vecchio link smetterà di funzionare." @confirm="props.onRegenerate(record.id)">
-              <a-tooltip title="Rigenera">
-                <a-button type="text" class="!text-[#DBD4D3]"><ReloadOutlined /></a-button>
-              </a-tooltip>
-            </a-popconfirm>
-            <a-popconfirm title="Revoca Link" description="Il link non sarà più accessibile." ok-type="danger" @confirm="props.onRevoke(record.id)">
-              <a-tooltip title="Revoca">
-                <a-button type="text" danger><DeleteOutlined /></a-button>
-              </a-tooltip>
-            </a-popconfirm>
-          </template>
-          <template v-else>
-            <a-popconfirm title="Rigenera Link" description="Verrà creato un nuovo link valido." @confirm="props.onRegenerate(record.id)">
-              <a-tooltip title="Rigenera"><a-button type="text" class="!text-[#DBD4D3]"><ReloadOutlined /></a-button></a-tooltip>
-            </a-popconfirm>
-            <a-popconfirm v-if="props.onDelete" title="Elimina dalla lista" ok-type="danger" @confirm="props.onDelete!(record.id)">
-              <a-tooltip title="Elimina"><a-button type="text" danger><DeleteOutlined /></a-button></a-tooltip>
-            </a-popconfirm>
-          </template>
-        </div>
-      </template>
-    </template>
-
-    <template #emptyText>
+  <DataTable :value="links" data-key="id" size="small">
+    <template #empty>
       <div class="text-center py-8 text-[#9ca3af]">Nessun link generato trovato</div>
     </template>
-  </a-table>
 
-  <a-modal title="Impostazioni Link" :open="settingsModalVisible" ok-text="Salva" cancel-text="Annulla" :confirm-loading="updating" centered @ok="handleSaveSettings" @cancel="settingsModalVisible = false">
-    <div class="space-y-4 py-4">
+    <Column header="File">
+      <template #body="{ data }">
+        <div class="flex items-center gap-2">
+          <i class="pi pi-link text-white" />
+          <span v-tooltip.top="data.url" class="font-medium text-white truncate cursor-help max-w-[180px]">{{ data.fileName }}</span>
+        </div>
+      </template>
+    </Column>
+
+    <Column header="Sicurezza">
+      <template #body="{ data }">
+        <span v-tooltip.top="data.isPasswordProtected ? 'Protetto da password' : 'Nessuna password'">
+          <i :class="data.isPasswordProtected ? 'pi pi-lock' : 'pi pi-lock-open'" class="text-white" />
+        </span>
+      </template>
+    </Column>
+
+    <Column header="Download">
+      <template #body="{ data }">
+        <div class="flex items-center gap-1 text-[#DBD4D3]">
+          <i class="pi pi-download" /> {{ data.downloadCount }}{{ data.maxDownloads ? ` / ${data.maxDownloads}` : '' }}
+        </div>
+      </template>
+    </Column>
+
+    <Column header="Scadenza">
+      <template #body="{ data }">
+        <span v-tooltip.top="dayjs(data.expiresAt).format('DD/MM/YYYY HH:mm')" class="flex items-center gap-1 text-[#DBD4D3] cursor-help">
+          <i class="pi pi-clock" /> {{ dayjs(data.expiresAt).fromNow() }}
+        </span>
+      </template>
+    </Column>
+
+    <Column header="Stato">
+      <template #body="{ data }">
+        <span class="inline-flex items-center gap-1.5 text-[#DBD4D3]">
+          <span class="w-2 h-2 rounded-full" :style="{ backgroundColor: renderStatus(data).color }" />
+          {{ renderStatus(data).text }}
+        </span>
+      </template>
+    </Column>
+
+    <Column header="Creato il">
+      <template #body="{ data }">
+        <span class="text-[#DBD4D3]">{{ dayjs(data.createdAt).format('DD/MM/YYYY') }}</span>
+      </template>
+    </Column>
+
+    <Column header="Azioni">
+      <template #body="{ data }">
+        <div class="flex items-center gap-1">
+          <template v-if="isLinkActive(data)">
+            <Button v-tooltip.top="'Copia Link'" icon="pi pi-copy" text class="!text-[#DBD4D3]" @click="handleCopyLink(data.url)" />
+            <Button v-tooltip.top="'Impostazioni'" icon="pi pi-cog" text class="!text-[#DBD4D3]" @click="openSettings(data)" />
+            <Button
+              v-tooltip.top="'Rigenera'"
+              icon="pi pi-refresh"
+              text
+              class="!text-[#DBD4D3]"
+              @click="askConfirm($event, 'Rigenera link? Il vecchio link smetterà di funzionare.', false, () => props.onRegenerate(data.id))"
+            />
+            <Button
+              v-tooltip.top="'Revoca'"
+              icon="pi pi-trash"
+              text
+              severity="danger"
+              @click="askConfirm($event, 'Revoca link? Non sarà più accessibile.', true, () => props.onRevoke(data.id))"
+            />
+          </template>
+          <template v-else>
+            <Button
+              v-tooltip.top="'Rigenera'"
+              icon="pi pi-refresh"
+              text
+              class="!text-[#DBD4D3]"
+              @click="askConfirm($event, 'Rigenera link? Verrà creato un nuovo link valido.', false, () => props.onRegenerate(data.id))"
+            />
+            <Button
+              v-if="props.onDelete"
+              v-tooltip.top="'Elimina'"
+              icon="pi pi-trash"
+              text
+              severity="danger"
+              @click="askConfirm($event, 'Eliminare il link dalla lista?', true, () => props.onDelete!(data.id))"
+            />
+          </template>
+        </div>
+      </template>
+    </Column>
+  </DataTable>
+
+  <Dialog v-model:visible="settingsModalVisible" modal header="Impostazioni Link" :style="{ width: '450px' }">
+    <div class="space-y-4 py-2">
       <div>
         <label class="block text-sm font-medium text-[#DBD4D3] mb-1">Nuova Password (vuoto = invariata)</label>
-        <a-input-password v-model:value="newPassword" placeholder="Inserisci nuova password" />
+        <Password v-model="newPassword" placeholder="Inserisci nuova password" :feedback="false" toggle-mask fluid />
       </div>
       <div>
         <label class="block text-sm font-medium text-[#DBD4D3] mb-1">Data di Scadenza</label>
-        <a-date-picker v-model:value="newExpiry" class="w-full" show-time :disabled-date="(d: dayjs.Dayjs) => d.isBefore(dayjs())" />
+        <DatePicker v-model="newExpiry" show-time hour-format="24" :min-date="new Date()" date-format="dd/mm/yy" fluid />
       </div>
     </div>
-  </a-modal>
+    <template #footer>
+      <Button label="Annulla" severity="secondary" outlined @click="settingsModalVisible = false" />
+      <Button label="Salva" :loading="updating" @click="handleSaveSettings" />
+    </template>
+  </Dialog>
 </template>

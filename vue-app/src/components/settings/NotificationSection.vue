@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { BellOutlined } from '@ant-design/icons-vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import { useSettings } from '@/src/composables/useSettings'
@@ -9,7 +8,7 @@ const { settings, updateNotifications } = useSettings()
 
 <template>
   <div class="flex flex-col gap-6">
-    <SettingsSection title="Notifiche" description="Gestisci le tue preferenze di notifica" :icon="BellOutlined">
+    <SettingsSection title="Notifiche" description="Gestisci le tue preferenze di notifica" icon="pi pi-bell">
       <SettingsToggle
         label="Notifiche Email"
         description="Ricevi aggiornamenti via email"

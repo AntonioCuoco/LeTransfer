@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import type { WrappedKeyData, GetFileKeysResponse } from '@/src/types'
 
 export const useFileKeysAPI = () => {
@@ -21,7 +21,7 @@ export const useFileKeysAPI = () => {
       return true
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
-      message.error('Errore nel salvataggio della chiave di cifratura del file')
+      notify.error('Errore nel salvataggio della chiave di cifratura del file')
       error.value = e.response?.data?.message || e.message || null
       return false
     } finally {
@@ -42,7 +42,7 @@ export const useFileKeysAPI = () => {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { message?: string } }; message?: string }
       if (e.response?.status === 404) return null
-      message.error('Errore nel recupero della chiave di cifratura del file')
+      notify.error('Errore nel recupero della chiave di cifratura del file')
       error.value = e.response?.data?.message || e.message || null
       return null
     } finally {
@@ -61,7 +61,7 @@ export const useFileKeysAPI = () => {
       return (data as GetFileKeysResponse).keys || []
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
-      message.error('Errore nel recupero delle chiavi di cifratura')
+      notify.error('Errore nel recupero delle chiavi di cifratura')
       error.value = e.response?.data?.message || e.message || null
       return []
     } finally {
@@ -81,7 +81,7 @@ export const useFileKeysAPI = () => {
       return true
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
-      message.error("Errore nell'eliminazione della chiave di cifratura")
+      notify.error("Errore nell'eliminazione della chiave di cifratura")
       error.value = e.response?.data?.message || e.message || null
       return false
     } finally {

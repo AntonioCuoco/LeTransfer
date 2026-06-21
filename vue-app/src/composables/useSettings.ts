@@ -1,5 +1,5 @@
 import { ref, computed, onMounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import type { UserSettings, NotificationSettings, PrivacySettings, AppearanceSettings, TransferSettings, ProfileSettings, PasswordSettings } from '@/src/types/settings'
 import { DEFAULT_SETTINGS } from '@/src/types/settings'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
@@ -68,9 +68,9 @@ export const useSettings = () => {
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings.value))
       originalSettings.value = { ...settings.value }
-      message.success('Impostazioni salvate con successo')
+      notify.success('Impostazioni salvate con successo')
     } catch {
-      message.error('Errore durante il salvataggio delle impostazioni')
+      notify.error('Errore durante il salvataggio delle impostazioni')
       throw new Error('Save failed')
     } finally {
       isSaving.value = false

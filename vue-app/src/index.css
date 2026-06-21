@@ -1,8 +1,11 @@
 @import "tailwindcss";
+@import "tailwindcss-primeui";
 
-/* ===== Ant Design Vue =====
-   Theming is driven by the dark algorithm + brand tokens configured in
-   App.vue (<a-config-provider>). Component colors (tables, tabs, modals,
-   date-picker, steps, inputs, alerts) are handled natively from those tokens,
-   so this file stays minimal. Add a rule here only for something the tokens
-   genuinely cannot express. */
+/* Match Tailwind's `dark:` variant to the same `.dark` class PrimeVue uses
+   (set on <html> by stores/theme.ts), so utilities and components agree. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* PrimeVue injects its styles into the `primevue` CSS layer (configured in
+   main.ts). Declaring the layer order here guarantees Tailwind utilities can
+   override component styles when needed. */
+@layer theme, base, primevue, utilities;

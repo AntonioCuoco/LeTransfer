@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ArrowUpOutlined, ArrowDownOutlined, MinusOutlined } from '@ant-design/icons-vue'
-
 const props = defineProps<{
   value: string | number
   label: string
   trend?: 'up' | 'down' | 'neutral'
   change?: string
-  icon?: object
+  icon?: string
   subtext?: string
   variant?: 'default' | 'primary' | 'success' | 'warning' | 'error'
   class?: string
@@ -26,10 +24,10 @@ const trendClasses: Record<string, string> = {
   neutral: 'bg-[#4a4554] text-[#9ca3af]',
 }
 
-const trendIcon: Record<string, object> = {
-  up: ArrowUpOutlined,
-  down: ArrowDownOutlined,
-  neutral: MinusOutlined,
+const trendIcon: Record<string, string> = {
+  up: 'pi pi-arrow-up',
+  down: 'pi pi-arrow-down',
+  neutral: 'pi pi-minus',
 }
 </script>
 
@@ -45,7 +43,7 @@ const trendIcon: Record<string, object> = {
       v-if="icon"
       :class="['flex items-center justify-center w-12 h-12 rounded-[10px] text-2xl flex-shrink-0', variant === 'primary' ? 'bg-white/20 text-white' : 'bg-[#724CF9]/15 text-[#724CF9]']"
     >
-      <component :is="icon" />
+      <i :class="icon" />
     </div>
     <div class="flex-1 min-w-0">
       <p :class="['m-0 mb-1 text-sm font-medium', variant === 'primary' ? 'text-white/80' : 'text-[#9ca3af]']">{{ label }}</p>
@@ -55,7 +53,7 @@ const trendIcon: Record<string, object> = {
           v-if="trend || change"
           :class="['inline-flex items-center gap-1 py-1 px-2 rounded-full text-xs font-semibold', trendClasses[trend || 'neutral']]"
         >
-          <component :is="trendIcon[trend || 'neutral']" class="text-[10px]" />
+          <i :class="trendIcon[trend || 'neutral']" class="text-[10px]" />
           <span v-if="change" class="whitespace-nowrap">{{ change }}</span>
         </div>
       </div>

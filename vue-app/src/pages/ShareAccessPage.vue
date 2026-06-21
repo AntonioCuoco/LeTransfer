@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { FileOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import { usePublicLink } from '@/src/composables/usePublicLink'
 import LinkAccessForm from '@/src/components/LinkAccess/LinkAccessForm.vue'
 import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
@@ -35,7 +34,7 @@ const extractEncryptionKey = async (): Promise<EncryptionInfo | null> => {
     const iv = importIVFromBase64(keyData.iv)
     return { key, iv }
   } catch {
-    message.error('Impossibile importare la chiave di cifratura')
+    notify.error('Impossibile importare la chiave di cifratura')
     return null
   }
 }
@@ -83,15 +82,15 @@ const handleDownload = async () => {
         a.click()
         document.body.removeChild(a)
         URL.revokeObjectURL(downloadUrl)
-        message.success('File decifrato e scaricato!')
+        notify.success('File decifrato e scaricato!')
       } catch {
-        message.error('Errore durante la decifratura del file')
+        notify.error('Errore durante la decifratura del file')
       } finally {
         isDecrypting.value = false
       }
     } else {
       window.open(url, '_blank')
-      message.success('Download avviato!')
+      notify.success('Download avviato!')
     }
   }
   isDownloading.value = false
@@ -107,7 +106,7 @@ const handlePreview = () => {
 
   <div v-else-if="pageState === 'loading' || !linkInfo" class="min-h-screen bg-[#2c2638] flex items-center justify-center">
     <div class="text-center">
-      <a-spin size="large" />
+      <ProgressSpinner />
       <p class="text-[#9ca3af] mt-4">Caricamento...</p>
     </div>
   </div>
@@ -127,7 +126,7 @@ const handlePreview = () => {
         <div class="bg-gradient-to-r from-[#724CF9]/20 to-transparent p-6 border-b border-[#4a4554]">
           <div class="flex items-center gap-4">
             <div class="w-14 h-14 rounded-xl bg-[#724CF9] flex items-center justify-center flex-shrink-0">
-              <FileOutlined class="!text-white text-2xl" />
+              <i class="pi pi-file text-white text-2xl" />
             </div>
             <div class="flex-1 min-w-0">
               <h2 class="text-white font-semibold text-lg truncate" :title="linkInfo.fileName">{{ linkInfo.fileName }}</h2>
@@ -137,11 +136,11 @@ const handlePreview = () => {
                 <span class="truncate">{{ linkInfo.fileType }}</span>
                 <template v-if="linkInfo.isPasswordProtected">
                   <span class="w-1 h-1 rounded-full bg-[#4a4554]" />
-                  <span class="flex items-center gap-1 text-[#724CF9]"><LockOutlined /> Protetto</span>
+                  <span class="flex items-center gap-1 text-[#724CF9]"><i class="pi pi-lock" /> Protetto</span>
                 </template>
                 <template v-if="encryptionInfo">
                   <span class="w-1 h-1 rounded-full bg-[#4a4554]" />
-                  <span class="flex items-center gap-1 text-green-400"><SafetyCertificateOutlined /> E2E Encrypted</span>
+                  <span class="flex items-center gap-1 text-green-400"><i class="pi pi-shield" /> E2E Encrypted</span>
                 </template>
               </div>
             </div>

@@ -5,7 +5,6 @@ import Swal from 'sweetalert2'
 import type { ShareFileRequest, ShareFileResponse, SharedFile, ShareFileOptions } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
-import { useFileKeysAPI } from './useFileKeysAPI'
 import { wrapKeyWithPublicKey, importKeyFromBase64 } from '@/src/utils/crypto'
 
 const API_BASE_URL = import.meta.env.VITE_LAMBDA_URL || ''
@@ -18,7 +17,6 @@ export const useShareFile = () => {
 
   const { getRecipientPublicKey } = useUserKeyPair()
   const encryptionStore = useEncryptionStore()
-  const { getFileKey } = useFileKeysAPI()
 
   const shareFile = async (s3Key: string, targetEmail: string, options?: ShareFileOptions): Promise<ShareFileResponse | null> => {
     isSharing.value = true
@@ -31,7 +29,7 @@ export const useShareFile = () => {
       let encryptionIV: string | undefined
 
       if (encryptionStore.isUnlocked) {
-        const keyData = await getFileKey(s3Key)
+        const keyData = await encryptionStore.getKey(s3Key)
         if (keyData) {
           const recipientPublicKey = await getRecipientPublicKey(targetEmail)
           if (!recipientPublicKey) throw new Error('Il destinatario non ha ancora configurato la cifratura E2E.')

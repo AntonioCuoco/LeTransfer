@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useRouter, RouterLink } from 'vue-router'
-import { HomeOutlined, UserOutlined, SettingOutlined, LogoutOutlined } from '@ant-design/icons-vue'
 import Cookies from 'js-cookie'
 import Swal from 'sweetalert2'
 import axios from 'axios'
@@ -8,9 +7,11 @@ import logo from '@/src/assets/logo.png'
 
 const router = useRouter()
 
+// `exact: true` for the home route — otherwise `/` matches every path as a
+// prefix and the Home item would stay highlighted on every page.
 const navItems = [
-  { path: '/', icon: HomeOutlined, label: 'Home' },
-  { path: '/profile', icon: UserOutlined, label: 'Profilo' },
+  { path: '/', icon: 'pi pi-home', label: 'Home', exact: true },
+  { path: '/profile', icon: 'pi pi-user', label: 'Profilo', exact: false },
 ]
 
 const handleLogout = async () => {
@@ -46,23 +47,21 @@ const handleLogout = async () => {
         v-for="item in navItems"
         :key="item.path"
         :to="item.path"
-        v-slot="{ isActive }"
+        v-slot="{ isActive, isExactActive }"
         custom
       >
         <a
           :href="item.path"
           :class="[
             'relative w-full h-12 flex items-center justify-center rounded-[10px] transition-all duration-150 group',
-            isActive
+            (item.exact ? isExactActive : isActive)
               ? 'bg-[#724CF9] text-white shadow-[0_0_10px_rgba(114,76,249,0.4)]'
               : 'text-[#9ca3af] hover:bg-[#724CF9]/15 hover:text-white',
           ]"
           :title="item.label"
           @click.prevent="router.push(item.path)"
         >
-          <span class="text-xl flex items-center justify-center">
-            <component :is="item.icon" />
-          </span>
+          <i :class="item.icon" class="text-xl" />
           <!-- Tooltip -->
           <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
             {{ item.label }}
@@ -78,7 +77,7 @@ const handleLogout = async () => {
         title="Impostazioni"
         @click="router.push('/settings')"
       >
-        <span class="text-xl flex items-center justify-center"><SettingOutlined /></span>
+        <i class="pi pi-cog text-xl" />
         <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
           Impostazioni
         </span>
@@ -88,7 +87,7 @@ const handleLogout = async () => {
         title="Logout"
         @click="handleLogout"
       >
-        <span class="text-xl flex items-center justify-center"><LogoutOutlined /></span>
+        <i class="pi pi-sign-out text-xl" />
         <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
           Logout
         </span>

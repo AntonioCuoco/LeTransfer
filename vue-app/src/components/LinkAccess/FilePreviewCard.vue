@@ -1,9 +1,4 @@
 <script setup lang="ts">
-import {
-  FileOutlined, FileImageOutlined, FilePdfOutlined, FileTextOutlined,
-  PlayCircleOutlined, SoundOutlined, DownloadOutlined, EyeOutlined,
-} from '@ant-design/icons-vue'
-
 const props = defineProps<{
   fileName: string
   fileSize: string
@@ -17,12 +12,12 @@ const props = defineProps<{
 }>()
 
 const getFileIcon = (type: string) => {
-  if (type.startsWith('image/')) return FileImageOutlined
-  if (type === 'application/pdf') return FilePdfOutlined
-  if (type.startsWith('video/')) return PlayCircleOutlined
-  if (type.startsWith('audio/')) return SoundOutlined
-  if (type.startsWith('text/') || type.includes('document')) return FileTextOutlined
-  return FileOutlined
+  if (type.startsWith('image/')) return 'pi pi-image'
+  if (type === 'application/pdf') return 'pi pi-file-pdf'
+  if (type.startsWith('video/')) return 'pi pi-video'
+  if (type.startsWith('audio/')) return 'pi pi-volume-up'
+  if (type.startsWith('text/') || type.includes('document')) return 'pi pi-file-edit'
+  return 'pi pi-file'
 }
 
 const supportsInlinePreview = (type: string) =>
@@ -43,7 +38,7 @@ const canPreview = () => props.previewSupported && props.previewUrl && supportsI
     <div class="p-6">
       <div class="flex items-center gap-4 mb-6">
         <div class="w-14 h-14 rounded-xl bg-[#724CF9]/20 flex items-center justify-center flex-shrink-0">
-          <component :is="getFileIcon(fileType)" class="text-[#724CF9] text-3xl" />
+          <i :class="getFileIcon(fileType)" class="text-primary text-3xl" />
         </div>
         <div class="min-w-0">
           <p class="font-semibold text-white truncate">{{ fileName }}</p>
@@ -52,30 +47,26 @@ const canPreview = () => props.previewSupported && props.previewUrl && supportsI
       </div>
 
       <div class="flex gap-3">
-        <a-button
+        <Button
           v-if="canPreview() && onPreview"
+          label="Anteprima"
+          icon="pi pi-eye"
+          severity="secondary"
+          outlined
           size="large"
-          style="border-radius: 10px; height: 48px"
-          class="flex-1 !bg-transparent !border-[#4a4554] !text-[#DBD4D3] hover:!border-[#724CF9] hover:!text-white"
+          class="flex-1"
           @click="onPreview"
-        >
-          <template #icon><EyeOutlined /></template>
-          Anteprima
-        </a-button>
-        <a-button
-          type="primary"
+        />
+        <Button
+          :label="isDecrypting ? 'Decifratura...' : isDownloading ? 'Download...' : 'Scarica'"
+          :icon="(isDownloading || isDecrypting) ? undefined : 'pi pi-download'"
           :loading="isDownloading || isDecrypting"
           :disabled="isDownloading || isDecrypting"
           size="large"
-          style="border-radius: 10px; height: 48px"
-          class="flex-1 !bg-[#724CF9] hover:!bg-[#9d7bfa] !text-white !border-[#724CF9]"
+          class="flex-1"
           @click="onDownload"
-        >
-          <template #icon><DownloadOutlined v-if="!isDownloading && !isDecrypting" /></template>
-          {{ isDecrypting ? 'Decifratura...' : isDownloading ? 'Download...' : 'Scarica' }}
-        </a-button>
+        />
       </div>
     </div>
   </div>
 </template>
-

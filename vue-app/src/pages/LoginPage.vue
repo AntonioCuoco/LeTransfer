@@ -117,16 +117,16 @@ const confirmForgotPassword = async () => {
         <template v-if="view === 'login'">
           <h1 class="text-[#DBD4D3] text-4xl font-bold text-center">Accedi al tuo account</h1>
           <div class="w-full">
-            <input v-model="email" type="email" placeholder="Email" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+            <InputText v-model="email" type="email" placeholder="Email" fluid :invalid="!!emailError" />
             <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
           </div>
           <PasswordInput v-model="password" :error="passwordError" placeholder="Password" :show-tooltip="false" />
           <div class="w-full flex flex-col gap-4">
             <div class="flex flex-row gap-4 w-full">
-              <button type="submit" class="bg-[#724CF9] w-full text-[#DBD4D3] p-4 rounded-md">Login</button>
-              <button type="button" class="bg-[#724CF9] w-full text-[#DBD4D3] p-4 rounded-md" @click="router.push('/register')">Register</button>
+              <Button type="submit" label="Login" class="w-full" size="large" />
+              <Button type="button" label="Register" variant="outlined" class="w-full" size="large" @click="router.push('/register')" />
             </div>
-            <button type="button" class="text-[#DBD4D3] text-sm cursor-pointer" @click="openForgotModal">Recupera password</button>
+            <Button type="button" label="Recupera password" variant="link" size="small" @click="openForgotModal" />
           </div>
           <div class="flex flex-row gap-4 w-full items-center">
             <div class="w-full h-[1px] bg-[#DBD4D3]" />
@@ -140,27 +140,23 @@ const confirmForgotPassword = async () => {
         <template v-else>
           <div class="w-full flex flex-col items-start gap-2">
             <label class="text-[#DBD4D3] text-sm">Enter new password</label>
-            <input v-model="newPassword" type="password" placeholder="Enter new password" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
+            <Password v-model="newPassword" placeholder="Enter new password" :feedback="false" toggle-mask fluid />
           </div>
-          <button type="button" class="bg-[#724CF9] w-full text-[#DBD4D3] p-4 rounded-md" @click="handleChallenge">Save New Password</button>
+          <Button type="button" label="Save New Password" class="w-full" size="large" @click="handleChallenge" />
         </template>
       </form>
     </div>
 
-    <a-modal :open="isForgotOpen" :title="forgotStep === 'email' ? 'Recupera password' : 'Inserisci codice e nuova password'" :footer="null" centered @cancel="isForgotOpen = false">
+    <Dialog v-model:visible="isForgotOpen" modal :header="forgotStep === 'email' ? 'Recupera password' : 'Inserisci codice e nuova password'" :style="{ width: '450px' }">
       <div v-if="forgotStep === 'email'" class="flex flex-col gap-4">
-        <input v-model="forgotEmail" type="email" placeholder="Inserisci la tua email" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
-        <button :disabled="!forgotEmail || isForgotLoading" :class="`w-full p-2 rounded-md text-white ${(!forgotEmail || isForgotLoading) ? 'bg-gray-500 cursor-not-allowed' : 'bg-[#724CF9]'}`" @click="sendForgotEmail">
-          {{ isForgotLoading ? 'Invio in corso...' : 'Invia codice' }}
-        </button>
+        <InputText v-model="forgotEmail" type="email" placeholder="Inserisci la tua email" fluid />
+        <Button :disabled="!forgotEmail" :loading="isForgotLoading" :label="isForgotLoading ? 'Invio in corso...' : 'Invia codice'" class="w-full" @click="sendForgotEmail" />
       </div>
       <div v-else class="flex flex-col gap-4">
-        <input v-model="forgotCode" type="text" placeholder="Codice ricevuto via email" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
-        <input v-model="forgotNewPassword" type="password" placeholder="Nuova password" class="w-full p-2 rounded-md focus:border-2 focus:outline-none focus:border-[#724CF9] bg-[#3c364c] placeholder:text-[#676178] text-white" />
-        <button :disabled="!forgotCode || !forgotNewPassword || isForgotLoading" :class="`w-full p-2 rounded-md text-white ${(!forgotCode || !forgotNewPassword || isForgotLoading) ? 'bg-gray-500 cursor-not-allowed' : 'bg-[#724CF9]'}`" @click="confirmForgotPassword">
-          {{ isForgotLoading ? 'Conferma in corso...' : 'Conferma nuova password' }}
-        </button>
+        <InputText v-model="forgotCode" type="text" placeholder="Codice ricevuto via email" fluid />
+        <Password v-model="forgotNewPassword" placeholder="Nuova password" :feedback="false" toggle-mask fluid />
+        <Button :disabled="!forgotCode || !forgotNewPassword" :loading="isForgotLoading" :label="isForgotLoading ? 'Conferma in corso...' : 'Conferma nuova password'" class="w-full" @click="confirmForgotPassword" />
       </div>
-    </a-modal>
+    </Dialog>
   </div>
 </template>

@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import axios from 'axios'
-import { message } from 'ant-design-vue'
+import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
 import { generateAESKey, encryptFile, exportKeyToBase64, exportIVToBase64 } from '@/src/utils/crypto'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -78,7 +78,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   }
 
   const handleError = (error: Error) => {
-    message.error("Errore durante l'upload del file")
+    notify.error("Errore durante l'upload del file")
     state.value.status = 'error'
     state.value.error = error
     abortController.value?.abort()
@@ -117,7 +117,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
           const ivBase64 = exportIVToBase64(currentIV)
           await encryptionStore.storeKey(finalFileKey, { key: keyBase64, iv: ivBase64 })
         } catch {
-          message.error('Errore nel salvataggio della chiave di cifratura')
+          notify.error('Errore nel salvataggio della chiave di cifratura')
         }
       }
 
@@ -183,12 +183,12 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       partsQueue.value = queue
 
       if (!currentUploadId || !currentFileKey) {
-        message.error("Errore interno durante l'upload")
+        notify.error("Errore interno durante l'upload")
         return
       }
 
       activeUploads++
-      uploadPart(part, currentUploadId, currentFileKey).catch(async (err) => {
+      uploadPart(part, currentUploadId, currentFileKey).catch(async () => {
         activeUploads--
         const newProgress = { ...activePartsProgress.value }
         delete newProgress[part.partNumber]

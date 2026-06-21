@@ -8,7 +8,7 @@ defineProps<{
   class?: string
   padding?: 'none' | 'sm' | 'md' | 'lg'
   onClick?: () => void
-  icon?: object
+  icon?: string
 }>()
 
 const sizeClasses: Record<string, string> = {
@@ -40,7 +40,7 @@ const paddingClasses: Record<string, string> = {
     <div v-if="title || icon" class="flex items-start justify-between gap-3 mb-4">
       <div class="flex items-center gap-3">
         <span v-if="icon" class="flex items-center justify-center w-9 h-9 bg-[#724CF9]/15 rounded-[10px] text-[#724CF9] text-lg">
-          <component :is="icon" />
+          <i :class="icon" />
         </span>
         <div class="flex flex-col gap-0.5">
           <h3 v-if="title" class="m-0 text-base font-semibold text-white leading-tight">{{ title }}</h3>
