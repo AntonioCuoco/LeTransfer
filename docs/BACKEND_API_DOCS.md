@@ -1,0 +1,399 @@
+# LeTransfer Backend — Documentazione API & Logiche
+
+> Documento di riferimento per il frontend. Descrive architettura, autenticazione, modelli dati e **tutti** gli endpoint del backend.
+> Aggiornato al codice corrente (`app.js` + cartelle `routes/`, `services/`, `middleware/`, `config/`, `utils/`).
+
+---
+
+## 1. Panoramica architetturale
+
+Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia end-to-end (E2E) di file, appoggiandosi a:
+
+- **AWS S3** → storage fisico dei file (privati, cifrati lato server con AES256).
+- **AWS DynamoDB** → metadati file, link condivisi, chiavi E2E.
+- **AWS Cognito** → autenticazione utenti (login/registrazione, JWT).
+- **Sharp** → ottimizzazione immagini.
+- **Argon2** → hashing password dei link protetti.
+- **nanoid / uuid** → generazione token e ID.
+
+### Struttura delle cartelle
+
+| Cartella / file | Ruolo |
+|---|---|
+| `app.js` | Entry point: setup Express, CORS, helmet, mounting route, auth Cognito inline, avvio server. |
+| `config/aws.js` | Init e getter di S3, Cognito, DynamoDB. `isInitialized()`. |
+| `config/constants.js` | Nomi tabelle, limiti upload, rate limit, MIME ammessi. |
+| `middleware/auth.js` | `authenticateToken` — verifica JWT Cognito. |
+| `middleware/validation.js` | Rate limiter + validatori input (express-validator). |
+| `routes/*.js` | Definizione endpoint (vedi sotto). |
+| `services/s3.js` | Upload/ottimizzazione file su S3. |
+| `services/dynamo.js` | CRUD metadati su DynamoDB. |
+| `utils/crypto.js` | Hash password, token sessione, validazione link. |
+| `utils/helpers.js` | Sanitizzazione nomi, formato dimensioni, categoria file. |
+
+### Mounting delle route (`app.js`)
+
+```
+/                       → healthRoutes        (health check)
+/api/upload/*           → uploadRoutes        (+ uploadLimiter)
+/api/user/*             → userRoutes          (file/immagini/profilo/stats)
+/api/user/*             → e2eRoutes           (chiavi E2E — stesso prefisso!)
+/api/*                  → filesRoutes         (url firmati, download, delete)
+/api/shared-links/*     → sharedLinksRoutes   (link pubblici)
+/api/file-sharing/*     → fileSharingRoutes   (condivisione via email)
+/api/login | /register | /confirm-registration → auth Cognito (inline in app.js)
+```
+
+> ⚠️ **Nota collisione prefisso**: sia `userRoutes` che `e2eRoutes` sono montate su `/api/user`. `userRoutes` è registrata **prima**, quindi ha precedenza su path che combaciano. In pratica i path non si sovrappongono (`/files`, `/images`, `/stats` vs `/public-key`, `/file-keys`, `/recovery-key`), ma tienine conto se aggiungi nuovi endpoint.
+
+---
+
+## 2. Autenticazione
+
+Esistono **tre** meccanismi di auth distinti:
+
+### 2.1 `authenticateToken` (middleware standard)
+File: `middleware/auth.js`. Usato da upload, user, files, shared-links (rotte owner).
+
+- Header richiesto: `Authorization: Bearer <IdToken Cognito>`
+- **Importante**: il token viene **decodificato** (`jwt.decode`), **NON verificato crittograficamente**. Non viene controllata la firma. (Valido per ambiente attuale, ma non è una verifica di sicurezza forte.)
+- Popola `req.user`:
+  ```js
+  req.user = { sub, email, name }   // sub = Cognito user id
+  ```
+- Errori: `401 { error: 'Access token required' }` se manca; `403 { error: 'Invalid token' }` se non decodificabile.
+
+### 2.2 `authFileSharing` (middleware locale di fileSharing)
+File: `routes/fileSharing.js`. Analogo ma popola:
+```js
+req.user = { email, userId, name }   // userId da sub | cognito:username | userId
+```
+Errori: `401` token mancante/invalido, `403` token scaduto/non valido.
+
+### 2.3 Session token dei link condivisi (JWT proprietario)
+File: `utils/crypto.js`. Per accesso a file dietro link pubblico.
+
+- Generato da `POST /api/shared-links/:publicToken/access` dopo verifica password.
+- Firmato con `SESSION_SECRET` (HS256), `type: 'shared_link_session'`, scadenza **1h**.
+- Passato come `Authorization: Bearer <sessionToken>` su `GET /api/shared-links/:publicToken/file`.
+
+### 2.4 Auth Cognito (login/registrazione) — inline in `app.js`
+
+| Metodo | Path | Body | Risposta |
+|---|---|---|---|
+| `POST` | `/api/login` | `{ email, password }` | `200 { message, userSub: <IdToken> }` / `400 { message }` |
+| `POST` | `/api/register` | `{ email, password, name }` | `200 { message, userSub }` / `400 { message }` |
+| `POST` | `/api/confirm-registration` | `{ email, confirmationCode }` | `200 { message }` / `400 { message }` |
+
+> `userSub` su login contiene in realtà l'**IdToken** Cognito da usare come Bearer nelle chiamate successive.
+
+---
+
+## 3. Modelli dati (DynamoDB)
+
+Nomi tabella configurabili via env (default tra parentesi).
+
+### 3.1 `SharedFiles` (`SHARED_FILES_TABLE`)
+Doppio uso: (a) metadati di **tutti i file caricati**, (b) record di **condivisione via email**.
+
+File caricato (creato da `saveFileToDynamoDB`):
+```js
+{
+  id,                // uuid (PK)
+  s3Key,             // chiave S3
+  fileName,          // sanitizzato
+  fileSize,          // es. "2.56 MB"
+  fileType,          // MIME
+  ownerUserId,       // Cognito sub
+  ownerEmail?,       // solo se presente
+  uploadedAt,        // ISO
+  status: 'uploaded',
+  isShared: false
+}
+```
+Record condiviso via email (creato da `POST /api/file-sharing/send`):
+```js
+{
+  id, type: 'shared_file', s3Key, fileName, fileSize, fileType,
+  senderEmail, senderName, senderId,
+  recipientEmail, message?, downloadUrl, expiresAt,
+  downloadCount: 0, createdAt
+}
+```
+**GSI usati**: `RecipientEmailIndex` (PK `recipientEmail`), `SenderEmailIndex` (PK `senderEmail`).
+> ⚠️ I record file non condivisi **non** includono `senderEmail`/`recipientEmail` perché i GSI DynamoDB non accettano chiavi null.
+
+### 3.2 `SharedLinks` (`SHARED_LINKS_TABLE`)
+Link pubblici condivisibili.
+```js
+{
+  id,                  // uuid (PK)
+  publicToken,         // nanoid 21 char (token pubblico in URL)
+  s3Key,
+  fileName, fileSize, fileType,
+  ownerId,             // Cognito sub
+  ownerEmail?,
+  isPasswordProtected, // bool
+  passwordHash?,       // Argon2, solo se protetto
+  expiresAt,           // ISO
+  maxDownloads?,       // int o assente
+  downloadCount,       // int
+  revokedAt?,          // ISO o null
+  createdAt
+}
+```
+> Nota: `routes/files.js` (`/api/file-url?share=true`) crea una variante più semplice di questo record con `type: 'shared_link'`, `fileId`, `url` e **senza** `publicToken`/`passwordHash`. Sono due flussi distinti di "condivisione".
+
+### 3.3 `UserPublicKeys` (`USER_PUBLIC_KEYS_TABLE`)
+Chiavi E2E per utente (PK `userId`).
+```js
+{
+  userId,
+  publicKeyJWK,            // { n, e, ... } chiave pubblica RSA in JWK
+  encryptedPrivateKey?,    // backup chiave privata cifrata
+  backupSalt?, backupIV?, backupCreatedAt?,
+  createdAt, updatedAt
+}
+```
+
+### 3.4 `UserSecurity` (`USER_SECURITY_TABLE`)
+Recovery key (PK `userId`).
+```js
+{ userId, salt, verificationHash, createdAt, updatedAt }
+```
+
+### 3.5 `UserFileKeys` (`USER_FILE_KEYS_TABLE`)
+Chiavi file E2E (PK composta `userId` + `s3Key`).
+```js
+{ userId, s3Key, wrappedKey, wrapIV, fileIV, createdAt }
+```
+
+### 3.6 `Users` (`USERS_TABLE`)
+Usata in sola lettura per lookup `email → userId` (`GET /api/user/by-email/:email/public-key`).
+
+### Struttura chiavi S3
+```
+uploads/images/{userId}/{timestamp}-{uuid}.jpg          // immagini (ottimizzate, max 1200px, jpeg q85)
+uploads/profiles/{userId}/profile-{timestamp}-{uuid}.jpg // profilo (400x400 cover, jpeg q90)
+uploads/files/{userId}/{timestamp}-{uuid}-{nome}.ext     // file generici
+```
+Tutti gli oggetti: `ACL: private`, `ServerSideEncryption: AES256`, con `Metadata` (`original-name`, `uploaded-by`, `file-size-formatted`, ecc.).
+
+---
+
+## 4. Endpoint API — riferimento completo
+
+Legenda auth: 🔓 nessuna · 🔑 `authenticateToken` · 📧 `authFileSharing` · 🎟️ session token link.
+
+### 4.1 Health
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔓 | `GET` | `/health` | Stato del servizio. |
+
+Risposta:
+```json
+{ "status": "OK|DEGRADED", "timestamp", "aws_region", "s3_bucket",
+  "environment", "aws_initialized": true, "version": "1.0.0" }
+```
+
+---
+
+### 4.2 Upload — `/api/upload` (rate limit: 10 / 15 min)
+
+Tutti `multipart/form-data`. Campo `fileSize` opzionale (stringa già formattata lato client), `description`/`tags` opzionali.
+
+| Auth | Metodo | Path | Campo file | Limite | Note |
+|---|---|---|---|---|---|
+| 🔑 | `POST` | `/api/upload/upload-image` | `image` | 5MB | JPEG/PNG/WebP. Ottimizzata a 1200px, jpeg q85. |
+| 🔑 | `POST` | `/api/upload/upload-profile-image` | `profileImage` | 5MB | Cancella vecchie profile image, poi carica 400x400. |
+| 🔑 | `POST` | `/api/upload/upload-file` | `file` | 50MB | Tipi: vedi `ALLOWED_FILE_MIMES`. |
+
+Risposta upload-image / upload-file (`200`):
+```json
+{ "message": "...", "file": {
+  "key", "originalName", "size", "location", "contentType",
+  "description", "tags"?, "uploadTime", "optimized"? } }
+```
+Risposta upload-profile-image (`200`): oggetto `profileImage` con `imageType: 'profile'`.
+
+Errori comuni: `400` file troppo grande / tipo non supportato / file assente · `503` AWS non disponibile · `429` rate limit.
+
+---
+
+### 4.3 User — `/api/user` (immagini, file, profilo, stats)
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔑 | `GET` | `/api/user/images` | Lista immagini utente (S3 `uploads/images/{sub}/`) con URL firmati (1h). Max 100. |
+| 🔑 | `GET` | `/api/user/profile-images` | Lista immagini profilo (max 10), ordinate per data desc. |
+| 🔑 | `GET` | `/api/user/profile-image` | Immagine profilo corrente (la più recente) o `null`. |
+| 🔑 | `DELETE` | `/api/user/profile-image` | Cancella **tutte** le immagini profilo dell'utente da S3. |
+| 🔑 | `GET` | `/api/user/files` | Lista file (legacy). Query: `limit` (max 100), `fileType` (categoria). URL firmati. |
+| 🔑 | `GET` | `/api/user/files/paginated` | File paginati. Query: `page`, `limit` (1-100), `fileType`. |
+| 🔑 | `GET` | `/api/user/files/dynamo` | File da DynamoDB (scan su `ownerUserId`). Query: `limit`, `lastKey`, `type`, `onlyOwned`. Paginazione via `nextKey`. |
+| 🔑 | `GET` | `/api/user/files/dynamo/by-key?key=...` | Singolo file DynamoDB per `s3Key`. Verifica ownership (403 altrimenti). |
+| 🔑 | `GET` | `/api/user/files/dynamo/:fileId` | Singolo file DynamoDB per `id`. Verifica ownership. |
+| 🔑 | `GET` | `/api/user/stats` | Conteggi: `{ files, images, profileImages, total }`. |
+
+Forma elemento file (lista S3):
+```json
+{ "key", "fileName", "originalName", "size", "lastModified",
+  "contentType", "category", "url", "urlExpires", "metadata" }
+```
+`category` ∈ `image | video | audio | document | archive | text | other`.
+
+Risposta DynamoDB file: ogni item arricchito con `s3Url` (firmato 1h) e `urlExpires`.
+
+---
+
+### 4.4 Files — `/api` (URL firmati, download, eliminazione)
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔑 | `DELETE` | `/api/uploads/files` | Elimina file. Body `{ fileId }` (= s3Key). Verifica prefisso ownership, cancella da S3 **e** DynamoDB. |
+| 🔑 | `GET` | `/api/file-url` | URL firmato per un file dell'utente. Query sotto. |
+| 🔓 | `GET` | `/api/download-file/:fileKey` | Redirect a URL firmato (per link email). Query `download` (default true). |
+
+**`GET /api/file-url`** query params:
+- `key` (obbligatorio) — s3Key del file (deve appartenere all'utente).
+- `download` (`true|false`) — forza `Content-Disposition: attachment`.
+- `expires` — secondi, clamp **60 … 604800** (7gg), default 3600.
+- `share` (`true|false`) — se true salva anche un record `shared_link` in DynamoDB.
+- `password`, `maxDownloads` — opzionali, salvati nel record se `share=true`.
+
+Risposta:
+```json
+{ "url", "key", "contentType", "contentLength", "originalName",
+  "expiresIn", "expiresAt", "sharedLink"? { ... } }
+```
+Errori: `400` key mancante · `403` non proprietario · `404` non trovato · `503` S3 down.
+
+---
+
+### 4.5 Shared Links — `/api/shared-links` (link pubblici con token + password)
+
+Flusso pubblico: **info → access (password) → file (con session token)**.
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔑 | `POST` | `/api/shared-links` | Crea link. Body sotto. → `201`. |
+| 🔑 | `GET` | `/api/shared-links` | Lista link dell'owner, ordinati per `createdAt` desc. |
+| 🔓 | `GET` | `/api/shared-links/:publicToken` | Info pubbliche del link (no s3Key, no hash). |
+| 🔓 | `POST` | `/api/shared-links/:publicToken/access` | Verifica password + nome visitatore → session token. |
+| 🎟️ | `GET` | `/api/shared-links/:publicToken/file` | URL firmato (15 min). Query `action=download\|preview`. Incrementa `downloadCount` solo su download. |
+| 🔑 | `POST` | `/api/shared-links/:id/revoke` | Revoca link (owner). |
+| 🔑 | `POST` | `/api/shared-links/:id/regenerate` | Nuovo `publicToken`, reset scadenza (7gg) e download. |
+| 🔑 | `PATCH` | `/api/shared-links/:id` | Aggiorna `expiresAt` / `password` / `maxDownloads` / `removePassword`. |
+| 🔑 | `DELETE` | `/api/shared-links/:id` | Elimina fisicamente il link. |
+
+**Body `POST /api/shared-links`**:
+```js
+{ s3Key*, fileName*, fileSize?, fileType?, password?,
+  expiresInHours? /* default 168, max 720 */, maxDownloads? }
+```
+Risposta `201`:
+```json
+{ "success": true, "data": {
+  "id", "publicToken", "url": "<FRONTEND_URL>/share/<token>",
+  "fileName", "fileSize", "fileType", "isPasswordProtected",
+  "expiresAt", "maxDownloads", "downloadCount": 0, "createdAt" } }
+```
+
+**Body `POST .../access`**: `{ visitorName* (min 2), password? }` → `{ sessionToken, expiresAt, fileName, fileSize, fileType, previewSupported, downloadAllowed }`.
+
+**Errori standardizzati** (`errorCode`): `LINK_NOT_FOUND` (404), `LINK_REVOKED`/`LINK_EXPIRED`/`DOWNLOAD_LIMIT_REACHED` (410), `PASSWORD_REQUIRED`/`INVALID_PASSWORD` (401), `FORBIDDEN` (403), `INVALID_REQUEST` (400), `ALREADY_REVOKED` (400), `INTERNAL_ERROR` (500).
+
+---
+
+### 4.6 E2E Encryption — `/api/user` (chiavi pubbliche, backup, recovery, file keys)
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔑 | `POST` | `/api/user/public-key` | Salva chiave pubblica. Body `{ publicKeyJWK: { n, e, ... } }`. |
+| 🔑 | `GET` | `/api/user/:userId/public-key` | Chiave pubblica di un utente per ID. `404 PUBLIC_KEY_NOT_FOUND`. |
+| 🔑 | `GET` | `/api/user/by-email/:email/public-key` | Lookup email → userId → chiave pubblica. |
+| 🔑 | `POST` | `/api/user/keypair-backup` | Salva backup chiave privata cifrata. Body `{ encryptedPrivateKey, salt, iv }`. |
+| 🔑 | `GET` | `/api/user/keypair-backup` | Recupera backup. `404 BACKUP_NOT_FOUND`. |
+| 🔑 | `POST` | `/api/user/recovery-key/setup` | Configura recovery key. Body `{ salt, verificationHash }`. `409` se già esiste. |
+| 🔑 | `GET` | `/api/user/recovery-key/status` | `{ hasRecoveryKey, salt, verificationHash }`. |
+| 🔑 | `POST` | `/api/user/file-keys` | Salva chiave file wrapped. Body `{ s3Key, wrappedKey, wrapIV, fileIV }`. |
+| 🔑 | `GET` | `/api/user/file-keys` | Tutte le chiavi file dell'utente → `{ keys: [...] }`. |
+| 🔑 | `GET` | `/api/user/file-keys/:s3Key` | Singola chiave file (`:s3Key` URL-encoded). |
+| 🔑 | `DELETE` | `/api/user/file-keys/:s3Key` | Elimina chiave file. |
+
+> Modello E2E: il client genera coppia RSA, carica la **chiave pubblica**; cifra ogni file con una chiave simmetrica, poi "wrappa" quella chiave con la pubblica e la salva in `UserFileKeys`. Il backend non vede mai le chiavi private in chiaro.
+
+---
+
+### 4.7 File Sharing (via email) — `/api/file-sharing`
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 📧 | `POST` | `/api/file-sharing/send` | Condivide file con destinatari. Body sotto. Genera URL firmati (7gg) e un record per ogni coppia file×destinatario. |
+| 📧 | `GET` | `/api/file-sharing/received?limit=` | File ricevuti (GSI `RecipientEmailIndex`). |
+| 📧 | `GET` | `/api/file-sharing/sent?limit=` | File inviati (GSI `SenderEmailIndex`). |
+
+**Body `/send`**:
+```js
+{ recipients: ["email1", ...], files: [{ s3Key|key, name, size, type|contentType }, ...], message? }
+```
+Risposta: `{ success, message, results[], totalRecipients, totalFiles, totalShared }`.
+
+> Nota: l'endpoint registra i record di condivisione ma **non invia email** nel codice attuale (la dipendenza `resend` è presente ma non usata qui).
+
+---
+
+## 5. Configurazione & limiti
+
+### Variabili d'ambiente
+| Var | Default | Uso |
+|---|---|---|
+| `PORT` | 3000 | Porta server. |
+| `AWS_REGION` | `eu-central-1` | Regione AWS. |
+| `S3_BUCKET_NAME` | — (obbligatoria) | Bucket S3. |
+| `USER_POOL_ID` | — (obbligatoria) | Cognito User Pool. |
+| `COGNITO_CLIENT_ID` | — (obbligatoria) | Cognito App Client. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credenziali (Fly.io/prod). Fallback `_2`. |
+| `SESSION_SECRET` | default insicuro | Firma session token link. |
+| `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token`. |
+| `MAX_FILE_SIZE` | 5MB | Limite immagini. |
+| `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici. |
+| `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
+| `NODE_ENV` | `development` | Logging richieste + dettaglio errori. |
+
+### Rate limiting
+- `uploadLimiter`: 10 richieste / 15 min sulle rotte `/api/upload`.
+- `apiLimiter`: 100 / 15 min (definito, disponibile per uso generale).
+
+### CORS
+Origini ammesse: `http://localhost:5173`, `http://localhost:3000`. Metodi: GET/POST/PUT/DELETE/PATCH/OPTIONS. Header: `Content-Type`, `Authorization`, `X-Requested-With`.
+> Per il deploy il frontend di produzione va aggiunto alla whitelist in `app.js`.
+
+### Sicurezza header
+`helmet` con `crossOriginResourcePolicy: cross-origin` e `crossOriginOpenerPolicy: same-origin-allow-popups`.
+
+---
+
+## 6. Convenzioni di risposta
+
+Due stili coesistono nel codice:
+
+- **Rotte "nuove"** (shared-links, e2e, file-sharing, files/dynamo): `{ success: boolean, data?|files?, error?|message?, errorCode? }`.
+- **Rotte "legacy"** (upload, user/images, user/files): oggetto diretto con `error` su fallimento, senza campo `success`.
+
+Codici di stato usati: `200`, `201`, `400`, `401`, `403`, `404`, `409`, `410`, `429`, `500`, `503`.
+
+URL firmati S3: scadenze tipiche **1h** (liste/preview owner), **15 min** (download link pubblico), **7gg** (file-sharing email). Tutte configurabili dove indicato.
+
+---
+
+## 7. Note per il frontend
+
+1. **Token Bearer**: usa l'`IdToken` Cognito (ritornato da `/api/login` in `userSub`) per tutte le rotte 🔑.
+2. **Upload**: invia `multipart/form-data`; il nome del campo file è specifico per endpoint (`image` / `profileImage` / `file`). Puoi passare `fileSize` già formattato per coerenza visiva.
+3. **Eliminazione file**: `DELETE /api/uploads/files` vuole `fileId` = la **s3Key** completa (es. `uploads/files/{sub}/...`).
+4. **Link condivisi pubblici**: flusso a 3 step (info → access → file). Conserva il `sessionToken` (valido 1h) per scaricare/preview.
+5. **E2E**: tutta la crittografia avviene lato client; il backend è solo deposito di chiavi pubbliche/wrapped e backup cifrati.
+6. **Ownership**: gli endpoint verificano la proprietà via prefisso s3Key (`uploads/.../{sub}/`) o `ownerUserId`/`ownerId`; richieste su risorse altrui → `403`.
+7. **Categorie file** disponibili per filtri: `image, video, audio, document, archive, text, other`.

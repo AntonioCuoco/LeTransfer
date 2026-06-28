@@ -24,7 +24,7 @@ const previewFiles = ref<File[]>([])
 const previewModalVisible = ref(false)
 const stats = ref({ totalFiles: 0, sharedFiles: 0, totalSize: '0 B' })
 const filesLoaded = ref(false)
-const apiMultipartUrl = import.meta.env.VITE_API_MULTIPART_URL as string
+const apiMultipartUrl = import.meta.env.VITE_API_URL as string
 
 const formatSize = (bytes: number) => {
   if (bytes === 0) return '0 B'

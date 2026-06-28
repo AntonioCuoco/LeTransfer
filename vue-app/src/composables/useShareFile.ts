@@ -7,7 +7,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
 import { wrapKeyWithPublicKey, importKeyFromBase64 } from '@/src/utils/crypto'
 
-const API_BASE_URL = import.meta.env.VITE_LAMBDA_URL || ''
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 export const useShareFile = () => {
   const isSharing = ref(false)
