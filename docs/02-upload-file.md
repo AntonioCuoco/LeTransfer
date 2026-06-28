@@ -11,98 +11,105 @@ LeTransfer supporta due modalità di upload:
 ## Architettura
 
 ```
-CLIENT                                    AWS BACKEND
+CLIENT (Vue)                              BACKEND (Express unico)
 ┌─────────────────────────┐              ┌──────────────────────┐
-│  File < 100MB           │              │   API Gateway        │
-│  useFileFromDynamoDB    │──────────────│   Lambda Upload      │
-│  .uploadFile()          │              │   S3 Direct PUT      │
+│  File < 100MB           │              │   POST /api/upload/* │
+│  useFileFromDynamoDB    │──────────────│   S3 Direct PUT      │
+│  + presigned URL        │              │                      │
 └─────────────────────────┘              └──────────────────────┘
 
 ┌─────────────────────────┐              ┌──────────────────────┐
-│  File > 100MB           │              │  Multipart APIs:     │
+│  File > 100MB           │              │ /api/upload/multipart│
 │  useS3MultipartUpload   │              │  1. /init            │
 │  0. Encrypt (AES-256)   │──────────────│  2. /urls            │
 │  1. Init (w/ enc size)  │              │  3. /complete        │
 │  2. Get URLs            │              │  4. /abort           │
 │  3. Upload enc chunks   │              └──────────────────────┘
-│  4. Store Key (Context) │
+│  4. Store Key (Pinia)   │
 │  5. Complete            │
 └─────────────────────────┘
 ```
 
+> Nota: in passato il multipart era servito da AWS Lambda + API Gateway. Con il consolidamento
+> backend tutto passa dall'unico Express (`/api/upload/multipart/*`). Vedi
+> `docs/BACKEND_CONSOLIDATION.md`. Lato frontend la base URL è ora `VITE_API_URL`.
+
 ---
 
-## Hook: `useS3MultipartUpload`
+## Composable: `useS3MultipartUpload`
+
+File: `vue-app/src/composables/useS3MultipartUpload.ts`.
 
 ### Configurazione
 
-```typescript
+```ts
 interface MultipartUploadConfig {
-    chunkSize: number;        // Default: 10MB
-    concurrency: number;      // Default: 3
-    apiBaseUrl: string;
-    userId?: string;
-    userEmail?: string;
+  chunkSize: number          // Default: 10MB
+  concurrency: number        // Default: 3
+  apiBaseUrl: string         // Default: import.meta.env.VITE_API_URL
+  userId?: string
+  userEmail?: string
+  getAuthToken?: () => Promise<string | null>
 }
 ```
 
-### Stato
+### Stato (reattivo)
 
-```typescript
+Lo stato è un `ref<MultipartUploadState>`:
+
+```ts
 interface MultipartUploadState {
-    status: 'idle' | 'initializing' | 'uploading' | 'paused' | 
-            'completing' | 'completed' | 'error';
-    progress: {
-        uploadedBytes: number;
-        totalBytes: number;
-        percentage: number;
-        speed: number;
-        eta: number;
-    };
-    uploadId: string | null;
-    fileKey: string | null;
-    error: Error | null;
+  status: 'idle' | 'initializing' | 'uploading' | 'paused' |
+          'completing' | 'completed' | 'error' | 'aborted'
+  progress: {
+    uploadedBytes: number
+    totalBytes: number
+    percentage: number
+    speed: number
+    eta: number
+  }
+  uploadId: string | null
+  fileKey: string | null
+  encryptionKey: CryptoKey | null
+  encryptionIV: Uint8Array | null
+  error: Error | null
 }
 ```
 
 ### Utilizzo
 
-```typescript
-const { state, uploadFile, pauseUpload, resumeUpload, abortUpload } = 
-    useS3MultipartUpload({
-        apiBaseUrl: '/api/upload/multipart',
-        chunkSize: 10 * 1024 * 1024,
-        concurrency: 3
-    });
+```ts
+const { state, uploadFile, pauseUpload, resumeUpload, abortUpload, resetUpload, getEncryptionData } =
+  useS3MultipartUpload({
+    apiBaseUrl: import.meta.env.VITE_API_URL,
+    chunkSize: 10 * 1024 * 1024,
+    concurrency: 3,
+  })
 
-// Upload
-await uploadFile(selectedFile);
+await uploadFile(selectedFile)   // cifra (AES-256) → init → upload chunk → complete
 
-// Controlli
-pauseUpload();
-resumeUpload();
-abortUpload();
+pauseUpload(); resumeUpload(); abortUpload()
+
+// state.value.status / state.value.progress.percentage sono reattivi
 ```
+
+> Le chiavi di cifratura del file vengono salvate (wrapped con la master key) tramite lo **store
+> Pinia** `useEncryptionStore` (`stores/encryption.ts`), non un Context React. Vedi
+> `docs/10-e2e-encryption.md`.
+>
+> Per la gestione della **coda** e dei limiti di concorrenza tra più upload vedi
+> `docs/03-transfer-manager.md` (store `useTransferStore` + `UploadQueueManager.vue`).
 
 ---
 
-## Backend Lambda Functions
+## Backend: route multipart
 
-### 1. Initiate Upload
-- Crea multipart upload su S3
-- Restituisce `uploadId` e `fileKey`
+Endpoint serviti dall'Express (porting dalle vecchie Lambda — vedi `BACKEND_CONSOLIDATION.md` §3):
 
-### 2. Get Presigned URLs
-- Genera URL firmati per ogni chunk
-- Validità: 1 ora
-
-### 3. Complete Upload
-- Assembla i chunks su S3
-- Salva metadata in DynamoDB
-
-### 4. Abort Upload
-- Cancella upload incompleto
-- Libera risorse S3
+1. **`POST /api/upload/multipart/init`** — crea il multipart su S3, ritorna `uploadId` e `fileKey`.
+2. **`POST /api/upload/multipart/urls`** — genera gli URL firmati per ogni chunk (validità 1h).
+3. **`POST /api/upload/multipart/complete`** — assembla i chunk su S3 e salva i metadati in DynamoDB.
+4. **`POST /api/upload/multipart/abort`** — annulla l'upload incompleto e libera le risorse S3.
 
 ---
 
@@ -111,6 +118,8 @@ abortUpload();
 ```
 uploads/files/{userId}/{fileName}
 ```
+> Il consolidamento backend prevede di passare a una key con timestamp+uuid per evitare collisioni
+> di nome (vedi `BACKEND_CONSOLIDATION.md` §3.1).
 
 ---
 
@@ -125,54 +134,58 @@ uploads/files/{userId}/{fileName}
 
 ---
 
-## Drag & Drop Hooks
+## Composable drag & drop
 
-Il sistema usa due hook separati per gestire il drag & drop:
+Il sistema usa due composable separati per il drag & drop.
 
 ### `useFileDragAndDrop`
 
-Hook per file singoli/multipli. Funziona su tutti i browser.
+File: `vue-app/src/composables/useFileDragAndDrop.ts`. Per file singoli/multipli, tutti i browser.
 
-```typescript
-import { useFileDragAndDrop } from '../hooks/useFileDragAndDrop';
+```ts
+import { useFileDragAndDrop } from '@/src/composables/useFileDragAndDrop'
 
-const { isDragOver, dragProps, dropZoneRef } = useFileDragAndDrop({
-    onFilesDropped: (files) => { /* gestisci file */ },
-    accept: 'image/*,.pdf',  // opzionale
-    multiple: true,          // default: true
-    disabled: false          // default: false
-});
+const { isDragOver, dropZoneRef, dragProps } = useFileDragAndDrop({
+  onFilesDropped: (files: File[]) => { /* gestisci file */ },
+  accept: 'image/*,.pdf',  // opzionale
+  multiple: true,          // default: true
+  disabled: false,         // default: false
+})
+```
 
-// Applicare al container
-<div ref={dropZoneRef} {...dragProps}>
-    Drop files here
+Applicazione nel template (le chiavi di `dragProps` sono `onDragEnter/onDragLeave/onDragOver/onDrop`,
+quindi si bindano con `v-bind`):
+
+```vue
+<div ref="dropZoneRef" v-bind="dragProps" :class="{ 'drag-over': isDragOver }">
+  Drop files here
 </div>
 ```
 
 **Usato in:**
-- `MultipartFileUploader.tsx` - Upload file grandi
-- `FileSender.tsx` - Invio file via email
+- `MultipartFileUploader.vue` — upload file grandi
+- `FileSender/FileSender.vue` — invio file via email
 
 ---
 
 ### `useFolderDragAndDrop`
 
-Hook per cartelle con traversamento ricorsivo.
+File: `vue-app/src/composables/useFolderDragAndDrop.ts`. Per cartelle con traversamento ricorsivo.
 
-```typescript
-import { useFolderDragAndDrop } from '../hooks/useFolderDragAndDrop';
+```ts
+import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
 
-const { isDragOver, supportsFolderDnD, dragProps, dropZoneRef } = useFolderDragAndDrop({
-    onFilesDropped: (files) => { /* tutti i file dalla cartella */ },
-    disabled: false
-});
+const { isDragOver, supportsFolderDnD, dropZoneRef, dragProps } = useFolderDragAndDrop({
+  onFilesDropped: (files: File[]) => { /* tutti i file dalla cartella */ },
+  disabled: false,
+})
 ```
 
 **Caratteristiche:**
 - Controllo supporto browser (`webkitGetAsEntry`)
-- Popup Swal se browser non supporta
+- Popup SweetAlert se il browser non supporta
 - Traversamento ricorsivo delle sottocartelle
-- Ritorna `supportsFolderDnD` per UI conditionale
+- Ritorna `supportsFolderDnD` per UI condizionale
 
 **Usato in:**
-- `Homepage.tsx` - Carica Cartella
+- `pages/Homepage.vue` — Carica Cartella

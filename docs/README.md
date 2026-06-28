@@ -153,7 +153,7 @@ Vedi [CHANGELOG_E2E_FIX.md](./CHANGELOG_E2E_FIX.md#testing-raccomandato) per det
 → Verifica che la chiave sia stata salvata in DynamoDB
 
 ### "Missing encryption data or context"
-→ Verifica che EncryptionProvider wrappa il componente
+→ Verifica che lo store Pinia di cifratura sia sbloccato (`encryptionStore.isUnlocked === true`)
 
 ### Recovery Key Non Accettata
 → Verifica di aver inserito tutte le 24 parole correttamente

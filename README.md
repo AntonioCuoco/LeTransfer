@@ -34,20 +34,21 @@ Il progetto si distingue per la sua architettura **Serverless** su AWS e per l'i
 
 ## 🏗 Tech Stack
 
-### Frontend
-*   **Framework**: React 18 + TypeScript + Vite
-*   **Styling**: TailwindCSS + Ant Design (Componenti UI)
-*   **State Management**: React Context + Hooks personalizzati
+### Frontend (`vue-app/`)
+*   **Framework**: Vue 3 (`<script setup>`) + TypeScript + Vite
+*   **Styling**: TailwindCSS + PrimeVue (Componenti UI)
+*   **State Management**: Pinia (store) + composable personalizzati
+*   **Routing**: Vue Router (navigation guard per le route protette)
 *   **Animazioni**: GSAP (GreenSock)
-*   **Networking**: Axios (con intercettori per Auth)
+*   **Networking**: Axios (con interceptor per Auth)
 *   **Crypto**: Web Crypto API (Nativo browser)
 
-### Backend (AWS Serverless)
+### Backend
 *   **Auth**: Amazon Cognito
 *   **Storage**: Amazon S3 (Bucket privati con presigned URLs)
 *   **Database**: Amazon DynamoDB (Metadati file e chiavi pubbliche)
-*   **Compute**: AWS Lambda (Node.js)
-*   **API Gateway**: Gestione endpoint REST
+*   **Compute**: backend Node.js + Express unico (deploy su Fly.io)
+*   **Nota**: le vecchie AWS Lambda + API Gateway sono in fase di consolidamento nell'unico Express — vedi [docs/BACKEND_CONSOLIDATION.md](docs/BACKEND_CONSOLIDATION.md)
 
 ---
 

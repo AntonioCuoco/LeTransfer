@@ -2,7 +2,7 @@
 
 ## Overview
 
-La pagina profilo (`/profile`) mostra:
+La pagina profilo (`/profile` → `vue-app/src/pages/Profile.vue`) mostra:
 - Header con info utente e immagine profilo
 - Statistiche file (caricati, ricevuti, etc.)
 - Tabella file con tabs e filtri
@@ -14,126 +14,86 @@ La pagina profilo (`/profile`) mostra:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      Profile Page                            │
+│                      Profile.vue                             │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │                  ProfileHeader                          │ │
-│  │  - Avatar con upload immagine                          │ │
-│  │  - Nome utente                                         │ │
-│  │  - Email                                               │ │
+│  │  - Avatar con upload immagine · Nome · Email           │ │
 │  └────────────────────────────────────────────────────────┘ │
-│                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │                  FileStatsGrid                          │ │
-│  │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐   │ │
-│  │  │Caricati │  │ Inviati │  │Ricevuti │  │Eliminati│   │ │
-│  │  │   15    │  │    8    │  │    3    │  │    2    │   │ │
-│  │  └─────────┘  └─────────┘  └─────────┘  └─────────┘   │ │
+│  │  [Caricati] [Inviati] [Ricevuti] [Eliminati]           │ │
 │  └────────────────────────────────────────────────────────┘ │
-│                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │  Tabs: [I Miei File] [Ricevuti] [Link Condivisi]       │ │
-│  │  ┌──────────────────────────────────────────────────┐  │ │
-│  │  │  Filtro tipo: [Tutti ▼]  [Immagini] [Video]...   │  │ │
-│  │  └──────────────────────────────────────────────────┘  │ │
-│  │                                                        │ │
-│  │  ┌──────────────────────────────────────────────────┐  │ │
-│  │  │              FilesTable / SharedLinksTable        │  │ │
-│  │  └──────────────────────────────────────────────────┘  │ │
-│  │                                                        │ │
-│  │  [◄ Prev] [1] [2] [3] [Next ►]                        │ │
+│  │  Filtro tipo + FilesTable / SharedLinksTable.vue       │ │
+│  │  Paginazione                                           │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Componente: Profile
+## Componente: Profile.vue
 
-### State
+### Stato (`ref`)
 
-```typescript
-const [activeTab, setActiveTab] = useState('uploaded');
-const [selectedFileType, setSelectedFileType] = useState('all');
-const [currentPage, setCurrentPage] = useState(1);
-const [stats, setStats] = useState<FileStats>({
-    uploaded: 0,
-    downloaded: 0,
-    sent: 0,
-    received: 0,
-    archived: 0,
-    deleted: 0
-});
+In React era `useState`; in Vue sono `ref`:
+
+```ts
+import { ref } from 'vue'
+
+const activeTab = ref('uploaded')
+const selectedFileType = ref('all')
+const currentPage = ref(1)
+const stats = ref<FileStats>({
+  uploaded: 0, downloaded: 0, sent: 0, received: 0, archived: 0, deleted: 0,
+})
 ```
 
-### Hooks Utilizzati
+### Composable utilizzati
 
-```typescript
-const {
-    files,
-    isLoading,
-    loadFiles,
-    deleteFile,
-    downloadFile
-} = useFileFromDynamoDB();
-
-const {
-    sharedFiles,
-    getSharedWithMe,
-    isLoadingShared
-} = useShareFile();
-
-const {
-    links,
-    fetchLinks,
-    revokeLink,
-    updateLink
-} = useSharedLinks();
+```ts
+const { files, isLoading, loadFiles, deleteFile, downloadFile } = useFileFromDynamoDB()
+const { sharedFiles, getSharedWithMe, isLoadingShared } = useShareFile()
+const { links, fetchLinks, revokeLink, regenerateLink, updateLink } = useSharedLinks()
 ```
 
 ---
 
 ## Tabs
 
-### Tab 1: I Miei File
+### Tab 1 — I Miei File
 
-File caricati dall'utente.
-
-```typescript
-const loadFiles = async (page: number = 1) => {
-    const result = await loadFilesHook({
-        limit: ITEMS_PER_PAGE,
-        fileType: selectedFileType !== 'all' ? selectedFileType : undefined,
-        onlyOwned: true
-    });
-    
-    setFiles(result);
-    updateStats(result.length, sharedFiles.length);
-};
+```ts
+const loadMyFiles = async (page = 1) => {
+  const result = await loadFiles({
+    limit: ITEMS_PER_PAGE,
+    fileType: selectedFileType.value !== 'all' ? selectedFileType.value : undefined,
+    onlyOwned: true,
+  })
+  updateStats(result.length, sharedFiles.value.length)
+}
 ```
 
-### Tab 2: File Ricevuti
+### Tab 2 — File Ricevuti
 
-File condivisi da altri utenti.
-
-```typescript
+```ts
 const loadSharedFiles = async () => {
-    const received = await getSharedWithMe();
-    setSharedFiles(received);
-};
+  await getSharedWithMe() // popola sharedFiles (ref) nel composable
+}
 ```
 
-### Tab 3: Link Condivisi
+### Tab 3 — Link Condivisi
 
-Gestione link pubblici creati.
+Componente Vue con props/eventi (non JSX):
 
-```typescript
-// Usa SharedLinksTable
+```vue
 <SharedLinksTable
-    links={links}
-    onRevoke={revokeLink}
-    onRegenerate={regenerateLink}
-    onUpdate={updateLink}
+  :links="links"
+  @revoke="revokeLink"
+  @regenerate="regenerateLink"
+  @update="updateLink"
 />
 ```
 
@@ -141,195 +101,165 @@ Gestione link pubblici creati.
 
 ## Componente: ProfileHeader
 
-```tsx
-interface ProfileHeaderProps {
-    user: {
-        name: string;
-        email: string;
-        avatarUrl?: string;
-    };
-}
+`React.FC<Props>` diventa un SFC con `defineProps`:
 
-const ProfileHeader: React.FC<ProfileHeaderProps> = ({ user }) => {
-    const { uploadProfileImage, profileImageUrl } = useProfileImage();
-    
-    return (
-        <div className="profile-header">
-            <Avatar 
-                src={profileImageUrl} 
-                onClick={handleAvatarClick}
-            />
-            <div>
-                <h1>{user.name}</h1>
-                <p>{user.email}</p>
-            </div>
-        </div>
-    );
-};
+```vue
+<script setup lang="ts">
+import { useProfileImage } from '@/src/composables/useProfileImage'
+
+defineProps<{ user: { name: string; email: string; avatarUrl?: string } }>()
+const { uploadProfileImage, profileImageUrl } = useProfileImage()
+</script>
+
+<template>
+  <div class="profile-header">
+    <Avatar :image="profileImageUrl ?? undefined" @click="handleAvatarClick" />
+    <div>
+      <h1>{{ user.name }}</h1>
+      <p>{{ user.email }}</p>
+    </div>
+  </div>
+</template>
 ```
 
 ---
 
 ## Componente: FileStatsGrid
 
-```tsx
-interface FileStatsGridProps {
-    stats: FileStats;
-}
+```vue
+<script setup lang="ts">
+const props = defineProps<{ stats: FileStats }>()
 
-const FileStatsGrid: React.FC<FileStatsGridProps> = ({ stats }) => {
-    const items = [
-        { label: 'Caricati', value: stats.uploaded, icon: UploadIcon },
-        { label: 'Inviati', value: stats.sent, icon: SendIcon },
-        { label: 'Ricevuti', value: stats.received, icon: InboxIcon },
-        { label: 'Eliminati', value: stats.deleted, icon: TrashIcon }
-    ];
-    
-    return (
-        <div className="stats-grid">
-            {items.map(item => (
-                <StatCard key={item.label} {...item} />
-            ))}
-        </div>
-    );
-};
+const items = computed(() => [
+  { label: 'Caricati', value: props.stats.uploaded, icon: 'pi pi-upload' },
+  { label: 'Inviati',  value: props.stats.sent,     icon: 'pi pi-send' },
+  { label: 'Ricevuti', value: props.stats.received, icon: 'pi pi-inbox' },
+  { label: 'Eliminati',value: props.stats.deleted,  icon: 'pi pi-trash' },
+])
+</script>
+
+<template>
+  <div class="stats-grid">
+    <StatCard v-for="item in items" :key="item.label" v-bind="item" />
+  </div>
+</template>
 ```
 
 ---
 
 ## Filtro Tipo File
 
-```typescript
+```ts
 const FILE_TYPE_FILTERS = [
-    { value: 'all', label: 'Tutti' },
-    { value: 'image', label: 'Immagini' },
-    { value: 'video', label: 'Video' },
-    { value: 'audio', label: 'Audio' },
-    { value: 'document', label: 'Documenti' },
-    { value: 'archive', label: 'Archivi' },
-    { value: 'application', label: 'Applicazioni' }
-];
+  { value: 'all', label: 'Tutti' },
+  { value: 'image', label: 'Immagini' },
+  { value: 'video', label: 'Video' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'document', label: 'Documenti' },
+  { value: 'archive', label: 'Archivi' },
+  { value: 'application', label: 'Applicazioni' },
+]
 
 const handleFileTypeChange = (fileType: string) => {
-    setSelectedFileType(fileType);
-    setCurrentPage(1);
-    loadFiles(1);
-};
+  selectedFileType.value = fileType
+  currentPage.value = 1
+  loadMyFiles(1)
+}
 ```
 
 ---
 
 ## Paginazione
 
-```typescript
-const ITEMS_PER_PAGE = 10;
+```ts
+const ITEMS_PER_PAGE = 10
 
-const getCurrentPageFiles = () => {
-    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredFiles.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-};
+const currentPageFiles = computed(() => {
+  const start = (currentPage.value - 1) * ITEMS_PER_PAGE
+  return filteredFiles.value.slice(start, start + ITEMS_PER_PAGE)
+})
 
-const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-};
-
-// Paginazione lato client per i file già caricati
-// Per dataset grandi, usare paginazione lato server con cursor
+const handlePageChange = (page: number) => { currentPage.value = page }
 ```
+> Paginazione lato client per i file già caricati; per dataset grandi usare la paginazione lato
+> server con cursor (vedi `docs/06-gestione-file-dynamodb.md`).
 
 ---
 
-## Hook: useProfileImage
+## Composable: useProfileImage
 
-Gestione immagine profilo.
+File: `vue-app/src/composables/useProfileImage.ts`.
 
-```typescript
-const useProfileImage = () => {
-    return {
-        profileImageUrl: string | null,
-        isUploading: boolean,
-        uploadProfileImage: (file: File) => Promise<void>,
-        refreshProfileImage: () => void
-    };
-};
+```ts
+const {
+  profileImageUrl,     // Ref<string | null>
+  isUploading,         // Ref<boolean>
+  uploadProfileImage,  // (file: File) => Promise<void>
+  fetchProfileImage,   // () => Promise<void>
+} = useProfileImage()
 ```
 
-L'immagine viene salvata in:
-```
-uploads/profiles/{userId}/avatar.{ext}
-```
+L'immagine viene salvata in `uploads/profiles/{userId}/...` (vedi `BACKEND_API_DOCS.md` §3, struttura key S3).
 
 ---
 
 ## Conversione Dati per Tabella
 
-```typescript
-const convertFilesToTableFormat = (dynamoDBFiles: DynamoDBFile[]): TableFile[] => {
-    return dynamoDBFiles.map(file => ({
-        id: file.fileId,
-        name: file.fileName,
-        type: file.fileType,
-        size: file.fileSize,
-        status: file.isShared ? 'sent' : 'uploaded',
-        date: file.uploadedAt,
-        originalFile: file,
-        sharedWith: file.sharedWith,
-        isShared: file.isShared
-    }));
-};
+```ts
+const toTableFile = (file: DynamoDBFile): TableFile => ({
+  id: file.fileId,
+  name: file.fileName,
+  type: file.fileType,
+  size: file.fileSize,
+  status: file.isShared ? 'sent' : 'uploaded',
+  date: file.uploadedAt,
+  originalFile: file,
+  isShared: file.isShared,
+})
 
-const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] => {
-    return files.map(file => ({
-        id: file.shareId,
-        name: file.fileName,
-        type: file.fileType,
-        size: formatFileSize(file.fileSize),
-        status: 'received',
-        date: file.createdAt,
-        isReceived: true,
-        senderEmail: file.ownerEmail
-    }));
-};
+const sharedToTableFile = (file: SharedFile): TableFile => ({
+  id: file.shareId,
+  name: file.fileName,
+  type: file.fileType,
+  size: formatFileSize(file.fileSize),
+  status: 'received',
+  date: file.createdAt,
+  isReceived: true,
+  senderEmail: file.senderEmail,
+})
 ```
 
 ---
 
 ## Azioni File
 
-```typescript
-// Download
-const handleDownloadFile = (file: DynamoDBFile) => {
-    downloadFile(file);
-};
+```ts
+const handleDownloadFile = (file: DynamoDBFile) => downloadFile(file)
 
-// Share
 const handleShareFile = (file: DynamoDBFile) => {
-    setSelectedFileForShare(file);
-    setShareModalVisible(true);
-};
+  selectedFileForShare.value = file
+  shareModalVisible.value = true
+}
 
-// Delete
 const handleDeleteFile = async (fileId: string) => {
-    await deleteFile(fileId, {
-        onSuccess: () => {
-            Swal.fire('Eliminato!', '', 'success');
-            loadFiles(currentPage);
-        },
-        onError: (error) => {
-            Swal.fire('Errore', error.message, 'error');
-        }
-    });
-};
+  try {
+    await deleteFile(fileId)
+    Swal.fire('Eliminato!', '', 'success')
+    loadMyFiles(currentPage.value)
+  } catch (e) {
+    Swal.fire('Errore', (e as Error).message, 'error')
+  }
+}
 ```
 
 ---
 
 ## Refresh
 
-```typescript
+```ts
 const handleRefreshAll = () => {
-    loadFiles(currentPage);
-    loadSharedFiles();
-    fetchLinks();
-};
+  loadMyFiles(currentPage.value)
+  loadSharedFiles()
+  fetchLinks()
+}
 ```

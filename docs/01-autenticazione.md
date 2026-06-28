@@ -2,7 +2,7 @@
 
 ## Overview
 
-LeTransfer utilizza **AWS Cognito** come provider di autenticazione, supportando sia il login tradizionale (email/password) che OAuth con Google. Il sistema include gestione automatica del refresh token e protezione delle route.
+LeTransfer utilizza **AWS Cognito** come provider di autenticazione, supportando sia il login tradizionale (email/password) che OAuth con Google. Il sistema include gestione automatica del refresh token e protezione delle route (via navigation guard di Vue Router).
 
 ---
 
@@ -10,10 +10,10 @@ LeTransfer utilizza **AWS Cognito** come provider di autenticazione, supportando
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         CLIENT (Browser)                            │
+│                         CLIENT (Vue)                                │
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
-│  │  LoginPage   │    │ RegisterPage │    │   OAuthCallback      │  │
+│  │ LoginPage.vue│    │RegisterPage  │    │  OAuthCallback.vue   │  │
 │  └──────┬───────┘    └──────┬───────┘    └──────────┬───────────┘  │
 │         │                   │                       │               │
 │         ▼                   ▼                       ▼               │
@@ -27,34 +27,29 @@ LeTransfer utilizza **AWS Cognito** come provider di autenticazione, supportando
 │                             │                                       │
 │  ┌──────────────────────────▼──────────────────────────────────┐   │
 │  │                    Token Storage (Cookies)                   │   │
-│  │  - accessToken (1h expiry)                                   │   │
-│  │  - idToken (1h expiry)                                       │   │
-│  │  - refreshToken (30 days expiry)                             │   │
+│  │  - accessToken (1h) · idToken (1h) · refreshToken (30gg)     │   │
 │  └──────────────────────────┬──────────────────────────────────┘   │
 │                             │                                       │
 │  ┌──────────────────────────▼──────────────────────────────────┐   │
-│  │                  useTokenManager Hook                        │   │
-│  │  - Token refresh automatico                                  │   │
-│  │  - Controllo scadenza                                        │   │
-│  │  - Redirect su logout                                        │   │
+│  │                useTokenManager (composable)                  │   │
+│  │  - Token refresh automatico · controllo scadenza · redirect  │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────┘
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         AWS Cognito                                 │
-│  ┌─────────────────┐    ┌─────────────────┐                        │
-│  │   User Pool     │    │  Identity Pool  │                        │
-│  │  (Autenticaz.)  │    │  (per OAuth)    │                        │
-│  └─────────────────┘    └─────────────────┘                        │
+│                         AWS Cognito (User Pool)                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+> La logica Cognito (i `*Command` dell'SDK) è indipendente dal framework UI: è rimasta identica
+> nella migrazione a Vue. A cambiare sono i costrutti UI (componenti `.vue`, composable, router).
 
 ---
 
 ## Componenti Coinvolti
 
-### 1. LoginPage (`src/pages/LoginPage.tsx`)
+### 1. LoginPage (`vue-app/src/pages/LoginPage.vue`)
 
 Gestisce il flusso di login con:
 - **Login tradizionale** via email/password
@@ -62,286 +57,258 @@ Gestisce il flusso di login con:
 - **Password recovery** con invio email
 - **Challenge handling** (es. NEW_PASSWORD_REQUIRED)
 
-#### Funzioni Principali
+#### Funzioni principali
 
-```typescript
-// Gestione login
+```ts
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { InitiateAuthCommand, ForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider'
+import { cognitoClient, clientId } from '@/src/utils/cognitoClient'
+import Cookies from 'js-cookie'
+
+const router = useRouter()
+const showChallenge = ref(false)
+const forgotStep = ref(1)
+
 const handleLogin = async () => {
-    const command = new InitiateAuthCommand({
-        AuthFlow: "USER_PASSWORD_AUTH",
-        ClientId: clientId,
-        AuthParameters: {
-            USERNAME: email,
-            PASSWORD: password
-        }
-    });
-    
-    const response = await cognitoClient.send(command);
-    
-    if (response.ChallengeName === "NEW_PASSWORD_REQUIRED") {
-        // Gestione cambio password obbligatorio
-        setShowChallenge(true);
-    } else if (response.AuthenticationResult) {
-        // Salvataggio token nei cookies
-        const { AccessToken, IdToken, RefreshToken } = response.AuthenticationResult;
-        Cookies.set('accessToken', AccessToken, { expires: 1/24 }); // 1h
-        Cookies.set('idToken', IdToken, { expires: 1/24 });
-        Cookies.set('refreshToken', RefreshToken, { expires: 30 });
-        navigate('/');
-    }
-};
+  const command = new InitiateAuthCommand({
+    AuthFlow: 'USER_PASSWORD_AUTH',
+    ClientId: clientId,
+    AuthParameters: { USERNAME: email.value, PASSWORD: password.value },
+  })
+  const response = await cognitoClient.send(command)
 
-// Password recovery
-const sendForgotEmail = async () => {
-    const command = new ForgotPasswordCommand({
-        ClientId: clientId,
-        Username: forgotEmail
-    });
-    await cognitoClient.send(command);
-    setForgotStep(2); // Mostra form per codice + nuova password
-};
-```
-
----
-
-### 2. RegisterPage (`src/pages/RegisterPage.tsx`)
-
-Gestisce la registrazione nuovo utente:
-
-```typescript
-// Registrazione
-const signUp = async () => {
-    const command = new SignUpCommand({
-        ClientId: clientId,
-        Username: email,
-        Password: password,
-        UserAttributes: [
-            { Name: 'email', Value: email }
-        ]
-    });
-    await cognitoClient.send(command);
-    setConfirmPending(true);
-};
-
-// Conferma email
-const confirmSignUp = async () => {
-    const command = new ConfirmSignUpCommand({
-        ClientId: clientId,
-        Username: email,
-        ConfirmationCode: code
-    });
-    await cognitoClient.send(command);
-    navigate('/login');
-};
-```
-
----
-
-### 3. OAuthCallback (`src/pages/OAuthCallback.tsx`)
-
-Gestisce il redirect dopo login Google:
-
-```typescript
-const OAuthCallback = () => {
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        
-        if (code) {
-            // Scambio authorization code per tokens
-            exchangeCodeForTokens(code);
-        }
-    }, []);
-    
-    const exchangeCodeForTokens = async (code: string) => {
-        const response = await fetch(tokenEndpoint, {
-            method: 'POST',
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
-                client_id: clientId,
-                code,
-                redirect_uri: redirectUri
-            })
-        });
-        
-        const tokens = await response.json();
-        // Salva tokens e redirect
-    };
-};
-```
-
----
-
-### 4. useTokenManager Hook (`src/hooks/useTokenManager.ts`)
-
-Hook centrale per la gestione dei token:
-
-#### Interfaccia
-
-```typescript
-interface TokenManagerState {
-    isAuthenticated: boolean;
-    isRefreshing: boolean;
-    lastRefreshTime: number;
+  if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+    showChallenge.value = true
+  } else if (response.AuthenticationResult) {
+    const { AccessToken, IdToken, RefreshToken } = response.AuthenticationResult
+    Cookies.set('accessToken', AccessToken!, { expires: 1 / 24 }) // 1h
+    Cookies.set('idToken', IdToken!, { expires: 1 / 24 })
+    Cookies.set('refreshToken', RefreshToken!, { expires: 30 })
+    router.push('/')
+  }
 }
 
-const useTokenManager = () => {
-    return {
-        isAuthenticated: boolean,
-        isRefreshing: boolean,
-        ensureValidToken: () => Promise<boolean>,
-        refreshToken: () => Promise<boolean>,
-        clearTokens: () => void
-    };
-};
+const sendForgotEmail = async () => {
+  await cognitoClient.send(new ForgotPasswordCommand({ ClientId: clientId, Username: forgotEmail.value }))
+  forgotStep.value = 2 // mostra form codice + nuova password
+}
+```
+
+---
+
+### 2. RegisterPage (`vue-app/src/pages/RegisterPage.vue`)
+
+```ts
+import { SignUpCommand, ConfirmSignUpCommand } from '@aws-sdk/client-cognito-identity-provider'
+
+const confirmPending = ref(false)
+
+const signUp = async () => {
+  await cognitoClient.send(new SignUpCommand({
+    ClientId: clientId,
+    Username: email.value,
+    Password: password.value,
+    UserAttributes: [{ Name: 'email', Value: email.value }],
+  }))
+  confirmPending.value = true
+}
+
+const confirmSignUp = async () => {
+  await cognitoClient.send(new ConfirmSignUpCommand({
+    ClientId: clientId,
+    Username: email.value,
+    ConfirmationCode: code.value,
+  }))
+  router.push('/login')
+}
+```
+
+---
+
+### 3. OAuthCallback (`vue-app/src/pages/OAuthCallback.vue`)
+
+Gestisce il redirect dopo login Google. La route è `/oauth2/callback` (vedi `router/index.ts`).
+`useEffect(..., [])` di React diventa `onMounted`:
+
+```ts
+import { onMounted } from 'vue'
+
+onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  if (code) exchangeCodeForTokens(code)
+})
+
+const exchangeCodeForTokens = async (code: string) => {
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      code,
+      redirect_uri: redirectUri,
+    }),
+  })
+  const tokens = await response.json()
+  // salva tokens nei cookie e router.push('/')
+}
+```
+
+---
+
+### 4. useTokenManager (`vue-app/src/composables/useTokenManager.ts`)
+
+Composable centrale per la gestione dei token.
+
+#### Valori ritornati
+
+```ts
+const {
+  isAuthenticated, // Ref<boolean>
+  isRefreshing,    // Ref<boolean>
+  ensureValidToken,// () => Promise<boolean>
+  refreshToken,    // alias di ensureValidToken
+  clearTokens,     // () => void
+} = useTokenManager()
 ```
 
 #### Funzionalità
 
-1. **Verifica Validità Token**
-```typescript
+1. **Verifica validità + refresh** (`ensureValidToken`): se l'`accessToken` è valido ritorna `true`;
+   se scaduto ma c'è il `refreshToken`, esegue `InitiateAuthCommand` con `REFRESH_TOKEN_AUTH`.
+   Include un guard anti-race (`isRefreshingRef`) per evitare refresh concorrenti.
+
+```ts
 const ensureValidToken = async (): Promise<boolean> => {
-    const accessToken = Cookies.get('accessToken');
-    
-    if (!accessToken) {
-        clearTokens();
-        return false;
-    }
-    
-    // Controlla scadenza
-    if (!isTokenExpired(accessToken)) {
-        return true;
-    }
-    
-    // Token scaduto, prova refresh
-    return await refreshToken();
-};
+  const accessToken = Cookies.get('accessToken')
+  const refreshTokenValue = Cookies.get('refreshToken')
+  if (!accessToken && !refreshTokenValue) { clearTokens(); return false }
+  if (accessToken && !isTokenExpired(accessToken)) { isAuthenticated.value = true; return true }
+  if (!refreshTokenValue) { clearTokens(); return false }
+
+  const response = await cognitoClient.send(new InitiateAuthCommand({
+    AuthFlow: 'REFRESH_TOKEN_AUTH',
+    ClientId: clientId,
+    AuthParameters: { REFRESH_TOKEN: refreshTokenValue },
+  }))
+  const { AccessToken, IdToken } = response.AuthenticationResult ?? {}
+  if (AccessToken && IdToken) { updateTokens(AccessToken, IdToken); return true }
+  clearTokens(); return false
+}
 ```
 
-2. **Refresh Automatico**
-```typescript
-const refreshToken = async (): Promise<boolean> => {
-    const refreshTokenValue = Cookies.get('refreshToken');
-    
-    const command = new InitiateAuthCommand({
-        AuthFlow: "REFRESH_TOKEN_AUTH",
-        ClientId: clientId,
-        AuthParameters: {
-            REFRESH_TOKEN: refreshTokenValue
-        }
-    });
-    
-    const response = await cognitoClient.send(command);
-    
-    if (response.AuthenticationResult) {
-        updateTokens(
-            response.AuthenticationResult.AccessToken,
-            response.AuthenticationResult.IdToken
-        );
-        return true;
-    }
-    return false;
-};
-```
+2. **Controllo proattivo scadenza**: in React era un `useEffect` con `setInterval`. In Vue è in
+   `onMounted` (avvio + interval ogni 60s + listener su `focus`/`visibilitychange`) con cleanup in
+   `onUnmounted`:
 
-3. **Controllo Proattivo Scadenza**
-```typescript
-// Effect che controlla ogni minuto se il token sta per scadere
-useEffect(() => {
-    const interval = setInterval(async () => {
-        if (isTokenExpiringSoon() && !state.isRefreshing) {
-            showWarning('Sessione in scadenza, rinnovo automatico...');
-            const success = await ensureValidToken();
-            if (!success) {
-                navigate('/login');
-            }
-        }
-    }, 60000); // Ogni minuto
-    
-    return () => clearInterval(interval);
-}, []);
+```ts
+onMounted(async () => {
+  if (!(await ensureValidToken())) { router.push('/login'); return }
+  intervalId = setInterval(checkToken, 60000)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('focus', checkToken)
+})
+
+onUnmounted(() => {
+  if (intervalId) clearInterval(intervalId)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('focus', checkToken)
+})
+
+// checkToken: se isTokenExpiringSoon() (< 5 min) → ensureValidToken(); se fallisce → router.push('/login')
 ```
 
 ---
 
-### 5. ProtectedRoutes (`src/components/ProtectedRoutes/protectedRoutes.tsx`)
+### 5. Protezione delle route — navigation guard (`vue-app/src/router/index.ts`)
 
-Wrapper per route che richiedono autenticazione:
+In React la protezione era un componente wrapper (`<ProtectedRoutes>` con `<Navigate>`/`<Outlet>`).
+In Vue è un **navigation guard** sulle route con `meta: { requiresAuth: true }`:
 
-```typescript
-const ProtectedRoutes = () => {
-    const accessToken = Cookies.get('accessToken');
-    
-    if (!accessToken || isTokenExpired(accessToken)) {
-        return <Navigate to="/login" replace />;
-    }
-    
-    return <Outlet />;
-};
+```ts
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    // pubbliche
+    { path: '/login', component: () => import('@/src/pages/LoginPage.vue') },
+    { path: '/register', component: () => import('@/src/pages/RegisterPage.vue') },
+    { path: '/oauth2/callback', component: () => import('@/src/pages/OAuthCallback.vue') },
+    { path: '/share/:publicToken', component: () => import('@/src/pages/ShareAccessPage.vue') },
+    // protette
+    {
+      path: '/',
+      component: () => import('@/src/components/layout/AppLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', component: () => import('@/src/pages/Homepage.vue') },
+        { path: 'profile', component: () => import('@/src/pages/Profile.vue') },
+        { path: 'settings', component: () => import('@/src/pages/SettingsPage.vue') },
+      ],
+    },
+  ],
+})
+
+router.beforeEach((to) => {
+  if (to.meta.requiresAuth) {
+    const accessToken = Cookies.get('accessToken')
+    const refreshToken = Cookies.get('refreshToken')
+    if (!accessToken && !refreshToken) return { path: '/login' }
+  }
+})
 ```
 
 ---
 
-### 6. checkAuth Utility (`src/components/checkAuth/checkAuth.ts`)
+### 6. Utility token (`vue-app/src/utils/getCurrentUser.ts`)
 
-Funzioni di supporto per la verifica token:
+Funzioni di supporto per decodifica/scadenza token (es. `isTokenExpired`, usata sopra):
 
-```typescript
-interface DecodedToken {
-    exp: number;
-    sub: string;
-    email: string;
-    // ... altri campi
+```ts
+export const isTokenExpired = (token: string): boolean => {
+  try {
+    const decoded = decodeToken(token)
+    return decoded.exp < Math.floor(Date.now() / 1000)
+  } catch {
+    return true
+  }
 }
 
-export const isTokenExpired = (token: string): boolean => {
-    try {
-        const decoded = decodeToken(token);
-        const currentTime = Math.floor(Date.now() / 1000);
-        return decoded.exp < currentTime;
-    } catch {
-        return true;
-    }
-};
-
-export const decodeToken = (token: string): DecodedToken => {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(
-        atob(base64).split('').map(c => 
-            '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-        ).join('')
-    );
-    return JSON.parse(jsonPayload);
-};
+export const decodeToken = (token: string) => {
+  const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+  const json = decodeURIComponent(
+    atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+  )
+  return JSON.parse(json)
+}
 ```
 
 ---
 
 ## Configurazione Cognito
 
-### Client SDK Setup (`src/utils/cognitoClient.ts`)
+### Client SDK (`vue-app/src/utils/cognitoClient.ts`)
 
-```typescript
-import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider';
+```ts
+import { CognitoIdentityProviderClient } from '@aws-sdk/client-cognito-identity-provider'
 
 export const cognitoClient = new CognitoIdentityProviderClient({
-    region: import.meta.env.VITE_COGNITO_REGION
-});
+  region: import.meta.env.VITE_COGNITO_REGION,
+})
 
-export const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
+export const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
 ```
 
 ---
 
 ## Flussi di Autenticazione
 
-### Login Tradizionale
+### Login tradizionale
 ```
 1. Utente inserisce email/password
 2. InitiateAuthCommand con USER_PASSWORD_AUTH
 3. Se ChallengeName → gestione challenge
-4. Se AuthenticationResult → salva token, redirect
+4. Se AuthenticationResult → salva token, router.push('/')
 ```
 
 ### Google OAuth
@@ -351,16 +318,15 @@ export const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
 3. Utente autorizza
 4. Redirect a /oauth2/callback con code
 5. Scambio code per tokens
-6. Salva token, redirect
+6. Salva token, router.push('/')
 ```
 
-### Refresh Token
+### Refresh token
 ```
-1. Token in scadenza (< 5 min)
-2. useTokenManager rileva
+1. Token in scadenza (< 5 min)  → isTokenExpiringSoon()
+2. useTokenManager rileva (interval 60s / focus / visibilitychange)
 3. InitiateAuthCommand con REFRESH_TOKEN_AUTH
-4. Nuovi token salvati
-5. Notifica utente
+4. Nuovi token salvati + notifica
 ```
 
 ---
@@ -375,51 +341,44 @@ export const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
 | idToken | 1 ora | Cookie |
 | refreshToken | 30 giorni | Cookie |
 
-### Notifiche Sessione (`useSessionNotifications`)
+### Notifiche Sessione (`composables/useSessionNotifications.ts`)
 
-```typescript
-const { showInfo, showWarning, showError } = useSessionNotifications();
+```ts
+const { showInfo, showWarning, showError } = useSessionNotifications()
 
-// Utilizzo
-showInfo('Sessione rinnovata con successo');
-showWarning('Sessione in scadenza, rinnovo automatico...');
-showError('Sessione scaduta. Effettua nuovamente il login.');
+showInfo('Sessione rinnovata con successo')
+showError('Sessione scaduta. Effettua nuovamente il login.')
 ```
 
 ---
 
 ## Considerazioni di Sicurezza
 
-1. **Token JWT** - I token sono firmati da Cognito e verificabili
-2. **HTTPS** - Tutte le comunicazioni sono cifrate
-3. **Cookie Secure** - In produzione i cookie hanno flag `Secure`
-4. **Refresh Token Rotation** - Non implementato (consigliato per produzione)
-5. **Rate Limiting** - Gestito da Cognito
+1. **Token JWT** — firmati da Cognito e verificabili.
+2. **HTTPS** — tutte le comunicazioni cifrate.
+3. **Cookie Secure** — in produzione i cookie hanno flag `Secure`.
+4. **Refresh Token Rotation** — non implementato (consigliato per produzione).
+5. **Rate Limiting** — gestito da Cognito.
+
+> Nota backend: la verifica del token lato server va irrobustita (`aws-jwt-verify`) nel
+> consolidamento — vedi `docs/BACKEND_CONSOLIDATION.md` §5.
 
 ---
 
-## Utility per Estrazione Dati Utente
+## Estrazione Dati Utente (`vue-app/src/utils/getCurrentUser.ts`)
 
-```typescript
-// src/utils/authUtils.ts
-
+```ts
 export const getUserIdFromToken = (): string | null => {
-    const token = Cookies.get('idToken');
-    if (!token) return null;
-    
-    const decoded = decodeToken(token);
-    return decoded.sub;
-};
+  const token = Cookies.get('idToken')
+  return token ? decodeToken(token).sub : null
+}
 
 export const getUserEmailFromToken = (): string | null => {
-    const token = Cookies.get('idToken');
-    if (!token) return null;
-    
-    const decoded = decodeToken(token);
-    return decoded.email;
-};
+  const token = Cookies.get('idToken')
+  return token ? decodeToken(token).email : null
+}
 ```
 
 ---
 
-*Questa documentazione copre il sistema di autenticazione completo di LeTransfer.*
+*Questa documentazione copre il sistema di autenticazione completo di LeTransfer (frontend Vue).*

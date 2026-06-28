@@ -149,7 +149,7 @@ Memorizza le chiavi dei file cifrate con la Master Key.
 
 ### 1. Setup Recovery Key
 
-**File**: `src/components/RecoveryKeySetup.tsx`
+**File**: `vue-app/src/components/RecoveryKeySetup.vue`
 
 ```typescript
 // 1. Genera Recovery Key (24 parole BIP39)
@@ -181,13 +181,14 @@ await setupRecoveryKey({
     verificationHash: arrayBufferToBase64(packed)
 });
 
-// 7. Inizializza Master Key nel Context
-initializeMasterKey(masterKey);
+// 7. Inizializza Master Key nello store Pinia
+const encryptionStore = useEncryptionStore()
+encryptionStore.setMasterKey(masterKey)
 ```
 
 ### 2. Upload File Cifrato
 
-**File**: `src/hooks/useS3MultipartUpload.ts`
+**File**: `vue-app/src/composables/useS3MultipartUpload.ts`
 
 ```typescript
 // 1. Genera File Key
@@ -203,14 +204,15 @@ await uploadToS3(encryptedBlob);
 // 4. Wrap File Key con Master Key
 const keyBase64 = await exportKeyToBase64(encryptionKey);
 const ivBase64 = exportIVToBase64(encryptionIV);
-await encryption.storeKey(s3Key, { key: keyBase64, iv: ivBase64 });
+await encryptionStore.storeKey(s3Key, { key: keyBase64, iv: ivBase64 });
 ```
 
-**Context**: `src/contexts/EncryptionContext.tsx`
+**Store Pinia**: `vue-app/src/stores/encryption.ts` (`useEncryptionStore`, sostituisce
+l'`EncryptionContext` di React)
 
 ```typescript
 // storeKey: Wrap e salva la chiave
-async storeKey(s3Key: string, keyData: EncryptionKeyData) {
+async function storeKey(s3Key: string, keyData: EncryptionKeyData) {
     // 1. Importa File Key da Base64
     const fileKey = await crypto.subtle.importKey('raw', 
         base64ToArrayBuffer(keyData.key), 
@@ -234,11 +236,11 @@ async storeKey(s3Key: string, keyData: EncryptionKeyData) {
 
 ### 3. Download File Cifrato
 
-**File**: `src/hooks/useFileFromDynamoDB.ts`
+**File**: `vue-app/src/composables/useFileFromDynamoDB.ts`
 
 ```typescript
 // 1. Recupera chiave cifrata
-const keyData = await encryption.getKey(file.s3Key);
+const keyData = await encryptionStore.getKey(file.s3Key);
 
 // 2. Importa chiave e IV
 const key = await importKeyFromBase64(keyData.key);
@@ -260,8 +262,8 @@ downloadBlob(decryptedBlob, file.fileName);
 **Shared Links con Fragment URL (Zero-Knowledge)**
 
 ```typescript
-// 1. Recupera File Key dal context
-const keyData = await encryption.getKey(s3Key);
+// 1. Recupera File Key dallo store di cifratura
+const keyData = await encryptionStore.getKey(s3Key);
 
 // 2. Genera URL con fragment
 const url = `${baseUrl}/share/${publicToken}#key=${keyData.key}&iv=${keyData.iv}`;
@@ -293,7 +295,7 @@ const decryptedBlob = await decryptFile(encryptedBlob, key, iv);
 const recipientPublicKey = await getPublicKey(recipientEmail);
 
 // 2. Recupera File Key
-const keyData = await encryption.getKey(s3Key);
+const keyData = await encryptionStore.getKey(s3Key);
 const fileKey = await importKeyFromBase64(keyData.key);
 
 // 3. Wrap File Key con chiave pubblica RSA
@@ -331,44 +333,37 @@ const decryptedBlob = await decryptFile(
 
 ### 1. Master Key Non Inizializzata Dopo Setup ✅
 
-**Problema**: Dopo aver configurato la Recovery Key, la Master Key derivata veniva scartata invece di essere passata al Context.
+**Problema**: Dopo aver configurato la Recovery Key, la Master Key derivata veniva scartata invece di essere passata allo store.
 
 **Sintomo**: I file venivano caricati cifrati, ma la chiave non veniva salvata in DynamoDB, causando errori 404 al download.
 
-**Soluzione**: 
-- Aggiunto `useEncryption` hook in `RecoveryKeySetup.tsx`
-- Chiamata a `initializeMasterKey(masterKey)` dopo setup riuscito
-- File modificato: `src/components/RecoveryKeySetup.tsx` (linea 92)
+**Soluzione**:
+- Usato lo store `useEncryptionStore` in `RecoveryKeySetup.vue`
+- Chiamata a `encryptionStore.setMasterKey(masterKey)` dopo setup riuscito
+- File: `vue-app/src/components/RecoveryKeySetup.vue`
 
 ### 2. Stale Closure in completeMultipartUpload ✅
 
-**Problema**: La funzione `completeMultipartUpload` accedeva a `state.encryptionKey` e `state.encryptionIV` che erano snapshot vecchi dello state React.
+**Problema**: la callback asincrona `completeMultipartUpload` accedeva a chiave/IV di cifratura che potevano essere snapshot vecchi.
 
-**Sintomo**: Log mostravano `hasEncryption: false` anche se la chiave era stata generata.
+**Soluzione** (presente nel codice Vue):
+- Aggiunti `encryptionKeyRef` e `encryptionIVRef` come `shallowRef` nel composable
+- I valori vengono salvati nei ref quando generati; la `complete` legge i ref sempre aggiornati
+- File: `vue-app/src/composables/useS3MultipartUpload.ts`
 
-**Soluzione**:
-- Aggiunti `encryptionKeyRef` e `encryptionIVRef` come refs
-- I valori vengono salvati nei refs quando generati
-- `completeMultipartUpload` usa i refs che sono sempre aggiornati
-- File modificato: `src/hooks/useS3MultipartUpload.ts`
+### 3. Provider nesting (non più applicabile con Pinia) ✅
 
-### 3. TransferProvider Fuori da EncryptionProvider ✅
-
-**Problema**: `TransferProvider` era wrappato in `App.tsx` prima di `EncryptionProvider` che era in `ProtectedRoutes`.
-
-**Sintomo**: `useEncryptionOptional()` ritornava `null` perché il context non esisteva ancora.
-
-**Soluzione**:
-- Spostato `TransferProvider` dentro `ProtectedRoutes`
-- Ora è correttamente wrappato da `EncryptionProvider`
-- File modificati: `src/components/ProtectedRoutes/protectedRoutes.tsx`, `src/App.tsx`
+In React il context di cifratura (`EncryptionProvider`) doveva wrappare il `TransferProvider`,
+altrimenti `useEncryptionOptional()` ritornava `null`. **Con Pinia il problema non esiste**: lo store
+`useEncryptionStore` è **globale** e accessibile da qualunque componente/composable senza gerarchia di
+provider. Basta che lo store sia stato sbloccato (`setMasterKey`) prima dell'upload.
 
 ## API Endpoints
 
 ### Recovery Key
 
-#### POST /user/recovery-key
-Salva salt e verification hash per un utente.
+#### POST /api/user/recovery-key/setup
+Salva salt e verification hash per un utente. (Endpoint completi in `BACKEND_API_DOCS.md` §4.6.)
 
 **Request:**
 ```json
@@ -386,7 +381,7 @@ Salva salt e verification hash per un utente.
 }
 ```
 
-#### GET /user/recovery-key/status
+#### GET /api/user/recovery-key/status
 Verifica se l'utente ha configurato la Recovery Key.
 
 **Response:**
@@ -400,7 +395,7 @@ Verifica se l'utente ha configurato la Recovery Key.
 
 ### File Keys
 
-#### POST /user/file-keys
+#### POST /api/user/file-keys
 Salva una chiave cifrata per un file.
 
 **Request:**
@@ -421,7 +416,7 @@ Salva una chiave cifrata per un file.
 }
 ```
 
-#### GET /user/file-keys/:s3Key
+#### GET /api/user/file-keys/:s3Key
 Recupera la chiave cifrata per un file specifico.
 
 **Response:**
@@ -437,7 +432,7 @@ Recupera la chiave cifrata per un file specifico.
 }
 ```
 
-#### GET /user/file-keys
+#### GET /api/user/file-keys
 Recupera tutte le chiavi cifrate dell'utente.
 
 **Response:**
@@ -456,7 +451,7 @@ Recupera tutte le chiavi cifrate dell'utente.
 }
 ```
 
-#### DELETE /user/file-keys/:s3Key
+#### DELETE /api/user/file-keys/:s3Key
 Elimina una chiave cifrata.
 
 **Response:**
@@ -550,15 +545,11 @@ Elimina una chiave cifrata.
 ### Comandi di Test
 
 ```bash
-# Test unitari
-npm test src/utils/crypto.test.ts
+# Dalla root del progetto gli script delegano a vue-app:
+npm run dev            # avvia l'app Vue (npm --prefix vue-app run dev)
 
-# Test E2E
-npm run test:e2e -- --spec=e2e/encryption.spec.ts
-
-# Test manuale
-npm run dev
-# Segui il flusso: Setup → Upload → Download → Nuovo dispositivo
+# Utility crypto: vue-app/src/utils/crypto.ts e vue-app/src/utils/recovery-key.ts
+# Test manuale — segui il flusso: Setup → Upload → Download → Nuovo dispositivo
 ```
 
 ## Troubleshooting
@@ -568,7 +559,7 @@ npm run dev
 **Causa**: La chiave del file non è stata salvata o non può essere recuperata.
 
 **Debug**:
-1. Verifica che la Master Key sia inizializzata: `encryption.isLocked === false`
+1. Verifica che la Master Key sia inizializzata: `encryptionStore.isUnlocked === true`
 2. Controlla console per errori durante upload
 3. Verifica DynamoDB: `UserFileKeys` deve contenere entry per l's3Key
 4. Verifica che `encryptionKeyRef` sia popolato durante upload
@@ -577,14 +568,14 @@ npm run dev
 
 ### "Missing encryption data or context"
 
-**Causa**: Il context di cifratura non è disponibile quando viene chiamato `storeKey`.
+**Causa**: lo store di cifratura non è sbloccato quando viene chiamato `storeKey` (Master Key assente).
 
 **Debug**:
-1. Verifica che `EncryptionProvider` wrappa il componente
-2. Controlla che `TransferProvider` sia dentro `EncryptionProvider`
-3. Verifica che `useEncryptionOptional()` non ritorni `null`
+1. Verifica `encryptionStore.isUnlocked === true` prima dell'upload
+2. Controlla che `setMasterKey` sia stato chiamato dopo il setup/unlock della Recovery Key
+3. Con Pinia non c'è gerarchia di provider: lo store è globale (vedi "Problemi Risolti #3")
 
-**Soluzione**: Assicurati che la struttura dei provider sia corretta (vedi sezione "Problemi Risolti #3").
+**Soluzione**: sblocca lo store (`setMasterKey`) prima di avviare upload/condivisioni cifrate.
 
 ### Recovery Key Non Accettata
 

@@ -14,10 +14,10 @@ Sistema per creare link pubblici condivisibili con:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        CLIENT                                │
+│                        CLIENT (Vue)                          │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │              SharedLinksTable                           │ │
+│  │              SharedLinksTable.vue                       │ │
 │  │  - Lista link generati                                  │ │
 │  │  - Copia URL                                            │ │
 │  │  - Settings (password, scadenza)                        │ │
@@ -25,88 +25,97 @@ Sistema per creare link pubblici condivisibili con:
 │  └────────────────────────────────────────────────────────┘ │
 │                           │                                  │
 │  ┌────────────────────────▼───────────────────────────────┐ │
-│  │              useSharedLinks hook                        │ │
-│  │  - fetchLinks()                                         │ │
-│  │  - revokeLink(id)                                       │ │
-│  │  - regenerateLink(id)                                   │ │
-│  │  - updateLink(id, updates)                              │ │
+│  │           useSharedLinks (composable)                   │ │
+│  │  - fetchLinks() / createLink()                          │ │
+│  │  - revokeLink(id) / regenerateLink(id)                  │ │
+│  │  - updateLink(id, updates) / deleteLink(id)             │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      AWS BACKEND                             │
-│  GET    /shared-links           → Lista link utente         │
-│  POST   /shared-links/:id/revoke    → Revoca link          │
-│  POST   /shared-links/:id/regenerate → Nuovo URL           │
-│  PATCH  /shared-links/:id       → Modifica impostazioni    │
+│              BACKEND (Express unico — VITE_API_URL)          │
+│  GET    /api/shared-links               → Lista link utente  │
+│  POST   /api/shared-links               → Crea link          │
+│  POST   /api/shared-links/:id/revoke    → Revoca link        │
+│  POST   /api/shared-links/:id/regenerate→ Nuovo URL          │
+│  PATCH  /api/shared-links/:id           → Modifica settings   │
+│  DELETE /api/shared-links/:id           → Elimina link        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Hook: `useSharedLinks`
+## Composable: `useSharedLinks`
 
-### Interfaccia
+File: `vue-app/src/composables/useSharedLinks.ts`.
 
-```typescript
-interface UseSharedLinksReturn {
-    links: SharedLink[];
-    isLoading: boolean;
-    error: string | null;
-    
-    fetchLinks: () => Promise<void>;
-    revokeLink: (linkId: string) => Promise<boolean>;
-    regenerateLink: (linkId: string) => Promise<boolean>;
-    updateLink: (linkId: string, updates: Partial<SharedLink>) => Promise<boolean>;
-}
+### Valori ritornati
+
+```ts
+const {
+  links,          // Ref<SharedLink[]>
+  isLoading,      // Ref<boolean>
+  isCreating,     // Ref<boolean>
+  error,          // Ref<string | null>
+  fetchLinks,     // () => Promise<void>
+  createLink,     // (s3Key, fileName, fileSize, fileType, options?) => Promise<SharedLinkWithEncryption | null>
+  revokeLink,     // (id) => Promise<boolean>
+  regenerateLink, // (id) => Promise<boolean>
+  updateLink,     // (id, updates: Partial<SharedLink>) => Promise<boolean>
+  deleteLink,     // (id) => Promise<boolean>
+} = useSharedLinks()
 ```
 
 ### Utilizzo
 
-```typescript
-const { links, fetchLinks, revokeLink, updateLink } = useSharedLinks();
+```ts
+import { onMounted } from 'vue'
 
-useEffect(() => {
-    fetchLinks();
-}, []);
+const { links, fetchLinks, revokeLink, updateLink } = useSharedLinks()
+
+onMounted(() => {
+  fetchLinks()
+})
 
 // Revoca link
-await revokeLink('link_123');
+await revokeLink('link_123')
 
 // Modifica impostazioni
 await updateLink('link_123', {
-    expiresAt: '2026-02-01T00:00:00Z',
-    maxDownloads: 10
-});
+  expiresAt: '2026-02-01T00:00:00Z',
+  maxDownloads: 10,
+})
 ```
+
+> Per i link **cifrati** (E2E), `createLink` può aggiungere il fragment `#key=...` all'URL
+> (`encryptedUrl`) tramite `createKeyHash`. La chiave non lascia mai il client.
 
 ---
 
 ## Tipo SharedLink
 
-```typescript
+```ts
 interface SharedLink {
-    id: string;
-    fileId: string;
-    fileName: string;
-    s3Key: string;
-    url: string;
-    isPasswordProtected: boolean;
-    expiresAt: string;
-    maxDownloads?: number;
-    downloadCount: number;
-    revokedAt: string | null;
-    createdAt: string;
-    isEncrypted: boolean; // Link include #key=... fragment
+  id: string
+  publicToken: string
+  fileName: string
+  s3Key: string
+  url: string
+  isPasswordProtected: boolean
+  expiresAt: string
+  maxDownloads?: number
+  downloadCount: number
+  revokedAt: string | null
+  createdAt: string
 }
 ```
 
 ---
 
-## Componente: SharedLinksTable
+## Componente: SharedLinksTable.vue
 
-Tabella interattiva per gestire i link:
+Tabella interattiva (PrimeVue `DataTable`) per gestire i link.
 
 ### Colonne
 | Colonna | Descrizione |
@@ -120,98 +129,63 @@ Tabella interattiva per gestire i link:
 
 ### Modal Settings
 
-```tsx
-// Modifica impostazioni link
+Stato locale con `ref`, feedback via `notify` (toast PrimeVue), niente `message.success`/`setState`:
+
+```ts
+const settingsVisible = ref(false)
+const editingLink = ref<SharedLink | null>(null)
+const newExpiryDate = ref<Date | null>(null)
+const newMaxDownloads = ref<number | undefined>()
+
 const handleSaveSettings = async () => {
-    const success = await onUpdate(editingLink.id, {
-        expiresAt: newExpiryDate?.toISOString(),
-        maxDownloads: newMaxDownloads
-    });
-    
-    if (success) {
-        message.success('Impostazioni salvate');
-        setSettingsVisible(false);
-    }
-};
+  if (!editingLink.value) return
+  const ok = await updateLink(editingLink.value.id, {
+    expiresAt: newExpiryDate.value?.toISOString(),
+    maxDownloads: newMaxDownloads.value,
+  })
+  if (ok) {
+    notify.success('Impostazioni salvate')
+    settingsVisible.value = false
+  }
+}
 ```
 
 ### Indicatore Stato
 
-```typescript
-const renderStatus = (link: SharedLink) => {
-    if (link.revokedAt) {
-        return <Badge status="error" text="Revocato" />;
-    }
-    
-    const isExpired = dayjs(link.expiresAt).isBefore(dayjs());
-    if (isExpired) {
-        return <Badge status="warning" text="Scaduto" />;
-    }
-    
-    return <Badge status="success" text="Attivo" />;
-};
+Funzione che ritorna severity + label per un `<Tag>` PrimeVue:
+
+```ts
+import dayjs from 'dayjs'
+
+const linkStatus = (link: SharedLink) => {
+  if (link.revokedAt) return { severity: 'danger', label: 'Revocato' }
+  if (dayjs(link.expiresAt).isBefore(dayjs())) return { severity: 'warn', label: 'Scaduto' }
+  return { severity: 'success', label: 'Attivo' }
+}
+```
+
+```vue
+<Tag :severity="linkStatus(link).severity" :value="linkStatus(link).label" />
 ```
 
 ---
 
 ## API Endpoints
 
-### GET /shared-links
+Riferimento completo in `docs/BACKEND_API_DOCS.md` §4.5. Sintesi:
 
-**Response:**
-```json
-{
-    "data": [
-        {
-            "id": "link_abc123",
-            "fileId": "file_xyz",
-            "fileName": "document.pdf",
-            "url": "https://example.com/d/abc123",
-            "isPasswordProtected": true,
-            "expiresAt": "2026-02-01T00:00:00Z",
-            "maxDownloads": 10,
-            "downloadCount": 3,
-            "revokedAt": null,
-            "createdAt": "2026-01-05T12:00:00Z"
-        }
-    ]
-}
-```
-
-### POST /shared-links/:id/revoke
-
-Revoca un link rendendolo inutilizzabile.
-
-**Response:**
-```json
-{
-    "success": true,
-    "revokedAt": "2026-01-05T15:00:00Z"
-}
-```
-
-### POST /shared-links/:id/regenerate
-
-Genera nuovo URL mantenendo le impostazioni.
-
-**Response:** Nuovo oggetto `SharedLink`
-
-### PATCH /shared-links/:id
-
-**Request:**
-```json
-{
-    "expiresAt": "2026-03-01T00:00:00Z",
-    "maxDownloads": 50,
-    "password": "nuova_password"
-}
-```
+- **`GET /api/shared-links`** → lista link dell'owner (`{ data: SharedLink[] }`).
+- **`POST /api/shared-links`** → crea link (body: `s3Key`, `fileName`, `expiresInHours`, `password?`, `maxDownloads?`).
+- **`POST /api/shared-links/:id/revoke`** → revoca.
+- **`POST /api/shared-links/:id/regenerate`** → nuovo `publicToken` e reset.
+- **`PATCH /api/shared-links/:id`** → aggiorna `expiresAt` / `password` / `maxDownloads`.
+- **`DELETE /api/shared-links/:id`** → elimina.
 
 ---
 
 ## Considerazioni
 
-1. **URL Unici** - Ogni link ha un ID univoco non indovinabile
-2. **Password Hashing** - Le password sono hashate lato server
-3. **Rate Limiting** - Limiti per prevenire abuse
-4. **Cleanup** - Link scaduti vengono archiviati dopo 30 giorni
+1. **URL Unici** — ogni link ha un `publicToken` (nanoid) non indovinabile.
+2. **Password Hashing** — le password sono hashate lato server (Argon2).
+3. **Rate Limiting** — limiti per prevenire abuse.
+4. **Accesso pubblico** — flusso a 3 step (info → access con password → file con session token).
