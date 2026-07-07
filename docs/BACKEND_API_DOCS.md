@@ -2,6 +2,13 @@
 
 > Documento di riferimento per il frontend. Descrive architettura, autenticazione, modelli dati e **tutti** gli endpoint del backend.
 > Aggiornato al codice corrente (`app.js` + cartelle `routes/`, `services/`, `middleware/`, `config/`, `utils/`).
+>
+> **Aggiornamento — consolidamento Lambda → Express.** Tre gruppi di endpoint prima
+> ospitati su AWS Lambda + API Gateway sono ora route Express sotto l'unico
+> `VITE_API_URL` (i suffissi dei path NON cambiano, cambia solo la base):
+> - **Multipart upload** (`POST /api/upload/multipart/{init,urls,complete,abort}`) — era `VITE_API_MULTIPART_URL`. Vedi §4.3-bis.
+> - **Condivisione utente→utente** (`POST /api/share`, `GET /api/shared-files`) — era `VITE_LAMBDA_URL`. Vedi §4.8.
+> - Inoltre l'auth JWT ora **verifica la firma** del token (vedi §2.1).
 
 ---
 
@@ -34,15 +41,20 @@ Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia
 ### Mounting delle route (`app.js`)
 
 ```
-/                       → healthRoutes        (health check)
-/api/upload/*           → uploadRoutes        (+ uploadLimiter)
-/api/user/*             → userRoutes          (file/immagini/profilo/stats)
-/api/user/*             → e2eRoutes           (chiavi E2E — stesso prefisso!)
-/api/*                  → filesRoutes         (url firmati, download, delete)
-/api/shared-links/*     → sharedLinksRoutes   (link pubblici)
-/api/file-sharing/*     → fileSharingRoutes   (condivisione via email)
+/                        → healthRoutes        (health check)
+/api/upload/multipart/*  → multipartRoutes      (upload a parti — NO uploadLimiter)   ⟵ NEW
+/api/upload/*            → uploadRoutes         (+ uploadLimiter)
+/api/user/*             → userRoutes           (file/immagini/profilo/stats)
+/api/* (share)          → shareRoutes          (POST /api/share, GET /api/shared-files) ⟵ NEW
+/api/*                  → filesRoutes          (url firmati, download, delete)
+/api/shared-links/*     → sharedLinksRoutes    (link pubblici)
+/api/user/*             → e2eRoutes            (chiavi E2E — stesso prefisso!)
+/api/file-sharing/*     → fileSharingRoutes    (condivisione via email)
 /api/login | /register | /confirm-registration → auth Cognito (inline in app.js)
 ```
+> `multipartRoutes` è montato **prima** di `/api/upload` (e senza `uploadLimiter`, perché un
+> singolo upload a parti genera molte richieste). `shareRoutes` è montato **prima** di
+> `filesRoutes` per non essere intercettato dal prefisso generico `/api/*`.
 
 > ⚠️ **Nota collisione prefisso**: sia `userRoutes` che `e2eRoutes` sono montate su `/api/user`. `userRoutes` è registrata **prima**, quindi ha precedenza su path che combaciano. In pratica i path non si sovrappongono (`/files`, `/images`, `/stats` vs `/public-key`, `/file-keys`, `/recovery-key`), ma tienine conto se aggiungi nuovi endpoint.
 
@@ -53,22 +65,25 @@ Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia
 Esistono **tre** meccanismi di auth distinti:
 
 ### 2.1 `authenticateToken` (middleware standard)
-File: `middleware/auth.js`. Usato da upload, user, files, shared-links (rotte owner).
+File: `middleware/auth.js`. Usato da upload, multipart, user, files, shared-links (rotte owner), share.
 
 - Header richiesto: `Authorization: Bearer <IdToken Cognito>`
-- **Importante**: il token viene **decodificato** (`jwt.decode`), **NON verificato crittograficamente**. Non viene controllata la firma. (Valido per ambiente attuale, ma non è una verifica di sicurezza forte.)
+- **Aggiornato**: il token viene ora **verificato crittograficamente** con `aws-jwt-verify`
+  (`CognitoJwtVerifier`, `tokenUse: "id"`, controllo di firma/scadenza/audience contro le JWKS
+  del User Pool). Non è più un semplice `jwt.decode`. → un token forgiato/scaduto viene **respinto**.
+  Inviare l'**IdToken** Cognito (non l'access token).
 - Popola `req.user`:
   ```js
   req.user = { sub, email, name }   // sub = Cognito user id
   ```
-- Errori: `401 { error: 'Access token required' }` se manca; `403 { error: 'Invalid token' }` se non decodificabile.
+- Errori: `401 { error: 'Access token required' }` se manca; `403 { error: 'Invalid token' }` se la verifica fallisce.
 
 ### 2.2 `authFileSharing` (middleware locale di fileSharing)
-File: `routes/fileSharing.js`. Analogo ma popola:
+File: `routes/fileSharing.js`. Ora **riusa lo stesso verifier** di §2.1 (firma verificata), mantenendo la sua forma:
 ```js
-req.user = { email, userId, name }   // userId da sub | cognito:username | userId
+req.user = { email, userId, name }   // userId = sub | cognito:username
 ```
-Errori: `401` token mancante/invalido, `403` token scaduto/non valido.
+Errori: `401 { success:false, message }` token mancante/senza email, `403 { success:false, message }` token non valido/scaduto.
 
 ### 2.3 Session token dei link condivisi (JWT proprietario)
 File: `utils/crypto.js`. Per accesso a file dietro link pubblico.
@@ -171,6 +186,26 @@ Chiavi file E2E (PK composta `userId` + `s3Key`).
 ### 3.6 `Users` (`USERS_TABLE`)
 Usata in sola lettura per lookup `email → userId` (`GET /api/user/by-email/:email/public-key`).
 
+### 3.7 `SharesTable` (`SHARES_TABLE`) — condivisione utente→utente  ⟵ NEW
+Record di condivisione diretta **utente → utente** (E2E), portata dalle vecchie Lambda di sharing.
+Distinta da `SharedFiles` (email) e `SharedLinks` (link pubblici).
+```js
+{
+  shareId,             // uuid (PK)
+  s3Key,               // file condiviso
+  ownerId,             // Cognito sub del mittente
+  sharedToUserId,      // Cognito sub del destinatario (PK del GSI SharedToUserIndex)
+  type: 'read',
+  status: 'active',
+  encryptedAESKey?,    // chiave AES cifrata per il destinatario (E2E), opzionale
+  encryptionIV?,       // IV cifratura, opzionale
+  createdAt,           // ISO
+  // snapshot metadati file:
+  fileName, fileSize, fileType, uploadedAt
+}
+```
+**GSI**: `SharedToUserIndex` (PK `sharedToUserId`) → query "file condivisi con me" (`GET /api/shared-files`).
+
 ### Struttura chiavi S3
 ```
 uploads/images/{userId}/{timestamp}-{uuid}.jpg          // immagini (ottimizzate, max 1200px, jpeg q85)
@@ -218,6 +253,25 @@ Risposta upload-image / upload-file (`200`):
 Risposta upload-profile-image (`200`): oggetto `profileImage` con `imageType: 'profile'`.
 
 Errori comuni: `400` file troppo grande / tipo non supportato / file assente · `503` AWS non disponibile · `429` rate limit.
+
+---
+
+### 4.3-bis Multipart Upload — `/api/upload/multipart` (NO rate limiter)  ⟵ NEW
+
+Upload di file grandi a parti. Owner = `req.user.sub`; il `fileKey` è generato dal server e
+deve appartenere all'utente (prefisso `uploads/files/{sub}/`, altrimenti `403`).
+Dettaglio completo + flusso client in [`multipart-upload.md`](./multipart-upload.md).
+
+| Auth | Metodo | Path | Body | Risposta |
+|---|---|---|---|---|
+| 🔑 | `POST` | `/api/upload/multipart/init` | `{ fileName, fileType }` | `{ uploadId, fileKey }` |
+| 🔑 | `POST` | `/api/upload/multipart/urls` | `{ fileKey, uploadId, partNumbers: number[] }` | `{ urls: { [partNumber]: presignedUrl } }` (scad. 1h) |
+| 🔑 | `POST` | `/api/upload/multipart/complete` | `{ fileKey, uploadId, parts:[{PartNumber,ETag}], fileName?, fileSize?, fileType? }` | `{ location, key }` |
+| 🔑 | `POST` | `/api/upload/multipart/abort` | `{ fileKey, uploadId }` | `{ status: 'aborted' }` |
+
+- Flusso: `init` → `urls` → il client fa `PUT` di ogni chunk **direttamente su S3** alle presigned URL e raccoglie gli `ETag` → `complete` (o `abort`).
+- Su `complete` il server scrive anche i metadati su `SharedFiles` (così il file compare nelle liste).
+- Errori: `400` campi mancanti · `403` `fileKey` non di proprietà · `503` AWS down · `500`.
 
 ---
 
@@ -344,6 +398,38 @@ Risposta: `{ success, message, results[], totalRecipients, totalFiles, totalShar
 
 ---
 
+### 4.8 User-to-User Sharing (E2E) — `/api/share`, `/api/shared-files`  ⟵ NEW
+
+Condivisione diretta **utente → utente** su tabella `SharesTable` (porting delle Lambda
+`dev-createShare` / `dev-getSharedFiles`). Distinta dal file-sharing via email (§4.7) e dai
+link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md).
+
+| Auth | Metodo | Path | Descrizione |
+|---|---|---|---|
+| 🔑 | `POST` | `/api/share` | Condivide un file con un altro utente (per email). |
+| 🔑 | `GET` | `/api/shared-files` | Lista dei file condivisi **con** l'utente autenticato. |
+
+**Body `POST /api/share`**:
+```js
+{ s3Key*, type?: 'user', targetEmail*, encryptedAESKey?, encryptionIV? }
+```
+- Verifica esistenza file su S3 (`HeadObject`), risolve `targetEmail` via Cognito, vieta il self-share, scrive su `SharesTable`. `ownerId = req.user.sub`.
+- Risposta `200`: `{ message: 'File shared successfully', shareId }`.
+- Errori: `400` (s3Key/targetEmail mancanti, self-share, type non valido) · `404` (file non in S3, utente non trovato) · `503`.
+
+**Risposta `GET /api/shared-files`** → `{ files: [...] }`, ogni elemento:
+```json
+{ "shareId", "s3Key", "ownerId", "encryptedAESKey", "encryptionIV", "sharedAt",
+  "s3Url": "<presigned download, 1h>", "senderEmail": "<email reale mittente>",
+  "fileName", "fileSize", "fileType", "lastModified",
+  "name", "size", "type", "uploadedAt" }
+```
+> `s3Url` è una **presigned URL** (bucket privato) e `senderEmail` è l'email reale risolta via
+> Cognito — due bug delle vecchie Lambda corretti nel porting. I campi duplicati
+> (`fileName`/`name`, ecc.) sono voluti per compatibilità col frontend.
+
+---
+
 ## 5. Configurazione & limiti
 
 ### Variabili d'ambiente
@@ -356,9 +442,10 @@ Risposta: `{ success, message, results[], totalRecipients, totalFiles, totalShar
 | `COGNITO_CLIENT_ID` | — (obbligatoria) | Cognito App Client. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credenziali (Fly.io/prod). Fallback `_2`. |
 | `SESSION_SECRET` | default insicuro | Firma session token link. |
-| `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token`. |
+| `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
 | `MAX_FILE_SIZE` | 5MB | Limite immagini. |
 | `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici. |
+| `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Impostare il nome reale. |
 | `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
 | `NODE_ENV` | `development` | Logging richieste + dettaglio errori. |
 
@@ -367,8 +454,8 @@ Risposta: `{ success, message, results[], totalRecipients, totalFiles, totalShar
 - `apiLimiter`: 100 / 15 min (definito, disponibile per uso generale).
 
 ### CORS
-Origini ammesse: `http://localhost:5173`, `http://localhost:3000`. Metodi: GET/POST/PUT/DELETE/PATCH/OPTIONS. Header: `Content-Type`, `Authorization`, `X-Requested-With`.
-> Per il deploy il frontend di produzione va aggiunto alla whitelist in `app.js`.
+Origini ammesse: `http://localhost:5173`, `http://localhost:3000`, **+ `FRONTEND_URL` se impostata**. Metodi: GET/POST/PUT/DELETE/PATCH/OPTIONS. Header: `Content-Type`, `Authorization`, `X-Requested-With`.
+> Per il deploy basta impostare `FRONTEND_URL` con l'origine di produzione: `app.js` la aggiunge automaticamente alla whitelist.
 
 ### Sicurezza header
 `helmet` con `crossOriginResourcePolicy: cross-origin` e `crossOriginOpenerPolicy: same-origin-allow-popups`.
@@ -390,8 +477,10 @@ URL firmati S3: scadenze tipiche **1h** (liste/preview owner), **15 min** (downl
 
 ## 7. Note per il frontend
 
-1. **Token Bearer**: usa l'`IdToken` Cognito (ritornato da `/api/login` in `userSub`) per tutte le rotte 🔑.
+1. **Token Bearer**: usa l'`IdToken` Cognito (ritornato da `/api/login` in `userSub`) per tutte le rotte 🔑. **La firma è ora verificata**: token forgiati/scaduti → `403`. Non usare l'access token.
 2. **Upload**: invia `multipart/form-data`; il nome del campo file è specifico per endpoint (`image` / `profileImage` / `file`). Puoi passare `fileSize` già formattato per coerenza visiva.
+   - Per file grandi usa il **multipart** (§4.3-bis): `init → urls → PUT chunk su S3 → complete`.
+8. **Consolidamento URL (Lambda → Express)**: multipart e sharing utente→utente sono ora sotto `VITE_API_URL` (prima `VITE_API_MULTIPART_URL` e `VITE_LAMBDA_URL`). I suffissi dei path restano identici (`/upload/multipart/*`, `/share`, `/shared-files`): basta cambiare la base URL.
 3. **Eliminazione file**: `DELETE /api/uploads/files` vuole `fileId` = la **s3Key** completa (es. `uploads/files/{sub}/...`).
 4. **Link condivisi pubblici**: flusso a 3 step (info → access → file). Conserva il `sessionToken` (valido 1h) per scaricare/preview.
 5. **E2E**: tutta la crittografia avviene lato client; il backend è solo deposito di chiavi pubbliche/wrapped e backup cifrati.
