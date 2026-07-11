@@ -1,5 +1,6 @@
 import axios, { type AxiosResponse, type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import Cookies from 'js-cookie'
+import { setAuthCookie, clearAuthCookies } from './cookieStore'
 import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId } from './cognitoClient'
 
@@ -29,13 +30,11 @@ const doRefreshToken = async (): Promise<string | null> => {
     const { AccessToken, IdToken } = response.AuthenticationResult ?? {}
     if (!AccessToken || !IdToken) throw new Error('Invalid refresh response')
 
-    Cookies.set('accessToken', AccessToken, { expires: 1 / 24 })
-    Cookies.set('idToken', IdToken, { expires: 1 / 24 })
+    setAuthCookie('accessToken', AccessToken, 1 / 24)
+    setAuthCookie('idToken', IdToken, 1 / 24)
     return AccessToken
   } catch (error) {
-    Cookies.remove('accessToken')
-    Cookies.remove('idToken')
-    Cookies.remove('refreshToken')
+    clearAuthCookies()
     throw error
   }
 }

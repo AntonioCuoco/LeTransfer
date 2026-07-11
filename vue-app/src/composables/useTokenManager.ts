@@ -1,6 +1,7 @@
 import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
+import { setAuthCookie, clearAuthCookies } from '@/src/utils/cookieStore'
 import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId } from '@/src/utils/cognitoClient'
 import { isTokenExpired } from '@/src/utils/getCurrentUser'
@@ -15,17 +16,15 @@ export const useTokenManager = () => {
   const { showInfo, showError } = useSessionNotifications()
 
   const clearTokens = () => {
-    Cookies.remove('accessToken')
-    Cookies.remove('idToken')
-    Cookies.remove('refreshToken')
+    clearAuthCookies()
     isAuthenticated.value = false
     showError('Sessione scaduta. Effettua nuovamente il login.')
   }
 
   const updateTokens = (accessToken: string, idToken: string, refreshToken?: string) => {
-    Cookies.set('accessToken', accessToken, { expires: 1 / 24 })
-    Cookies.set('idToken', idToken, { expires: 1 / 24 })
-    if (refreshToken) Cookies.set('refreshToken', refreshToken, { expires: 30 })
+    setAuthCookie('accessToken', accessToken, 1 / 24)
+    setAuthCookie('idToken', idToken, 1 / 24)
+    if (refreshToken) setAuthCookie('refreshToken', refreshToken, 30)
     isAuthenticated.value = true
   }
 

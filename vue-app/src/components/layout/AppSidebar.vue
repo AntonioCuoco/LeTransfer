@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useRouter, RouterLink } from 'vue-router'
-import Cookies from 'js-cookie'
 import Swal from 'sweetalert2'
 import axios from 'axios'
 import logo from '@/src/assets/logo.png'
+import { clearAuthCookies } from '@/src/utils/cookieStore'
 
 const router = useRouter()
 
@@ -16,16 +16,13 @@ const navItems = [
 
 const handleLogout = async () => {
   try {
-    await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {}, {
-      headers: { Authorization: `Bearer ${Cookies.get('idToken')}` },
-    })
+    // L'accessToken è iniettato dall'interceptor axios globale (vedi decisione #8).
+    await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {})
   } catch {
     // continue with logout even if API call fails
   }
 
-  Cookies.remove('accessToken')
-  Cookies.remove('idToken')
-  Cookies.remove('refreshToken')
+  clearAuthCookies()
 
   Swal.fire({ icon: 'success', title: 'Logout effettuato', text: 'A presto!', timer: 1500, showConfirmButton: false })
   router.push('/login')

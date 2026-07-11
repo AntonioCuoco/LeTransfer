@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import Cookies from 'js-cookie'
 import axios from 'axios'
+import { clearAuthCookies } from '@/src/utils/cookieStore'
 
 const router = useRouter()
 
 const handleLogout = async () => {
   try {
-    await axios.post(`${import.meta.env.VITE_API_URL}/auth/logout`, {}, {
-      headers: { Authorization: `Bearer ${Cookies.get('idToken')}` },
-    })
+    // L'accessToken è iniettato dall'interceptor axios globale (vedi decisione #8).
+    await axios.post(`${import.meta.env.VITE_API_URL}/auth/logout`, {})
   } catch {
     // continue with cookie removal even if the call fails
   }
-  Cookies.remove('accessToken')
-  Cookies.remove('idToken')
-  Cookies.remove('refreshToken')
+  clearAuthCookies()
   router.push('/login')
 }
 </script>

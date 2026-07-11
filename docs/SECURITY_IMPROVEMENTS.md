@@ -258,21 +258,24 @@ Le 4 lambda avevano `Access-Control-Allow-Origin: *` e leak di `error.message`. 
 ### 🖥️ BINARIO DEV — repo frontend (ADESSO)
 Tutto codice in `vue-app/`, nessuna dipendenza esterna. Ordine consigliato (dal più isolato al più delicato):
 
-**Fase 0 — Quick wins (una PR, nessuna breaking change)**
-- **#13** — rimuovere `crypto-js`, `@types/crypto-js`, funzioni morte, chunk `crypto`.
-- **#4** — PBKDF2 separato (100k recovery / 600k password) + campo `iterations` nel backup.
-- **#2 + #11** — helper `cookieStore.ts` (`secure: protocol==='https:'`, `sameSite: 'strict'`) su tutte le 6 `Cookies.set`.
-- **#8** — unificare su accessToken: rimuovere header manuali idToken + spostare il PUT S3 di `useFileFromDynamoDB` su istanza axios senza interceptor.
-- **#3 (parte dev)** — CSP rilassata in `vite.config.ts`/`vite preview` (la versione autoritativa è nel binario PROD).
+**✅ Fase 0 — Quick wins (FATTA — type-check pulito)**
+- **#13** ✅ rimossi `crypto-js`/`@types/crypto-js`, funzioni morte, chunk `crypto`.
+- **#4** ✅ PBKDF2 separato (100k recovery / 600k password) + campo `iterations` nel backup.
+- **#2 + #11** ✅ helper `cookieStore.ts` (`secure: protocol==='https:'`, `sameSite: 'strict'`) su tutte le `Cookies.set`.
+- **#8** ✅ unificato su accessToken: rimossi header manuali idToken + istanza axios dedicata per S3 + fallback accessToken sul flusso multipart (`useS3MultipartUpload`).
+- **#3 (parte dev)** ✅ header sicuri in `vite.config.ts` (nosniff/X-Frame-Options/Referrer-Policy); CSP autoritativa nel binario PROD.
 
-**Fase 1 — Chiavi (richiede migrazione)**
-- **#1 + #9** — private key `extractable:false` in IndexedDB, backup estraibile-on-demand + `wrapKey`, migrazione da localStorage; AAD `s3Key` in `wrapFileKey`/`unwrapFileKey`.
+**✅ Fase 1 — Chiavi (FATTA)**
+- **#1** ✅ private key RSA `extractable:false` in IndexedDB (`utils/keyStore.ts`), backup estraibile-on-demand, migrazione da localStorage. Dettaglio: [SECURITY_FIX_1_KEYPAIR.md](SECURITY_FIX_1_KEYPAIR.md).
+- **#9** ✅ AAD `s3Key` in `wrapFileKey`/`unwrapFileKey` **con fallback** per le chiavi vecchie.
 
-**Fase 2 — Streaming encryption (breaking change formato)**
-- **#6** — `encryptChunk`/`decryptChunk` in upload + download + preview, con `formatVersion`.
+**⬜ Fase 2 — Streaming encryption (breaking change formato) — DA FARE**
+- **#6** — `encryptChunk`/`decryptChunk` in upload + download + preview, con `formatVersion`. Unico blocco DEV rimasto; da pianificare a parte col `formatVersion` lato backend.
 
-**Fase 3 — Minori**
-- **#10** `keyCache` → `shallowRef` + idle-timeout.
+**✅ Fase 3 — Minori (FATTA)**
+- **#10** ✅ `keyCache` → `shallowRef` + idle-timeout (svuota la cache dopo 20 min di inattività).
+
+**Follow-up non bloccanti:** collegare `clearKeys()` al logout (evita bleed di chiavi tra utenti sullo stesso browser); sistemare `eslint.config.js` per far girare il lint.
 
 ### 🌐⚙️ BINARIO PROD / INFRA / EXPRESS — appena possibile (dopo DEV)
 Non in questo repo: repo Express + hosting. **Obbligatorio per essere davvero sicuri in produzione.**

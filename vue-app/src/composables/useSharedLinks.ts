@@ -32,9 +32,7 @@ export const useSharedLinks = () => {
     isLoading.value = true
     error.value = null
     try {
-      const { data } = await axios.get<{ data?: SharedLink[] }>(`${API_BASE_URL}/shared-links`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const { data } = await axios.get<{ data?: SharedLink[] }>(`${API_BASE_URL}/shared-links`)
       links.value = Array.isArray(data.data) ? data.data : []
     } catch {
       notify.error('Errore durante il caricamento dei link condivisi')
@@ -53,7 +51,7 @@ export const useSharedLinks = () => {
 
       const body: CreateSharedLinkRequest = { s3Key, fileName, fileSize, fileType, password: options?.password, expiresInHours: options?.expiresInHours || 168, maxDownloads: options?.maxDownloads }
       const { data } = await axios.post<CreateSharedLinkResponse>(`${API_BASE_URL}/shared-links`, body, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
       })
 
       if (data.success && data.data) {
@@ -79,7 +77,7 @@ export const useSharedLinks = () => {
 
   const revokeLink = async (linkId: string): Promise<boolean> => {
     try {
-      await axios.post(`${API_BASE_URL}/shared-links/${linkId}/revoke`, {}, { headers: { Authorization: `Bearer ${getToken()}` } })
+      await axios.post(`${API_BASE_URL}/shared-links/${linkId}/revoke`, {})
       links.value = links.value.map(l => l.id === linkId ? { ...l, revokedAt: new Date().toISOString() } : l)
       return true
     } catch { notify.error('Errore durante la revoca del link'); return false }
@@ -87,7 +85,7 @@ export const useSharedLinks = () => {
 
   const regenerateLink = async (linkId: string): Promise<boolean> => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/shared-links/${linkId}/regenerate`, {}, { headers: { Authorization: `Bearer ${getToken()}` } })
+      const response = await axios.post(`${API_BASE_URL}/shared-links/${linkId}/regenerate`, {})
       const newLink = response.data.data || response.data
       links.value = links.value.map(l => l.id === linkId ? newLink : l)
       await fetchLinks()
@@ -97,7 +95,7 @@ export const useSharedLinks = () => {
 
   const updateLink = async (linkId: string, updates: Partial<SharedLink>): Promise<boolean> => {
     try {
-      const { data } = await axios.patch<SharedLink>(`${API_BASE_URL}/shared-links/${linkId}`, updates, { headers: { Authorization: `Bearer ${getToken()}` } })
+      const { data } = await axios.patch<SharedLink>(`${API_BASE_URL}/shared-links/${linkId}`, updates)
       links.value = links.value.map(l => l.id === linkId ? data : l)
       return true
     } catch { notify.error("Errore durante l'aggiornamento del link"); return false }
@@ -105,7 +103,7 @@ export const useSharedLinks = () => {
 
   const deleteLink = async (linkId: string): Promise<boolean> => {
     try {
-      await axios.delete(`${API_BASE_URL}/shared-links/${linkId}`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      await axios.delete(`${API_BASE_URL}/shared-links/${linkId}`)
       links.value = links.value.filter(l => l.id !== linkId)
       return true
     } catch { notify.error("Errore durante l'eliminazione del link"); return false }

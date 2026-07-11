@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
+import { setAuthCookie } from '@/src/utils/cookieStore'
 import Swal from 'sweetalert2'
 import { AuthFlowType, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
@@ -67,9 +68,9 @@ const handleConfirm = async () => {
       if (loginResponse.AuthenticationResult) {
         const { AccessToken, IdToken, RefreshToken } = loginResponse.AuthenticationResult
         if (AccessToken && IdToken && RefreshToken) {
-          Cookies.set('accessToken', AccessToken, { expires: 1 / 24 })
-          Cookies.set('idToken', IdToken, { expires: 1 / 24 })
-          Cookies.set('refreshToken', RefreshToken, { expires: 30 })
+          setAuthCookie('accessToken', AccessToken, 1 / 24)
+          setAuthCookie('idToken', IdToken, 1 / 24)
+          setAuthCookie('refreshToken', RefreshToken, 30)
         }
         isModalOpen.value = false
         Swal.fire({ title: 'Registrazione completata!', text: 'Benvenuto nella piattaforma', icon: 'success' })

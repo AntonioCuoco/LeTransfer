@@ -17,6 +17,9 @@ export const useFileFromDynamoDB = () => {
 
   const encryptionStore = useEncryptionStore()
 
+  // Istanza axios SENZA interceptor: gli URL S3 presigned non devono ricevere l'accessToken (#8).
+  const s3Api = axios.create()
+
   const getToken = () => Cookies.get('idToken')
 
   const loadFiles = async (options?: LoadFilesOptions) => {
@@ -32,10 +35,7 @@ export const useFileFromDynamoDB = () => {
       if (options?.fileType) params.fileType = options.fileType
       if (options?.onlyOwned) params.onlyOwned = options.onlyOwned
 
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/files/dynamo`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-      })
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/files/dynamo`, { params })
       files.value = data.files || []
       nextKey.value = data.nextKey || null
       hasMore.value = data.hasMore || false
@@ -60,10 +60,7 @@ export const useFileFromDynamoDB = () => {
       if (options?.limit) params.limit = options.limit
       if (options?.fileType) params.fileType = options.fileType
 
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/files/dynamo`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params,
-      })
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/files/dynamo`, { params })
       files.value = [...files.value, ...(data.files || [])]
       nextKey.value = data.nextKey || null
       hasMore.value = data.hasMore || false
@@ -84,10 +81,9 @@ export const useFileFromDynamoDB = () => {
       const token = getToken()
       if (!token) throw new Error('Token di autenticazione non trovato')
       const { data: presignedData } = await axios.get(`${import.meta.env.VITE_API_URL}/presigned-url`, {
-        headers: { Authorization: `Bearer ${token}` },
         params: { fileName: file.name, fileType: file.type },
       })
-      await axios.put(presignedData.uploadUrl, file, {
+      await s3Api.put(presignedData.uploadUrl, file, {
         headers: { 'Content-Type': file.type },
         onUploadProgress: (evt) => {
           if (options?.onProgress && evt.total) {
@@ -117,7 +113,6 @@ export const useFileFromDynamoDB = () => {
       const token = getToken()
       if (!token) throw new Error('Token di autenticazione non trovato')
       await axios.delete(`${import.meta.env.VITE_API_URL}/uploads/files`, {
-        headers: { Authorization: `Bearer ${token}` },
         data: { fileId: s3Key },
       })
       files.value = files.value.filter(f => f.fileId !== fileId)
@@ -185,8 +180,7 @@ export const useFileFromDynamoDB = () => {
   const createShareLink = async (file: DynamoDBFile): Promise<ShareLinkData | null> => {
     try {
       const { data } = await axios.get(
-        `${import.meta.env.VITE_API_URL}/file-url?key=${file.s3Key}&download=true&expires=3600`,
-        { headers: { Authorization: `Bearer ${getToken()}` } }
+        `${import.meta.env.VITE_API_URL}/file-url?key=${file.s3Key}&download=true&expires=3600`
       )
       return { url: data.url, fileName: file.fileName, fileSize: file.fileSize, uploadDate: file.uploadedAt, expiresIn: '1 ora', fileType: file.fileType }
     } catch (err: unknown) {

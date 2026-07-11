@@ -3,7 +3,11 @@ const AES_KEY_LENGTH = 256
 const RSA_ALGORITHM = 'RSA-OAEP'
 const RSA_KEY_LENGTH = 4096
 const RSA_HASH = 'SHA-256'
-const PBKDF2_ITERATIONS = 100000
+// Recovery Key: input = mnemonica a 256 bit di entropia → il brute force è impossibile, 100k basta.
+export const PBKDF2_ITER_RECOVERY = 100_000
+// Password utente (entropia potenzialmente bassa): backup cifrato sul server, brute-forceabile
+// offline → OWASP 2023 raccomanda >=600k per PBKDF2-SHA256.
+export const PBKDF2_ITER_PASSWORD = 600_000
 
 export interface EncryptedData {
   encrypted: Blob
@@ -19,6 +23,9 @@ export interface KeyPairBackup {
   encryptedPrivateKey: string
   salt: string
   iv: string
+  // Numero di iterazioni PBKDF2 usato per derivare la chiave di questo backup.
+  // Assente nei backup vecchi (creati a 100k) → il decrypt fa fallback a 100k.
+  iterations?: number
 }
 
 export interface ExportedKeyData {
@@ -112,8 +119,8 @@ export async function exportPrivateKeyToJWK(privateKey: CryptoKey): Promise<Json
   return crypto.subtle.exportKey('jwk', privateKey)
 }
 
-export async function importPrivateKeyFromJWK(jwk: JsonWebKey): Promise<CryptoKey> {
-  return crypto.subtle.importKey('jwk', jwk, { name: RSA_ALGORITHM, hash: RSA_HASH }, true, ['decrypt', 'unwrapKey'])
+export async function importPrivateKeyFromJWK(jwk: JsonWebKey, extractable = true): Promise<CryptoKey> {
+  return crypto.subtle.importKey('jwk', jwk, { name: RSA_ALGORITHM, hash: RSA_HASH }, extractable, ['decrypt', 'unwrapKey'])
 }
 
 export async function wrapKeyWithPublicKey(aesKey: CryptoKey, rsaPublicKey: CryptoKey): Promise<string> {
@@ -126,10 +133,10 @@ export async function unwrapKeyWithPrivateKey(wrappedKeyBase64: string, rsaPriva
   return crypto.subtle.unwrapKey('raw', wrappedKey, rsaPrivateKey, { name: RSA_ALGORITHM }, { name: AES_ALGORITHM, length: AES_KEY_LENGTH }, true, ['encrypt', 'decrypt'])
 }
 
-export async function deriveKeyFromPassword(password: string, salt: Uint8Array): Promise<CryptoKey> {
+export async function deriveKeyFromPassword(password: string, salt: Uint8Array, iterations: number = PBKDF2_ITER_PASSWORD): Promise<CryptoKey> {
   const passwordKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey'])
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     passwordKey,
     { name: AES_ALGORITHM, length: AES_KEY_LENGTH },
     false,
@@ -140,32 +147,44 @@ export async function deriveKeyFromPassword(password: string, salt: Uint8Array):
 export async function encryptPrivateKeyForBackup(privateKey: CryptoKey, password: string): Promise<KeyPairBackup> {
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const iv = generateIV()
-  const derivedKey = await deriveKeyFromPassword(password, salt)
+  const derivedKey = await deriveKeyFromPassword(password, salt, PBKDF2_ITER_PASSWORD)
   const privateKeyJWK = await exportPrivateKeyToJWK(privateKey)
   const encryptedPrivateKey = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, derivedKey, new TextEncoder().encode(JSON.stringify(privateKeyJWK)))
-  return { encryptedPrivateKey: arrayBufferToBase64(encryptedPrivateKey), salt: arrayBufferToBase64(salt.buffer), iv: arrayBufferToBase64(iv.buffer) }
+  return { encryptedPrivateKey: arrayBufferToBase64(encryptedPrivateKey), salt: arrayBufferToBase64(salt.buffer), iv: arrayBufferToBase64(iv.buffer), iterations: PBKDF2_ITER_PASSWORD }
 }
 
 export async function decryptPrivateKeyFromBackup(backup: KeyPairBackup, password: string): Promise<CryptoKey> {
   const salt = new Uint8Array(base64ToArrayBuffer(backup.salt))
   const iv = new Uint8Array(base64ToArrayBuffer(backup.iv))
   const encryptedPrivateKey = base64ToArrayBuffer(backup.encryptedPrivateKey)
-  const derivedKey = await deriveKeyFromPassword(password, salt)
+  // Backup vecchi (senza `iterations`) sono stati creati a 100k → fallback per retrocompatibilità.
+  const derivedKey = await deriveKeyFromPassword(password, salt, backup.iterations ?? 100_000)
   const decryptedBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, derivedKey, encryptedPrivateKey)
   return importPrivateKeyFromJWK(JSON.parse(new TextDecoder().decode(decryptedBuffer)))
 }
 
-export async function wrapFileKey(fileKey: CryptoKey, wrappingKey: CryptoKey): Promise<{ wrappedKey: string; wrapIV: string }> {
+export async function wrapFileKey(fileKey: CryptoKey, wrappingKey: CryptoKey, s3Key: string): Promise<{ wrappedKey: string; wrapIV: string }> {
   const iv = generateIV()
   const keyData = await crypto.subtle.exportKey('raw', fileKey)
-  const encryptedBuffer = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, wrappingKey, keyData)
+  // AAD = s3Key (#9): lega crittograficamente la file key al file specifico. Un server malevolo
+  // che scambia le entry non può far decifrare la wrapped key con un s3Key diverso.
+  const aad = new TextEncoder().encode(s3Key)
+  const encryptedBuffer = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv, additionalData: aad }, wrappingKey, keyData)
   return { wrappedKey: arrayBufferToBase64(encryptedBuffer), wrapIV: arrayBufferToBase64(iv.buffer) }
 }
 
-export async function unwrapFileKey(wrappedKeyBase64: string, wrapIVBase64: string, wrappingKey: CryptoKey): Promise<CryptoKey> {
+export async function unwrapFileKey(wrappedKeyBase64: string, wrapIVBase64: string, wrappingKey: CryptoKey, s3Key: string): Promise<CryptoKey> {
   const encryptedBuffer = base64ToArrayBuffer(wrappedKeyBase64)
   const iv = base64ToArrayBuffer(wrapIVBase64)
-  const keyData = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, wrappingKey, encryptedBuffer)
+  const aad = new TextEncoder().encode(s3Key)
+  let keyData: ArrayBuffer
+  try {
+    // Formato nuovo (#9): file key legata al suo s3Key tramite AAD.
+    keyData = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv, additionalData: aad }, wrappingKey, encryptedBuffer)
+  } catch {
+    // Fallback per le chiavi VECCHIE, wrappate senza AAD (pre-#9): non rompiamo i file esistenti.
+    keyData = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, wrappingKey, encryptedBuffer)
+  }
   return crypto.subtle.importKey('raw', keyData, { name: AES_ALGORITHM, length: AES_KEY_LENGTH }, true, ['encrypt', 'decrypt'])
 }
 

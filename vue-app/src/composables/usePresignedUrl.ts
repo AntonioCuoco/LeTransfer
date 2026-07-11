@@ -19,7 +19,6 @@ export const usePresignedUrl = () => {
       const base = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL
       const { data } = await axios.get<{ url: string }>(`${base}/file-url`, {
         params: { key: s3Key, download: options?.download || false, expires: options?.expires || 3600 },
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       })
       return data.url
     } catch (err: unknown) {

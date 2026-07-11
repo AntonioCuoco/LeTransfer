@@ -16,6 +16,17 @@ export default defineConfig({
       dts: 'components.d.ts',
     }),
   ],
+  // Security headers per il DEV server. Questi tre sono sempre sicuri (non rompono l'HMR).
+  // La CSP *autoritativa* NON va qui: una CSP stretta romperebbe l'HMR di Vite (usa eval + ws).
+  // Va impostata in PROD sull'host/CDN che serve il build — CSP completa in
+  // docs/SECURITY_IMPROVEMENTS.md #3 (binario PROD/Infra).
+  server: {
+    headers: {
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './'),
@@ -27,7 +38,6 @@ export default defineConfig({
         manualChunks: {
           primevue: ['primevue', '@primeuix/themes'],
           vendor: ['vue', 'vue-router', 'pinia', '@tanstack/vue-query'],
-          crypto: ['crypto-js'],
         },
       },
     },

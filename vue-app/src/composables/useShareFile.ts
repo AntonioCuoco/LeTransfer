@@ -41,7 +41,7 @@ export const useShareFile = () => {
 
       const body: ShareFileRequest = { s3Key, type: 'user', targetEmail, encryptedAESKey, encryptionIV }
       const { data } = await axios.post<ShareFileResponse>(`${API_BASE_URL}/share`, body, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
       })
 
       options?.onSuccess?.(data)
@@ -69,9 +69,7 @@ export const useShareFile = () => {
     try {
       const token = Cookies.get('idToken')
       if (!token) throw new Error('Token di autenticazione non trovato')
-      const { data } = await axios.get<{ files: SharedFile[] }>(`${API_BASE_URL}/shared-files`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const { data } = await axios.get<{ files: SharedFile[] }>(`${API_BASE_URL}/shared-files`)
       const files = data.files || []
       sharedFiles.value = files
       return files

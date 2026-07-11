@@ -16,9 +16,7 @@ export const useRecoveryKeyAPI = () => {
     try {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
-      await axios.post(`${import.meta.env.VITE_API_URL}/user/recovery-key/setup`, data, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      await axios.post(`${import.meta.env.VITE_API_URL}/user/recovery-key/setup`, data)
       return true
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
@@ -36,9 +34,7 @@ export const useRecoveryKeyAPI = () => {
     try {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/recovery-key/status`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/recovery-key/status`)
       return data
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }

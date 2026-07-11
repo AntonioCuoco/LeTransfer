@@ -1,4 +1,4 @@
-import { deriveKeyFromPassword } from './crypto'
+import { deriveKeyFromPassword, PBKDF2_ITER_RECOVERY } from './crypto'
 import { wordlist } from './bip39-wordlist'
 
 export async function generateRecoveryKey(): Promise<string> {
@@ -24,7 +24,9 @@ export async function deriveMasterKeyFromMnemonic(mnemonic: string, salt: Uint8A
   const cleanMnemonic = mnemonic.trim().toLowerCase().split(/\s+/).join(' ')
   const isValid = await validateRecoveryKey(cleanMnemonic)
   if (!isValid) throw new Error('Invalid recovery phrase (checksum failed)')
-  return deriveKeyFromPassword(cleanMnemonic, salt)
+  // Recovery Key: entropia alta (mnemonica 256 bit) → 100k iterazioni. NON alzare: cambierebbe
+  // la master key derivata e romperebbe l'unwrap delle file key già salvate.
+  return deriveKeyFromPassword(cleanMnemonic, salt, PBKDF2_ITER_RECOVERY)
 }
 
 function byteToBinary(byte: number): string {

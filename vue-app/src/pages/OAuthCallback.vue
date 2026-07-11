@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import Cookies from 'js-cookie'
+import { setAuthCookie } from '@/src/utils/cookieStore'
 
 const router = useRouter()
 
@@ -23,9 +23,9 @@ onMounted(async () => {
 
     const data = await res.json()
     if (data.access_token && data.id_token) {
-      Cookies.set('accessToken', data.access_token, { expires: 1 / 24 })
-      Cookies.set('idToken', data.id_token, { expires: 1 / 24 })
-      if (data.refresh_token) Cookies.set('refreshToken', data.refresh_token, { expires: 30 })
+      setAuthCookie('accessToken', data.access_token, 1 / 24)
+      setAuthCookie('idToken', data.id_token, 1 / 24)
+      if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
     }
     sessionStorage.removeItem('pkce_verifier')
     router.replace('/')

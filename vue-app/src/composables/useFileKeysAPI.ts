@@ -15,9 +15,7 @@ export const useFileKeysAPI = () => {
     try {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
-      await axios.post(`${import.meta.env.VITE_API_URL}/user/file-keys`, data, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      await axios.post(`${import.meta.env.VITE_API_URL}/user/file-keys`, data)
       return true
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
@@ -35,8 +33,7 @@ export const useFileKeysAPI = () => {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
       const { data } = await axios.get(
-        `${import.meta.env.VITE_API_URL}/user/file-keys/${encodeURIComponent(s3Key)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${import.meta.env.VITE_API_URL}/user/file-keys/${encodeURIComponent(s3Key)}`
       )
       return data.data
     } catch (err: unknown) {
@@ -55,9 +52,7 @@ export const useFileKeysAPI = () => {
     try {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
-      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/file-keys`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/file-keys`)
       return (data as GetFileKeysResponse).keys || []
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string }
@@ -75,8 +70,7 @@ export const useFileKeysAPI = () => {
       const token = getAuthToken()
       if (!token) throw new Error('Not authenticated')
       await axios.delete(
-        `${import.meta.env.VITE_API_URL}/user/file-keys/${encodeURIComponent(s3Key)}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${import.meta.env.VITE_API_URL}/user/file-keys/${encodeURIComponent(s3Key)}`
       )
       return true
     } catch (err: unknown) {

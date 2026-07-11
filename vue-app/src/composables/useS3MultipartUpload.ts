@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import axios from 'axios'
+import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
 import { generateAESKey, encryptFile, exportKeyToBase64, exportIVToBase64 } from '@/src/utils/crypto'
@@ -51,7 +52,10 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   const encryptionIVRef = shallowRef<Uint8Array | null>(null)
 
   const getHeaders = async () => {
-    const token = finalConfig.getAuthToken ? await finalConfig.getAuthToken() : null
+    // L'API multipart usa un'istanza axios propria (`api`), SENZA l'interceptor globale,
+    // quindi il token va aggiunto qui. Default: accessToken (decisione #8), altrimenti gli
+    // endpoint multipart autenticati lato Express risponderebbero 401.
+    const token = finalConfig.getAuthToken ? await finalConfig.getAuthToken() : Cookies.get('accessToken')
     return token ? { Authorization: `Bearer ${token}` } : {}
   }
 
