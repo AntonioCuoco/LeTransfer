@@ -10,43 +10,28 @@
 
 ---
 
-## 🔴 1. BLOCCANTE — Backup keypair: persistere il campo `iterations`
+## 🟢 1. Backup keypair: storage opaco `{ encryptedPrivateKey, iv }`
 
-**Perché:** il frontend ora protegge il backup della private key con **PBKDF2 a 600.000
-iterazioni** (prima 100k), e salva il numero di iterazioni **dentro il record di backup** per
-retrocompatibilità. Se il backend non salva/restituisce questo campo, i **nuovi** backup non si
-riescono più a ripristinare (deriverebbe la chiave con le iterazioni sbagliate → restore fallito).
-I backup **vecchi** non sono a rischio (il frontend fa fallback a 100k se il campo manca).
+> **Aggiornato (design finale, 2026-06-27).** Sostituisce la versione precedente che chiedeva un
+> campo `iterations`/`salt` (backup con password + PBKDF2). Quel design è stato **abbandonato**.
 
-**Endpoint coinvolti:** `POST /user/keypair-backup` e `GET /user/keypair-backup`.
+**Perché è cambiato:** il backup della private key RSA è ora cifrato con la **master key**
+(AES-256 derivata dalla recovery key a 256 bit dell'utente), **non** con una password. Quindi:
+niente PBKDF2, niente `salt`, niente `iterations`. Sicurezza più alta (il blob è inattaccabile
+anche con il DB compromesso, perché la chiave è a piena entropia) e contratto più semplice.
 
-**Cosa fare:** salvare e restituire il record di backup **verbatim**, includendo `iterations`.
-Trattarlo come blob opaco: non validare/riscrivere i campi crittografici.
+**Endpoint:** `POST /user/keypair-backup` e `GET /user/keypair-backup`.
 
-**Forma del body inviato dal frontend (POST):**
+**Cosa fare:** trattare il record come **blob opaco** e salvarlo/restituirlo verbatim.
+
+Body (POST) e risposta (GET → `data`):
 ```json
-{
-  "encryptedPrivateKey": "<base64url>",
-  "salt": "<base64url>",
-  "iv": "<base64url>",
-  "iterations": 600000
-}
+{ "encryptedPrivateKey": "<base64url>", "iv": "<base64url>" }
 ```
 
-**Forma attesa in risposta (GET):**
-```json
-{ "success": true, "data": {
-  "encryptedPrivateKey": "<base64url>",
-  "salt": "<base64url>",
-  "iv": "<base64url>",
-  "iterations": 600000
-} }
-```
-
-- `iterations` è un **number**, **opzionale** (i record già esistenti non ce l'hanno → il frontend
-  assume 100000). Aggiungere la colonna/attributo senza migrazione dei dati vecchi.
-- ⚠️ Da rilasciare **prima o insieme** al deploy del frontend, altrimenti chi ricrea il backup
-  dopo il deploy non riesce più a ripristinarlo.
+- **Nessun** campo `salt`/`iterations` (rimossi). Se lo schema li aveva, ignorarli.
+- `GET` risponde `{ "success": true, "data": { ... } }`, oppure `404` se non esiste ancora un backup.
+- Non è più "bloccante" come prima: essendo cifrato con una chiave a 256 bit, il blob è opaco e sicuro.
 
 ---
 
@@ -169,7 +154,7 @@ Modifiche che serviranno quando il frontend farà Fase 1/2. Solo da tenere prese
 
 ## ✅ Checklist
 
-- [ ] **(BLOCCANTE)** `keypair-backup` salva e restituisce `iterations` (opzionale, number).
+- [ ] `keypair-backup` salva/restituisce il blob opaco `{ encryptedPrivateKey, iv }` (no salt/iterations).
 - [ ] **(CRITICO)** `middleware/auth.js` verifica la firma con `aws-jwt-verify`, `tokenUse: "access"`.
 - [ ] Route multipart: `authenticateToken` + ownership su `uploads/files/${sub}/` + `userId` dal `sub`.
 - [ ] CORS whitelist (dev + prod) e nessun `error.message` nelle risposte.

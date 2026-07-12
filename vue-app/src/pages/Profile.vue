@@ -24,7 +24,7 @@ const fileTypeOptions = [
 ]
 
 const { files: dynamoFiles, isLoading: hookLoading, loadFiles: loadFilesFromDynamo, deleteFile: deleteFileFromDynamo, downloadFile } = useFileFromDynamoDB()
-const { sharedFiles, isLoadingShared, getSharedWithMe } = useShareFile()
+const { sharedFiles, isLoadingShared, getSharedWithMe, downloadSharedFile } = useShareFile()
 const { links: sharedLinks, isLoading: isLinksLoading, fetchLinks, revokeLink, regenerateLink, updateLink, deleteLink } = useSharedLinks()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
 
@@ -137,6 +137,16 @@ const handleDeleteFile = async (fileId: string) => {
 const handleShareFile = (file: DynamoDBFile) => { fileToShare.value = file; shareModalVisible.value = true }
 const handleShareModalClose = () => { shareModalVisible.value = false; fileToShare.value = null }
 
+// I file ricevuti (condivisione utente→utente) si decifrano con la MIA private key RSA, non con la
+// master key: instradiamo il download di conseguenza.
+const handleDownload = async (f: DynamoDBFile) => {
+  if (f.isReceived) {
+    const shared = sharedFiles.value.find(s => s.shareId === f.shareId || s.s3Key === f.s3Key)
+    if (shared) { await downloadSharedFile(shared); return }
+  }
+  await downloadFile(f)
+}
+
 onMounted(async () => {
   loadFiles(1)
   loadSharedFiles()
@@ -203,7 +213,7 @@ onMounted(async () => {
               :files="currentPageFiles"
               :hide-header="true"
               :on-delete-file="handleDeleteFile"
-              :on-download-file="(f: DynamoDBFile) => downloadFile(f)"
+              :on-download-file="handleDownload"
               :on-share-file="handleShareFile"
             />
             <div v-if="totalFiles > pageSize" class="flex justify-center mt-6">

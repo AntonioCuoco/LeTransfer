@@ -5,7 +5,8 @@ import Swal from 'sweetalert2'
 import type { ShareFileRequest, ShareFileResponse, SharedFile, ShareFileOptions } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
-import { wrapKeyWithPublicKey, importKeyFromBase64 } from '@/src/utils/crypto'
+import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/utils/crypto'
+import { notify } from '@/src/utils/notify'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -15,7 +16,7 @@ export const useShareFile = () => {
   const sharedFiles = ref<SharedFile[]>([])
   const shareError = ref<string | null>(null)
 
-  const { getRecipientPublicKey } = useUserKeyPair()
+  const { getRecipientPublicKey, privateKey } = useUserKeyPair()
   const encryptionStore = useEncryptionStore()
 
   const shareFile = async (s3Key: string, targetEmail: string, options?: ShareFileOptions): Promise<ShareFileResponse | null> => {
@@ -82,9 +83,41 @@ export const useShareFile = () => {
     }
   }
 
+  // Scarica un file ricevuto in condivisione (utente→utente). Se è cifrato E2E, la file key AES è
+  // wrappata con la MIA chiave pubblica RSA: la sblocco con la mia private key (non estraibile, ma
+  // può fare unwrap), poi decifro il file. Se non è cifrato, scarica direttamente.
+  const downloadSharedFile = async (file: SharedFile): Promise<boolean> => {
+    try {
+      if (!file.s3Url) throw new Error('URL del file non disponibile')
+      const res = await fetch(file.s3Url)
+      let finalBlob = await res.blob()
+
+      if (file.encryptedAESKey && file.encryptionIV) {
+        if (!privateKey.value) throw new Error('Chiavi di cifratura non ancora pronte. Riprova tra un istante.')
+        const aesKey = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+        const iv = importIVFromBase64(file.encryptionIV)
+        finalBlob = await decryptFile(finalBlob, aesKey, iv)
+      }
+
+      const url = URL.createObjectURL(finalBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.fileName || 'download'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      return true
+    } catch (err: unknown) {
+      const e = err as { message?: string }
+      notify.error(e.message || 'Errore durante il download del file condiviso')
+      return false
+    }
+  }
+
   const reset = () => {
     isSharing.value = false; isLoadingShared.value = false; sharedFiles.value = []; shareError.value = null
   }
 
-  return { isSharing, isLoadingShared, sharedFiles, shareError, shareFile, getSharedWithMe, reset }
+  return { isSharing, isLoadingShared, sharedFiles, shareError, shareFile, getSharedWithMe, downloadSharedFile, reset }
 }

@@ -4,8 +4,10 @@ import Swal from 'sweetalert2'
 import axios from 'axios'
 import logo from '@/src/assets/logo.png'
 import { clearAuthCookies } from '@/src/utils/cookieStore'
+import { useEncryptionStore } from '@/src/stores/encryption'
 
 const router = useRouter()
+const encryptionStore = useEncryptionStore()
 
 // `exact: true` for the home route — otherwise `/` matches every path as a
 // prefix and the Home item would stay highlighted on every page.
@@ -23,6 +25,7 @@ const handleLogout = async () => {
   }
 
   clearAuthCookies()
+  encryptionStore.clearMasterKey() // azzera la master key (+ cache) in RAM: niente vault sbloccato dopo il logout
 
   Swal.fire({ icon: 'success', title: 'Logout effettuato', text: 'A presto!', timer: 1500, showConfirmButton: false })
   router.push('/login')

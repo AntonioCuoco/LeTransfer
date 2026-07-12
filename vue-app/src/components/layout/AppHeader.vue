@@ -2,8 +2,10 @@
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { clearAuthCookies } from '@/src/utils/cookieStore'
+import { useEncryptionStore } from '@/src/stores/encryption'
 
 const router = useRouter()
+const encryptionStore = useEncryptionStore()
 
 const handleLogout = async () => {
   try {
@@ -13,6 +15,7 @@ const handleLogout = async () => {
     // continue with cookie removal even if the call fails
   }
   clearAuthCookies()
+  encryptionStore.clearMasterKey() // azzera la master key (+ cache) in RAM: niente vault sbloccato dopo il logout
   router.push('/login')
 }
 </script>

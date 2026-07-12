@@ -270,7 +270,7 @@ Tutto codice in `vue-app/`, nessuna dipendenza esterna. Ordine consigliato (dal 
 - **#9** ✅ AAD `s3Key` in `wrapFileKey`/`unwrapFileKey` **con fallback** per le chiavi vecchie.
 
 **⬜ Fase 2 — Streaming encryption (breaking change formato) — DA FARE**
-- **#6** — `encryptChunk`/`decryptChunk` in upload + download + preview, con `formatVersion`. Unico blocco DEV rimasto; da pianificare a parte col `formatVersion` lato backend.
+- **#6** — `encryptChunk`/`decryptChunk` in upload + download + preview, con `formatVersion`. Unico blocco DEV rimasto. **Design completo:** [SECURITY_FIX_6_STREAMING.md](SECURITY_FIX_6_STREAMING.md) (upload chunked illimitato ovunque + download File System Access API con fallback Blob; ⚠️ limite ~2 GB su Firefox/Safari da migliorare + avviso utente).
 
 **✅ Fase 3 — Minori (FATTA)**
 - **#10** ✅ `keyCache` → `shallowRef` + idle-timeout (svuota la cache dopo 20 min di inattività).

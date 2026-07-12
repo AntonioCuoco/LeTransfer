@@ -99,6 +99,9 @@ export interface SharedFile {
   fileType: string
   createdAt: string
   s3Url: string
+  // Presenti se il file è cifrato E2E: la file key AES wrappata con la MIA chiave pubblica RSA.
+  encryptedAESKey?: string
+  encryptionIV?: string
 }
 
 export interface GetSharedFilesResponse {

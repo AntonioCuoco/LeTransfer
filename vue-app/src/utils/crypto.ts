@@ -5,9 +5,6 @@ const RSA_KEY_LENGTH = 4096
 const RSA_HASH = 'SHA-256'
 // Recovery Key: input = mnemonica a 256 bit di entropia → il brute force è impossibile, 100k basta.
 export const PBKDF2_ITER_RECOVERY = 100_000
-// Password utente (entropia potenzialmente bassa): backup cifrato sul server, brute-forceabile
-// offline → OWASP 2023 raccomanda >=600k per PBKDF2-SHA256.
-export const PBKDF2_ITER_PASSWORD = 600_000
 
 export interface EncryptedData {
   encrypted: Blob
@@ -21,11 +18,7 @@ export interface EncryptedChunk {
 
 export interface KeyPairBackup {
   encryptedPrivateKey: string
-  salt: string
   iv: string
-  // Numero di iterazioni PBKDF2 usato per derivare la chiave di questo backup.
-  // Assente nei backup vecchi (creati a 100k) → il decrypt fa fallback a 100k.
-  iterations?: number
 }
 
 export interface ExportedKeyData {
@@ -133,7 +126,7 @@ export async function unwrapKeyWithPrivateKey(wrappedKeyBase64: string, rsaPriva
   return crypto.subtle.unwrapKey('raw', wrappedKey, rsaPrivateKey, { name: RSA_ALGORITHM }, { name: AES_ALGORITHM, length: AES_KEY_LENGTH }, true, ['encrypt', 'decrypt'])
 }
 
-export async function deriveKeyFromPassword(password: string, salt: Uint8Array, iterations: number = PBKDF2_ITER_PASSWORD): Promise<CryptoKey> {
+export async function deriveKeyFromPassword(password: string, salt: Uint8Array, iterations: number = PBKDF2_ITER_RECOVERY): Promise<CryptoKey> {
   const passwordKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits', 'deriveKey'])
   return crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
@@ -144,23 +137,23 @@ export async function deriveKeyFromPassword(password: string, salt: Uint8Array, 
   )
 }
 
-export async function encryptPrivateKeyForBackup(privateKey: CryptoKey, password: string): Promise<KeyPairBackup> {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
+// Backup della private key RSA cifrato con la MASTER KEY (AES-256 derivata dalla recovery key).
+// Nessuna password/PBKDF2: la master key è già a piena entropia (256 bit), quindi il blob è
+// inattaccabile anche se il server viene compromesso. È il meccanismo di backup/restore
+// multi-dispositivo della keypair di condivisione.
+export async function wrapPrivateKeyWithMasterKey(privateKey: CryptoKey, masterKey: CryptoKey): Promise<KeyPairBackup> {
   const iv = generateIV()
-  const derivedKey = await deriveKeyFromPassword(password, salt, PBKDF2_ITER_PASSWORD)
   const privateKeyJWK = await exportPrivateKeyToJWK(privateKey)
-  const encryptedPrivateKey = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, derivedKey, new TextEncoder().encode(JSON.stringify(privateKeyJWK)))
-  return { encryptedPrivateKey: arrayBufferToBase64(encryptedPrivateKey), salt: arrayBufferToBase64(salt.buffer), iv: arrayBufferToBase64(iv.buffer), iterations: PBKDF2_ITER_PASSWORD }
+  const encrypted = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, masterKey, new TextEncoder().encode(JSON.stringify(privateKeyJWK)))
+  return { encryptedPrivateKey: arrayBufferToBase64(encrypted), iv: arrayBufferToBase64(iv.buffer) }
 }
 
-export async function decryptPrivateKeyFromBackup(backup: KeyPairBackup, password: string): Promise<CryptoKey> {
-  const salt = new Uint8Array(base64ToArrayBuffer(backup.salt))
+export async function unwrapPrivateKeyWithMasterKey(backup: KeyPairBackup, masterKey: CryptoKey): Promise<CryptoKey> {
   const iv = new Uint8Array(base64ToArrayBuffer(backup.iv))
-  const encryptedPrivateKey = base64ToArrayBuffer(backup.encryptedPrivateKey)
-  // Backup vecchi (senza `iterations`) sono stati creati a 100k → fallback per retrocompatibilità.
-  const derivedKey = await deriveKeyFromPassword(password, salt, backup.iterations ?? 100_000)
-  const decryptedBuffer = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, derivedKey, encryptedPrivateKey)
-  return importPrivateKeyFromJWK(JSON.parse(new TextDecoder().decode(decryptedBuffer)))
+  const encrypted = base64ToArrayBuffer(backup.encryptedPrivateKey)
+  const decrypted = await crypto.subtle.decrypt({ name: AES_ALGORITHM, iv }, masterKey, encrypted)
+  // Estraibile: verrà ri-persistita NON estraibile in IDB e tenuta in RAM solo per la sessione.
+  return importPrivateKeyFromJWK(JSON.parse(new TextDecoder().decode(decrypted)), true)
 }
 
 export async function wrapFileKey(fileKey: CryptoKey, wrappingKey: CryptoKey, s3Key: string): Promise<{ wrappedKey: string; wrapIV: string }> {

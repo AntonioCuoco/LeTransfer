@@ -1,36 +1,46 @@
-import { ref, shallowRef, computed, onMounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
 import {
   generateRSAKeyPair, exportPublicKeyToJWK, importPublicKeyFromJWK,
   exportPrivateKeyToJWK, importPrivateKeyFromJWK,
-  encryptPrivateKeyForBackup, decryptPrivateKeyFromBackup, type KeyPairBackup,
+  wrapPrivateKeyWithMasterKey, unwrapPrivateKeyWithMasterKey, type KeyPairBackup,
 } from '@/src/utils/crypto'
 import { idbGet, idbSet, idbDel } from '@/src/utils/keyStore'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
+import { useEncryptionStore } from '@/src/stores/encryption'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
-// Chiavi localStorage LEGACY: sorgente della migrazione una-tantum, poi cancellate.
+// Chiavi localStorage LEGACY (versione originale, JWK in chiaro): sorgente di migrazione, poi cancellate.
 const PRIVATE_KEY_LS = 'letransfer_private_key'
 const PUBLIC_KEY_LS = 'letransfer_public_key'
 const KEYPAIR_INIT_LS = 'letransfer_keypair_initialized'
+// Chiavi IndexedDB LEGACY non-namespaciate (versione intermedia): migrate a quelle per-utente.
+const LEGACY_PRIVATE_IDB = 'letransfer_private_key'
+const LEGACY_PUBLIC_IDB = 'letransfer_public_key'
 
-// Chiavi IndexedDB: qui la private key è salvata come CryptoKey NON estraibile (fix #1).
-const PRIVATE_KEY_IDB = 'letransfer_private_key'
-const PUBLIC_KEY_IDB = 'letransfer_public_key'
+// Nomi delle voci IndexedDB, NAMESPACIATI per utente (sub): su un browser condiviso un secondo
+// utente non carica la coppia del primo (no key bleed). La private key salvata è NON estraibile (#1).
+const idbKeyNames = () => {
+  const sub = getCurrentUser()?.sub || 'anon'
+  return { pub: `letransfer_public_key_${sub}`, priv: `letransfer_private_key_${sub}` }
+}
 
 export const useUserKeyPair = () => {
+  const encryptionStore = useEncryptionStore()
+
   const publicKey = shallowRef<CryptoKey | null>(null)
   const privateKey = shallowRef<CryptoKey | null>(null)
   // Copia ESTRAIBILE della private key, tenuta solo in memoria e solo nella sessione in cui la
   // coppia è stata generata o ripristinata. Serve unicamente al backup (che deve poter esportare
-  // la chiave). La copia persistente in IndexedDB è invece NON estraibile: è questo il guadagno
-  // del #1. Dopo un reload questa è null → per rifare un backup serve prima un restore.
+  // la chiave). La copia persistente in IndexedDB è invece NON estraibile: è il guadagno del #1.
   const exportablePrivateKey = shallowRef<CryptoKey | null>(null)
+  // Backup del server in attesa di essere ripristinato appena il vault viene sbloccato (master key).
+  const pendingRestore = shallowRef<KeyPairBackup | null>(null)
   const isInitializing = ref(false)
   const error = ref<string | null>(null)
-  const needsPasswordForRestore = ref(false)
 
   const isKeyPairReady = computed(() => publicKey.value !== null && privateKey.value !== null)
 
@@ -42,30 +52,47 @@ export const useUserKeyPair = () => {
   const persistKeys = async (pubKey: CryptoKey, extractablePriv: CryptoKey): Promise<CryptoKey> => {
     const privJWK = await exportPrivateKeyToJWK(extractablePriv)
     const nonExtractablePriv = await importPrivateKeyFromJWK(privJWK, false)
-    await idbSet(PUBLIC_KEY_IDB, pubKey)
-    await idbSet(PRIVATE_KEY_IDB, nonExtractablePriv)
+    const { pub, priv } = idbKeyNames()
+    await idbSet(pub, pubKey)
+    await idbSet(priv, nonExtractablePriv)
     return nonExtractablePriv
   }
 
   const loadFromIDB = async (): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey } | null> => {
     try {
-      const pub = await idbGet(PUBLIC_KEY_IDB)
-      const priv = await idbGet(PRIVATE_KEY_IDB)
-      return pub && priv ? { publicKey: pub, privateKey: priv } : null
+      const { pub, priv } = idbKeyNames()
+      const pubKey = await idbGet(pub)
+      const privKey = await idbGet(priv)
+      return pubKey && privKey ? { publicKey: pubKey, privateKey: privKey } : null
     } catch { return null }
   }
 
-  // Migrazione una-tantum: se esistono ancora le vecchie JWK in localStorage, le re-importa come
-  // CryptoKey (private NON estraibile) in IndexedDB e pulisce localStorage.
-  const migrateFromLocalStorage = async (): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey } | null> => {
+  // Migrazione una-tantum verso lo storage namespaciato, da due possibili sorgenti legacy:
+  // 1) IDB non-namespaciato (versione intermedia di #1) → sposta le CryptoKey così come sono;
+  // 2) localStorage (versione originale) → re-importa le JWK (private NON estraibile) e pulisce.
+  const migrateLegacyKeys = async (): Promise<{ publicKey: CryptoKey; privateKey: CryptoKey } | null> => {
+    const { pub, priv } = idbKeyNames()
+
+    try {
+      const oldPub = await idbGet(LEGACY_PUBLIC_IDB)
+      const oldPriv = await idbGet(LEGACY_PRIVATE_IDB)
+      if (oldPub && oldPriv) {
+        await idbSet(pub, oldPub)
+        await idbSet(priv, oldPriv)
+        await idbDel(LEGACY_PUBLIC_IDB)
+        await idbDel(LEGACY_PRIVATE_IDB)
+        return { publicKey: oldPub, privateKey: oldPriv }
+      }
+    } catch { /* prosegui col fallback localStorage */ }
+
     const pubStr = localStorage.getItem(PUBLIC_KEY_LS)
     const privStr = localStorage.getItem(PRIVATE_KEY_LS)
     if (!pubStr || !privStr) return null
     try {
       const pubKey = await importPublicKeyFromJWK(JSON.parse(pubStr))
       const privKey = await importPrivateKeyFromJWK(JSON.parse(privStr), false)
-      await idbSet(PUBLIC_KEY_IDB, pubKey)
-      await idbSet(PRIVATE_KEY_IDB, privKey)
+      await idbSet(pub, pubKey)
+      await idbSet(priv, privKey)
       localStorage.removeItem(PRIVATE_KEY_LS)
       localStorage.removeItem(PUBLIC_KEY_LS)
       localStorage.removeItem(KEYPAIR_INIT_LS)
@@ -87,9 +114,40 @@ export const useUserKeyPair = () => {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } }
       if (e.response?.status === 404) return null
-      notify.error('Errore nel controllo del backup sul server')
       return null
     }
+  }
+
+  // Carica il backup della keypair sul server, cifrato con la MASTER KEY. Richiede: vault sbloccato
+  // (master key disponibile) + una copia ESTRAIBILE della private key (solo nella sessione in cui la
+  // coppia è stata generata/ripristinata). Idempotente: non ricarica se un backup esiste già.
+  const ensureServerBackup = async () => {
+    const mk = encryptionStore.masterKey
+    if (!mk || !exportablePrivateKey.value) return
+    try {
+      if (await checkServerBackup()) return
+      const backup = await wrapPrivateKeyWithMasterKey(exportablePrivateKey.value, mk)
+      await axios.post(`${API_BASE_URL}/user/keypair-backup`, backup, { headers: getHeaders() })
+    } catch { /* backup non critico: si ritenta al prossimo avvio/sblocco */ }
+  }
+
+  // Ripristina la keypair dal backup del server usando la master key. Se il vault non è ancora
+  // sbloccato, mette il backup in attesa: lo riprende il watcher su isUnlocked.
+  const doRestore = async (backup: KeyPairBackup): Promise<boolean> => {
+    const mk = encryptionStore.masterKey
+    if (!mk) { pendingRestore.value = backup; return false }
+    try {
+      const extractablePriv = await unwrapPrivateKeyWithMasterKey(backup, mk)
+      const { data } = await axios.get(`${API_BASE_URL}/user/public-key`, { headers: getHeaders() })
+      if (!data.success || !data.data?.publicKeyJWK) throw new Error('Failed to get public key from server')
+      const pubKey = await importPublicKeyFromJWK(data.data.publicKeyJWK)
+      const nonExtractablePriv = await persistKeys(pubKey, extractablePriv)
+      publicKey.value = pubKey
+      privateKey.value = nonExtractablePriv
+      exportablePrivateKey.value = extractablePriv
+      pendingRestore.value = null
+      return true
+    } catch { error.value = 'Impossibile ripristinare le chiavi dal backup'; return false }
   }
 
   const initializeKeyPair = async () => {
@@ -100,18 +158,19 @@ export const useUserKeyPair = () => {
       const idb = await loadFromIDB()
       if (idb) { publicKey.value = idb.publicKey; privateKey.value = idb.privateKey; return }
 
-      const migrated = await migrateFromLocalStorage()
+      const migrated = await migrateLegacyKeys()
       if (migrated) { publicKey.value = migrated.publicKey; privateKey.value = migrated.privateKey; return }
 
       const serverBackup = await checkServerBackup()
-      if (serverBackup) { needsPasswordForRestore.value = true; return }
+      if (serverBackup) { await doRestore(serverBackup); return }
 
       const keyPair = await generateRSAKeyPair() // estraibile (transitoria)
       const nonExtractablePriv = await persistKeys(keyPair.publicKey, keyPair.privateKey)
       await uploadPublicKeyToServer(keyPair.publicKey)
       publicKey.value = keyPair.publicKey
       privateKey.value = nonExtractablePriv
-      exportablePrivateKey.value = keyPair.privateKey // consente il backup in questa sessione
+      exportablePrivateKey.value = keyPair.privateKey
+      ensureServerBackup() // se sbloccato fa subito il backup; altrimenti lo fa il watcher allo sblocco
     } catch {
       notify.error('Impossibile inizializzare le chiavi di cifratura')
       error.value = 'Impossibile inizializzare le chiavi di cifratura'
@@ -120,41 +179,13 @@ export const useUserKeyPair = () => {
     }
   }
 
-  const restoreFromBackup = async (password: string): Promise<boolean> => {
-    isInitializing.value = true
-    error.value = null
-    try {
-      const serverBackup = await checkServerBackup()
-      if (!serverBackup) { error.value = 'Nessun backup trovato sul server'; return false }
-      const extractablePriv = await decryptPrivateKeyFromBackup(serverBackup, password)
-      const { data } = await axios.get(`${API_BASE_URL}/user/public-key`, { headers: getHeaders() })
-      if (!data.success || !data.data?.publicKeyJWK) throw new Error('Failed to get public key from server')
-      const pubKey = await importPublicKeyFromJWK(data.data.publicKeyJWK)
-      const nonExtractablePriv = await persistKeys(pubKey, extractablePriv)
-      publicKey.value = pubKey
-      privateKey.value = nonExtractablePriv
-      exportablePrivateKey.value = extractablePriv
-      needsPasswordForRestore.value = false
-      notify.success('Chiavi ripristinate con successo dal backup')
-      return true
-    } catch { notify.error('Password non corretta o backup corrotto'); error.value = 'Password non corretta o backup corrotto'; return false }
-    finally { isInitializing.value = false }
-  }
-
-  const backupToServer = async (password: string): Promise<boolean> => {
-    const exportable = exportablePrivateKey.value
-    if (!exportable) {
-      error.value = 'Backup non disponibile in questa sessione: ripristina prima le chiavi dal backup, oppure rigenera la coppia.'
-      notify.error(error.value)
-      return false
-    }
-    try {
-      const backup = await encryptPrivateKeyForBackup(exportable, password)
-      await axios.post(`${API_BASE_URL}/user/keypair-backup`, backup, { headers: getHeaders() })
-      notify.success('Backup delle chiavi salvato sul server')
-      return true
-    } catch { notify.error('Impossibile salvare il backup sul server'); error.value = 'Impossibile salvare il backup sul server'; return false }
-  }
+  // Quando il vault si sblocca (master key disponibile): ripristina il backup in attesa, oppure
+  // carica il backup della keypair se è appena stata generata/ripristinata e non è ancora sul server.
+  watch(() => encryptionStore.isUnlocked, (unlocked) => {
+    if (!unlocked) return
+    if (pendingRestore.value) doRestore(pendingRestore.value)
+    else if (isKeyPairReady.value) ensureServerBackup()
+  })
 
   const getRecipientPublicKey = async (email: string): Promise<CryptoKey | null> => {
     try {
@@ -169,18 +200,21 @@ export const useUserKeyPair = () => {
     return exportPublicKeyToJWK(publicKey.value)
   }
 
-  // Rimuove la coppia da memoria e IndexedDB (es. logout / cambio utente).
-  const clearKeys = async () => {
-    publicKey.value = null
-    privateKey.value = null
-    exportablePrivateKey.value = null
-    needsPasswordForRestore.value = false
-    try { await idbDel(PRIVATE_KEY_IDB); await idbDel(PUBLIC_KEY_IDB) } catch { /* ignore */ }
-  }
-
   onMounted(() => {
     if (Cookies.get('accessToken')) initializeKeyPair()
   })
 
-  return { publicKey, privateKey, isKeyPairReady, isInitializing, error, needsPasswordForRestore, initializeKeyPair, restoreFromBackup, backupToServer, getRecipientPublicKey, exportPublicKeyJWK, clearKeys }
+  return { publicKey, privateKey, isKeyPairReady, isInitializing, error, initializeKeyPair, getRecipientPublicKey, exportPublicKeyJWK }
+}
+
+// Rimuove la coppia RSA dell'utente corrente da IndexedDB (funzione standalone: NON istanzia il
+// composable, quindi niente onMounted). ⚠️ NON collegata al logout di proposito: la keypair è già
+// ripristinabile dal backup cifrato con la master key, ma cancellarla al logout imporrebbe un
+// restore a ogni login. Collegarla al logout solo se si vuole la semantica "dimentica dispositivo".
+export async function clearPersistedKeyPair(): Promise<void> {
+  try {
+    const { pub, priv } = idbKeyNames()
+    await idbDel(priv)
+    await idbDel(pub)
+  } catch { /* ignore */ }
 }
