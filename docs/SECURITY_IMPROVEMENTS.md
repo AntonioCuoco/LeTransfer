@@ -269,8 +269,8 @@ Tutto codice in `vue-app/`, nessuna dipendenza esterna. Ordine consigliato (dal 
 - **#1** ✅ private key RSA `extractable:false` in IndexedDB (`utils/keyStore.ts`), backup estraibile-on-demand, migrazione da localStorage. Dettaglio: [SECURITY_FIX_1_KEYPAIR.md](SECURITY_FIX_1_KEYPAIR.md).
 - **#9** ✅ AAD `s3Key` in `wrapFileKey`/`unwrapFileKey` **con fallback** per le chiavi vecchie.
 
-**⬜ Fase 2 — Streaming encryption (breaking change formato) — DA FARE**
-- **#6** — `encryptChunk`/`decryptChunk` in upload + download + preview, con `formatVersion`. Unico blocco DEV rimasto. **Design completo:** [SECURITY_FIX_6_STREAMING.md](SECURITY_FIX_6_STREAMING.md) (upload chunked illimitato ovunque + download File System Access API con fallback Blob; ⚠️ limite ~2 GB su Firefox/Safari da migliorare + avviso utente).
+**✅ Fase 2 — Streaming encryption (FATTA)**
+- **#6** ✅ formato "v2" a chunk: upload streaming (`utils/streamingDownload.ts` + `encryptChunkFramed`/`decryptChunkFramed` in crypto.ts), download con File System Access API + fallback Blob e avviso utente su Firefox/Safari, routing v1/v2 nei 3 percorsi (file propri, condivisi, link pubblico). Retrocompatibile con i file v1. **Design:** [SECURITY_FIX_6_STREAMING.md](SECURITY_FIX_6_STREAMING.md). ⚠️ Backend deve persistire/restituire `formatVersion`/`chunkSize`/`originalSize` ([BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) §7).
 
 **✅ Fase 3 — Minori (FATTA)**
 - **#10** ✅ `keyCache` → `shallowRef` + idle-timeout (svuota la cache dopo 20 min di inattività).

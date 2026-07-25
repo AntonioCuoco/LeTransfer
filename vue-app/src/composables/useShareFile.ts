@@ -7,6 +7,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
 import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/utils/crypto'
 import { notify } from '@/src/utils/notify'
+import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -89,12 +90,47 @@ export const useShareFile = () => {
   const downloadSharedFile = async (file: SharedFile): Promise<boolean> => {
     try {
       if (!file.s3Url) throw new Error('URL del file non disponibile')
+
+      // La file key AES è wrappata con la MIA chiave pubblica RSA → la sblocco con la mia private key
+      // (non estraibile, ma può comunque fare unwrap).
+      let aesKey: CryptoKey | null = null
+      if (file.encryptedAESKey) {
+        if (!privateKey.value) throw new Error('Chiavi di cifratura non ancora pronte. Riprova tra un istante.')
+        aesKey = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+      }
+
+      // Formato v2 (#6): decifratura a chunk in streaming — niente file intero in RAM.
+      if (aesKey && file.formatVersion === 2 && file.chunkSize && file.originalSize != null) {
+        if (shouldWarnLargeDownload(file.originalSize)) {
+          const warn = await Swal.fire({
+            title: 'File molto grande',
+            text: 'Su questo browser i file oltre ~2 GB potrebbero non scaricarsi. Per file di queste dimensioni usa Chrome o Edge.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Prova comunque',
+            cancelButtonText: 'Annulla',
+          })
+          if (!warn.isConfirmed) return false
+        }
+        try {
+          await downloadAndDecryptV2({
+            url: file.s3Url,
+            key: aesKey,
+            chunkSize: file.chunkSize,
+            originalSize: file.originalSize,
+            fileName: file.fileName || 'download',
+          })
+          return true
+        } catch (err) {
+          if (err instanceof DownloadCancelled) return false
+          throw err
+        }
+      }
+
+      // --- Formato v1 (legacy): intero blob con un unico IV ---
       const res = await fetch(file.s3Url)
       let finalBlob = await res.blob()
-
-      if (file.encryptedAESKey && file.encryptionIV) {
-        if (!privateKey.value) throw new Error('Chiavi di cifratura non ancora pronte. Riprova tra un istante.')
-        const aesKey = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+      if (aesKey && file.encryptionIV) {
         const iv = importIVFromBase64(file.encryptionIV)
         finalBlob = await decryptFile(finalBlob, aesKey, iv)
       }

@@ -55,7 +55,7 @@ export const useSharedLinks = () => {
       })
 
       if (data.success && data.data) {
-        let result: SharedLinkWithEncryption = { ...data.data }
+        const result: SharedLinkWithEncryption = { ...data.data }
         if (options?.encryptionKey && options?.encryptionIV) {
           const keyHash = createKeyHash({ key: options.encryptionKey, iv: options.encryptionIV })
           result.encryptedUrl = `${FRONTEND_URL}/share/${data.data.publicToken}${keyHash}`

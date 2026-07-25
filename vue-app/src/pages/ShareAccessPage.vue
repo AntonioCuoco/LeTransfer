@@ -7,6 +7,7 @@ import LinkAccessForm from '@/src/components/LinkAccess/LinkAccessForm.vue'
 import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
 import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/utils/crypto'
+import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
 
 type PageState = 'loading' | 'access_form' | 'authenticated' | 'error'
 
@@ -71,20 +72,37 @@ const handleDownload = async () => {
     if (encryptionInfo.value) {
       isDecrypting.value = true
       try {
-        const res = await fetch(url)
-        const encryptedBlob = await res.blob()
-        const decryptedBlob = await decryptFile(encryptedBlob, encryptionInfo.value.key, encryptionInfo.value.iv)
-        const downloadUrl = URL.createObjectURL(decryptedBlob)
-        const a = document.createElement('a')
-        a.href = downloadUrl
-        a.download = linkInfo.value?.fileName || 'download'
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(downloadUrl)
-        notify.success('File decifrato e scaricato!')
-      } catch {
-        notify.error('Errore durante la decifratura del file')
+        const info = linkInfo.value
+        // Formato v2 (#6): decifratura a chunk in streaming — niente file intero in RAM.
+        if (info?.formatVersion === 2 && info.chunkSize && info.originalSize != null) {
+          if (shouldWarnLargeDownload(info.originalSize)) {
+            notify.error('Su questo browser i file oltre ~2 GB potrebbero non scaricarsi: per file di queste dimensioni usa Chrome o Edge.')
+          }
+          await downloadAndDecryptV2({
+            url,
+            key: encryptionInfo.value.key,
+            chunkSize: info.chunkSize,
+            originalSize: info.originalSize,
+            fileName: info.fileName || 'download',
+          })
+          notify.success('File decifrato e scaricato!')
+        } else {
+          // --- Formato v1 (legacy): intero blob con un unico IV ---
+          const res = await fetch(url)
+          const encryptedBlob = await res.blob()
+          const decryptedBlob = await decryptFile(encryptedBlob, encryptionInfo.value.key, encryptionInfo.value.iv)
+          const downloadUrl = URL.createObjectURL(decryptedBlob)
+          const a = document.createElement('a')
+          a.href = downloadUrl
+          a.download = linkInfo.value?.fileName || 'download'
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(downloadUrl)
+          notify.success('File decifrato e scaricato!')
+        }
+      } catch (err) {
+        if (!(err instanceof DownloadCancelled)) notify.error('Errore durante la decifratura del file')
       } finally {
         isDecrypting.value = false
       }

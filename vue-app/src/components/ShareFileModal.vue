@@ -110,7 +110,8 @@ const handleGenerateLink = async () => {
   if (link) {
     const fullUrl = link.encryptedUrl || `${FRONTEND_URL}/share/${link.publicToken}`
     generatedLink.value = fullUrl
-    encryptionData ? notify.success('Link E2E cifrato generato!') : notify.warning('Link generato senza chiavi.')
+    if (encryptionData) notify.success('Link E2E cifrato generato!')
+    else notify.warning('Link generato senza chiavi.')
     props.onLinkGenerated?.()
   }
 }

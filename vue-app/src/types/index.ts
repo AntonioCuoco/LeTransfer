@@ -26,6 +26,10 @@ export interface DynamoDBFile {
   isEncrypted?: boolean
   encryptionIV?: string
   encryptedAESKey?: string
+  // Formato del contenuto cifrato (#6): 2 = a chunk/streaming. Assente o 1 = legacy (unico blob GCM).
+  formatVersion?: number
+  chunkSize?: number
+  originalSize?: number
 }
 
 export interface SharedRecipient {
@@ -102,6 +106,10 @@ export interface SharedFile {
   // Presenti se il file è cifrato E2E: la file key AES wrappata con la MIA chiave pubblica RSA.
   encryptedAESKey?: string
   encryptionIV?: string
+  // Formato del contenuto cifrato (#6): 2 = a chunk/streaming. Assente o 1 = legacy.
+  formatVersion?: number
+  chunkSize?: number
+  originalSize?: number
 }
 
 export interface GetSharedFilesResponse {
@@ -135,6 +143,10 @@ export interface SharedLinkAccessInfo {
   expiresAt: string
   createdAt: string
   ownerName?: string
+  // Formato del contenuto cifrato (#6): 2 = a chunk/streaming. Assente o 1 = legacy.
+  formatVersion?: number
+  chunkSize?: number
+  originalSize?: number
 }
 
 export interface SharedLinkAccessRequest {
@@ -340,7 +352,7 @@ export interface UserRecoveryKeyStatus {
   verificationHash?: string
 }
 
-export interface SaveFileKeyRequest extends WrappedKeyData {}
+export type SaveFileKeyRequest = WrappedKeyData
 
 export interface GetFileKeysResponse {
   keys: WrappedKeyData[]

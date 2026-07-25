@@ -36,6 +36,8 @@ export default tseslint.config(
     rules: {
       // Variabili/parametri inutilizzati: warning, ignorando quelli con prefisso _.
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Le pagine di routing (Homepage, Profile, ...) sono legittimamente a parola singola.
+      'vue/multi-word-component-names': 'off',
     },
   },
 )

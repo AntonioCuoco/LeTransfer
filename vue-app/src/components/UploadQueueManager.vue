@@ -114,4 +114,7 @@ onUnmounted(() => {
 })
 </script>
 
-<template><!-- upload queue manager - invisible --></template>
+<template>
+  <!-- Manager invisibile: nessun output nel DOM (elemento sempre non renderizzato). -->
+  <i v-if="false" />
+</template>

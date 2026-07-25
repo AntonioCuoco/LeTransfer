@@ -5,6 +5,7 @@ import Swal from 'sweetalert2'
 import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/utils/crypto'
+import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
 
 export const useFileFromDynamoDB = () => {
   const files = ref<DynamoDBFile[]>([])
@@ -135,12 +136,43 @@ export const useFileFromDynamoDB = () => {
       const downloadUrl = file.s3Url
       if (!downloadUrl) throw new Error('URL del file non disponibile')
 
+      const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
+
+      // Formato v2 (#6): decifratura a chunk in streaming — non carica mai il file intero in RAM.
+      if (keyData && file.formatVersion === 2 && file.chunkSize && file.originalSize != null) {
+        if (shouldWarnLargeDownload(file.originalSize)) {
+          const warn = await Swal.fire({
+            title: 'File molto grande',
+            text: 'Su questo browser i file oltre ~2 GB potrebbero non scaricarsi. Per file di queste dimensioni usa Chrome o Edge.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Prova comunque',
+            cancelButtonText: 'Annulla',
+          })
+          if (!warn.isConfirmed) return false
+        }
+        try {
+          const key = await importKeyFromBase64(keyData.key)
+          await downloadAndDecryptV2({
+            url: downloadUrl,
+            key,
+            chunkSize: file.chunkSize,
+            originalSize: file.originalSize,
+            fileName: file.fileName,
+          })
+          return true
+        } catch (err) {
+          if (err instanceof DownloadCancelled) return false
+          Swal.fire({ title: 'Errore Decifratura!', text: 'Impossibile decifrare il file.', icon: 'error' })
+          return false
+        }
+      }
+
+      // --- Formato v1 (legacy): intero blob con un unico IV ---
       const response = await fetch(downloadUrl)
       const blob = await response.blob()
       let finalBlob = blob
 
-      // Try to decrypt if encryption store is unlocked
-      const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
       if (keyData) {
         try {
           const key = await importKeyFromBase64(keyData.key)

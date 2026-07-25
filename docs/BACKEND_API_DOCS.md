@@ -9,6 +9,12 @@
 > - **Multipart upload** (`POST /api/upload/multipart/{init,urls,complete,abort}`) — era `VITE_API_MULTIPART_URL`. Vedi §4.3-bis.
 > - **Condivisione utente→utente** (`POST /api/share`, `GET /api/shared-files`) — era `VITE_LAMBDA_URL`. Vedi §4.8.
 > - Inoltre l'auth JWT ora **verifica la firma** del token (vedi §2.1).
+>
+> **Aggiornamento — hardening sicurezza (2026-07).** Modifiche che il frontend deve conoscere:
+> - 🔑 Le rotte protette richiedono ora l'**ACCESS token** Cognito (`tokenUse: "access"`), **non** più l'IdToken. L'email/name (assenti nell'access token) sono risolti server-side da Cognito. Vedi §2.1.
+> - **Backup keypair** ora è un blob opaco `{ encryptedPrivateKey, iv }` — niente più `salt`/`iterations`. Vedi §4.6/§3.3.
+> - **Metadati streaming encryption** (`formatVersion`, `chunkSize`, `originalSize`) persistiti su `complete` e restituiti in lista/get/share/link. Vedi §4.3-bis/§4.5/§4.8/§3.
+> - **Errori interni**: le risposte `500` restituiscono un messaggio **generico** (niente più `error: error.message`). Vedi §6.
 
 ---
 
@@ -67,23 +73,27 @@ Esistono **tre** meccanismi di auth distinti:
 ### 2.1 `authenticateToken` (middleware standard)
 File: `middleware/auth.js`. Usato da upload, multipart, user, files, shared-links (rotte owner), share.
 
-- Header richiesto: `Authorization: Bearer <IdToken Cognito>`
-- **Aggiornato**: il token viene ora **verificato crittograficamente** con `aws-jwt-verify`
-  (`CognitoJwtVerifier`, `tokenUse: "id"`, controllo di firma/scadenza/audience contro le JWKS
+- Header richiesto: `Authorization: Bearer <AccessToken Cognito>`
+- **Aggiornato**: il token viene **verificato crittograficamente** con `aws-jwt-verify`
+  (`CognitoJwtVerifier`, **`tokenUse: "access"`**, controllo di firma/scadenza/client contro le JWKS
   del User Pool). Non è più un semplice `jwt.decode`. → un token forgiato/scaduto viene **respinto**.
-  Inviare l'**IdToken** Cognito (non l'access token).
+  ⚠️ Inviare l'**AccessToken** Cognito (non l'IdToken): un IdToken viene ora **respinto con `403`**.
+- L'access token **non contiene** `email`/`name`: vengono risolti server-side da Cognito
+  (`ListUsers` filtrando per `sub`, con **cache in-memory da 5 min**) e attaccati a `req.user`.
 - Popola `req.user`:
   ```js
-  req.user = { sub, email, name }   // sub = Cognito user id
+  req.user = { sub, email, name }   // sub dal token; email/name risolti da Cognito
   ```
 - Errori: `401 { error: 'Access token required' }` se manca; `403 { error: 'Invalid token' }` se la verifica fallisce.
 
 ### 2.2 `authFileSharing` (middleware locale di fileSharing)
-File: `routes/fileSharing.js`. Ora **riusa lo stesso verifier** di §2.1 (firma verificata), mantenendo la sua forma:
+File: `routes/fileSharing.js`. **Riusa lo stesso verifier** di §2.1 (access token, firma verificata) e
+risolve l'email da Cognito (helper `resolveUserInfo` condiviso), mantenendo la sua forma:
 ```js
-req.user = { email, userId, name }   // userId = sub | cognito:username
+req.user = { email, userId, name }   // userId = sub; email risolta da Cognito
 ```
-Errori: `401 { success:false, message }` token mancante/senza email, `403 { success:false, message }` token non valido/scaduto.
+Poiché tutta la feature si basa sull'email, se non è risolvibile → `401`.
+Errori: `401 { success:false, message }` token mancante / email non risolvibile, `403 { success:false, message }` token non valido/scaduto.
 
 ### 2.3 Session token dei link condivisi (JWT proprietario)
 File: `utils/crypto.js`. Per accesso a file dietro link pubblico.
@@ -100,7 +110,10 @@ File: `utils/crypto.js`. Per accesso a file dietro link pubblico.
 | `POST` | `/api/register` | `{ email, password, name }` | `200 { message, userSub }` / `400 { message }` |
 | `POST` | `/api/confirm-registration` | `{ email, confirmationCode }` | `200 { message }` / `400 { message }` |
 
-> `userSub` su login contiene in realtà l'**IdToken** Cognito da usare come Bearer nelle chiamate successive.
+> ⚠️ **Attenzione al tipo di token**: l'endpoint inline `/api/login` restituisce in `userSub`
+> l'**IdToken** Cognito, ma le rotte protette 🔑 richiedono l'**AccessToken** (§2.1) → usare l'IdToken
+> come Bearer dà `403`. Il frontend deve ottenere l'**access token** da Cognito (client SDK/interceptor
+> axios) e usare quello. Questo endpoint di login inline è di fatto legacy per il flusso token.
 
 ---
 
@@ -123,7 +136,11 @@ File caricato (creato da `saveFileToDynamoDB`):
   ownerEmail?,       // solo se presente
   uploadedAt,        // ISO
   status: 'uploaded',
-  isShared: false
+  isShared: false,
+  // Metadati streaming encryption (#6) — solo per file cifrati a chunk, assenti sui legacy:
+  formatVersion?,    // number (es. 2); assente/1 = legacy → percorso vecchio lato client
+  chunkSize?,        // number, byte per chunk
+  originalSize?      // number, dimensione in chiaro (pre-cifratura)
 }
 ```
 Record condiviso via email (creato da `POST /api/file-sharing/send`):
@@ -154,7 +171,9 @@ Link pubblici condivisibili.
   maxDownloads?,       // int o assente
   downloadCount,       // int
   revokedAt?,          // ISO o null
-  createdAt
+  createdAt,
+  // Metadati streaming encryption (#6), copiati dal record file alla creazione del link:
+  formatVersion?, chunkSize?, originalSize?   // assenti sui link legacy
 }
 ```
 > Nota: `routes/files.js` (`/api/file-url?share=true`) crea una variante più semplice di questo record con `type: 'shared_link'`, `fileId`, `url` e **senza** `publicToken`/`passwordHash`. Sono due flussi distinti di "condivisione".
@@ -165,11 +184,14 @@ Chiavi E2E per utente (PK `userId`).
 {
   userId,
   publicKeyJWK,            // { n, e, ... } chiave pubblica RSA in JWK
-  encryptedPrivateKey?,    // backup chiave privata cifrata
-  backupSalt?, backupIV?, backupCreatedAt?,
+  // Backup chiave privata = blob opaco cifrato con la master key a 256 bit
+  // dell'utente (derivata dalla recovery key), NON con password → no PBKDF2/salt:
+  encryptedPrivateKey?, backupIV?, backupCreatedAt?,
   createdAt, updatedAt
 }
 ```
+> ⚠️ Il vecchio schema aveva `backupSalt`/`backupIterations` (backup con password): **abbandonato**.
+> I record legacy possono ancora avere quegli attributi, ma non vengono più letti né scritti.
 
 ### 3.4 `UserSecurity` (`USER_SECURITY_TABLE`)
 Recovery key (PK `userId`).
@@ -201,7 +223,9 @@ Distinta da `SharedFiles` (email) e `SharedLinks` (link pubblici).
   encryptionIV?,       // IV cifratura, opzionale
   createdAt,           // ISO
   // snapshot metadati file:
-  fileName, fileSize, fileType, uploadedAt
+  fileName, fileSize, fileType, uploadedAt,
+  // Metadati streaming encryption (#6), copiati dal record file al momento della condivisione:
+  formatVersion?, chunkSize?, originalSize?   // assenti sulle share legacy
 }
 ```
 **GSI**: `SharedToUserIndex` (PK `sharedToUserId`) → query "file condivisi con me" (`GET /api/shared-files`).
@@ -266,11 +290,16 @@ Dettaglio completo + flusso client in [`multipart-upload.md`](./multipart-upload
 |---|---|---|---|---|
 | 🔑 | `POST` | `/api/upload/multipart/init` | `{ fileName, fileType }` | `{ uploadId, fileKey }` |
 | 🔑 | `POST` | `/api/upload/multipart/urls` | `{ fileKey, uploadId, partNumbers: number[] }` | `{ urls: { [partNumber]: presignedUrl } }` (scad. 1h) |
-| 🔑 | `POST` | `/api/upload/multipart/complete` | `{ fileKey, uploadId, parts:[{PartNumber,ETag}], fileName?, fileSize?, fileType? }` | `{ location, key }` |
+| 🔑 | `POST` | `/api/upload/multipart/complete` | `{ fileKey, uploadId, parts:[{PartNumber,ETag}], fileName?, fileSize?, fileType?, formatVersion?, chunkSize?, originalSize? }` | `{ location, key }` |
 | 🔑 | `POST` | `/api/upload/multipart/abort` | `{ fileKey, uploadId }` | `{ status: 'aborted' }` |
 
 - Flusso: `init` → `urls` → il client fa `PUT` di ogni chunk **direttamente su S3** alle presigned URL e raccoglie gli `ETag` → `complete` (o `abort`).
 - Su `complete` il server scrive anche i metadati su `SharedFiles` (così il file compare nelle liste).
+- **Streaming encryption (#6)**: per i file cifrati a chunk, passare in `complete` i campi
+  `formatVersion` (number, es. 2), `chunkSize` (number), `originalSize` (number). Vengono persistiti
+  su `SharedFiles` e restituiti in tutte le liste/get e nei record share/link. Se assenti → file legacy.
+  `init` accetta i campi extra (`fileSize`, `originalSize`, `isEncrypted`, `formatVersion`, `chunkSize`)
+  ma **non li persiste**: la persistenza avviene in `complete`. `init` usa solo `fileName`/`fileType`.
 - Errori: `400` campi mancanti · `403` `fileKey` non di proprietà · `503` AWS down · `500`.
 
 ---
@@ -354,6 +383,8 @@ Risposta `201`:
   "expiresAt", "maxDownloads", "downloadCount": 0, "createdAt" } }
 ```
 
+**Info pubbliche `GET /api/shared-links/:publicToken`** → `{ success, data: { fileName, fileSize, fileType, isPasswordProtected, expiresAt, createdAt, formatVersion?, chunkSize?, originalSize? } }`. I tre campi streaming (#6) sono presenti solo per file cifrati a chunk (assenti sui link legacy) e servono al client per decifrare in download.
+
 **Body `POST .../access`**: `{ visitorName* (min 2), password? }` → `{ sessionToken, expiresAt, fileName, fileSize, fileType, previewSupported, downloadAllowed }`.
 
 **Errori standardizzati** (`errorCode`): `LINK_NOT_FOUND` (404), `LINK_REVOKED`/`LINK_EXPIRED`/`DOWNLOAD_LIMIT_REACHED` (410), `PASSWORD_REQUIRED`/`INVALID_PASSWORD` (401), `FORBIDDEN` (403), `INVALID_REQUEST` (400), `ALREADY_REVOKED` (400), `INTERNAL_ERROR` (500).
@@ -367,8 +398,8 @@ Risposta `201`:
 | 🔑 | `POST` | `/api/user/public-key` | Salva chiave pubblica. Body `{ publicKeyJWK: { n, e, ... } }`. |
 | 🔑 | `GET` | `/api/user/:userId/public-key` | Chiave pubblica di un utente per ID. `404 PUBLIC_KEY_NOT_FOUND`. |
 | 🔑 | `GET` | `/api/user/by-email/:email/public-key` | Lookup email → userId → chiave pubblica. |
-| 🔑 | `POST` | `/api/user/keypair-backup` | Salva backup chiave privata cifrata. Body `{ encryptedPrivateKey, salt, iv }`. |
-| 🔑 | `GET` | `/api/user/keypair-backup` | Recupera backup. `404 BACKUP_NOT_FOUND`. |
+| 🔑 | `POST` | `/api/user/keypair-backup` | Salva backup chiave privata (blob opaco). Body `{ encryptedPrivateKey, iv }` — **no** `salt`/`iterations`. |
+| 🔑 | `GET` | `/api/user/keypair-backup` | Recupera backup → `{ success, data: { encryptedPrivateKey, iv, createdAt } }`. `404 BACKUP_NOT_FOUND`. |
 | 🔑 | `POST` | `/api/user/recovery-key/setup` | Configura recovery key. Body `{ salt, verificationHash }`. `409` se già esiste. |
 | 🔑 | `GET` | `/api/user/recovery-key/status` | `{ hasRecoveryKey, salt, verificationHash }`. |
 | 🔑 | `POST` | `/api/user/file-keys` | Salva chiave file wrapped. Body `{ s3Key, wrappedKey, wrapIV, fileIV }`. |
@@ -414,6 +445,7 @@ link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md
 { s3Key*, type?: 'user', targetEmail*, encryptedAESKey?, encryptionIV? }
 ```
 - Verifica esistenza file su S3 (`HeadObject`), risolve `targetEmail` via Cognito, vieta il self-share, scrive su `SharesTable`. `ownerId = req.user.sub`.
+- I metadati streaming (`formatVersion`/`chunkSize`/`originalSize`) sono **letti automaticamente dal record file dell'owner** (`SharedFiles`) e copiati sulla share: il frontend **non** deve inviarli.
 - Risposta `200`: `{ message: 'File shared successfully', shareId }`.
 - Errori: `400` (s3Key/targetEmail mancanti, self-share, type non valido) · `404` (file non in S3, utente non trovato) · `503`.
 
@@ -422,8 +454,11 @@ link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md
 { "shareId", "s3Key", "ownerId", "encryptedAESKey", "encryptionIV", "sharedAt",
   "s3Url": "<presigned download, 1h>", "senderEmail": "<email reale mittente>",
   "fileName", "fileSize", "fileType", "lastModified",
-  "name", "size", "type", "uploadedAt" }
+  "name", "size", "type", "uploadedAt",
+  "formatVersion"?, "chunkSize"?, "originalSize"? }
 ```
+> `formatVersion`/`chunkSize`/`originalSize` (streaming encryption #6) sono presenti solo se il file
+> condiviso era cifrato a chunk; assenti sulle share legacy → il client usa il percorso di download vecchio.
 > `s3Url` è una **presigned URL** (bucket privato) e `senderEmail` è l'email reale risolta via
 > Cognito — due bug delle vecchie Lambda corretti nel porting. I campi duplicati
 > (`fileName`/`name`, ecc.) sono voluti per compatibilità col frontend.
@@ -447,7 +482,7 @@ link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md
 | `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici. |
 | `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Impostare il nome reale. |
 | `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
-| `NODE_ENV` | `development` | Logging richieste + dettaglio errori. |
+| `NODE_ENV` | `development` | Solo logging richieste in dev. Il **dettaglio errori non è più esposto** al client in nessun ambiente (§6). |
 
 ### Rate limiting
 - `uploadLimiter`: 10 richieste / 15 min sulle rotte `/api/upload`.
@@ -471,18 +506,26 @@ Due stili coesistono nel codice:
 
 Codici di stato usati: `200`, `201`, `400`, `401`, `403`, `404`, `409`, `410`, `429`, `500`, `503`.
 
+**Errori interni (`500`)**: il body è ora **generico** (es. `{ error: 'Internal Server Error' }` o
+`{ success:false, message:'...' }` senza dettaglio tecnico). Il dettaglio (`error.message`, stack)
+è **solo nei log server** (Fly logs), mai nella risposta — anche in `development`. Restano invece
+descrittivi i `400` di validazione (login/registrazione Cognito, "Unsupported file type"): sono
+feedback utili all'utente, non leak interni.
+
 URL firmati S3: scadenze tipiche **1h** (liste/preview owner), **15 min** (download link pubblico), **7gg** (file-sharing email). Tutte configurabili dove indicato.
 
 ---
 
 ## 7. Note per il frontend
 
-1. **Token Bearer**: usa l'`IdToken` Cognito (ritornato da `/api/login` in `userSub`) per tutte le rotte 🔑. **La firma è ora verificata**: token forgiati/scaduti → `403`. Non usare l'access token.
+1. **Token Bearer**: usa l'**AccessToken** Cognito per tutte le rotte 🔑 (`tokenUse: "access"`, firma verificata). ⚠️ **Cambio importante**: prima si usava l'IdToken, ora un IdToken viene **respinto con `403`**. L'access token non contiene email/name: il backend li risolve da Cognito quando servono. Non usare il valore `userSub` di `/api/login` (è un IdToken) come Bearer.
 2. **Upload**: invia `multipart/form-data`; il nome del campo file è specifico per endpoint (`image` / `profileImage` / `file`). Puoi passare `fileSize` già formattato per coerenza visiva.
    - Per file grandi usa il **multipart** (§4.3-bis): `init → urls → PUT chunk su S3 → complete`.
 8. **Consolidamento URL (Lambda → Express)**: multipart e sharing utente→utente sono ora sotto `VITE_API_URL` (prima `VITE_API_MULTIPART_URL` e `VITE_LAMBDA_URL`). I suffissi dei path restano identici (`/upload/multipart/*`, `/share`, `/shared-files`): basta cambiare la base URL.
 3. **Eliminazione file**: `DELETE /api/uploads/files` vuole `fileId` = la **s3Key** completa (es. `uploads/files/{sub}/...`).
 4. **Link condivisi pubblici**: flusso a 3 step (info → access → file). Conserva il `sessionToken` (valido 1h) per scaricare/preview.
 5. **E2E**: tutta la crittografia avviene lato client; il backend è solo deposito di chiavi pubbliche/wrapped e backup cifrati.
+   - **Backup keypair**: blob opaco `{ encryptedPrivateKey, iv }`, cifrato con la master key a 256 bit (no password/PBKDF2/salt). Vedi §4.6.
 6. **Ownership**: gli endpoint verificano la proprietà via prefisso s3Key (`uploads/.../{sub}/`) o `ownerUserId`/`ownerId`; richieste su risorse altrui → `403`.
 7. **Categorie file** disponibili per filtri: `image, video, audio, document, archive, text, other`.
+9. **Streaming encryption (#6)**: per i file cifrati a chunk invia `formatVersion`/`chunkSize`/`originalSize` in `multipart/complete`. Il backend li persiste e li **restituisce** in `GET /api/user/files/dynamo`, `GET /api/shared-files` e `GET /api/shared-links/:publicToken`, così hai i parametri per decifrare in download. File **senza** questi campi (o `formatVersion=1`) = legacy → usa il percorso di download precedente. Non serve inviarli a `/api/share` o `/api/shared-links` (il backend li copia dal record file).

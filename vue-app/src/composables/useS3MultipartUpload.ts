@@ -3,7 +3,7 @@ import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
-import { generateAESKey, encryptFile, exportKeyToBase64, exportIVToBase64 } from '@/src/utils/crypto'
+import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64 } from '@/src/utils/crypto'
 import { useEncryptionStore } from '@/src/stores/encryption'
 
 const DEFAULT_CONFIG: MultipartUploadConfig = {
@@ -46,6 +46,8 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   let startTime = 0
   let fileRef: File | null = null
   let isPaused = false
+  // Dimensione totale del file CIFRATO (v2 = originale + 28 byte per chunk): base dei progressi.
+  let totalEncryptedBytes = 0
 
   // Encryption refs (avoid stale closure in async complete callback)
   const encryptionKeyRef = shallowRef<CryptoKey | null>(null)
@@ -106,6 +108,10 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
         fileName: fileRef?.name,
         fileSize: fileRef?.size,
         fileType: fileRef?.type,
+        // Metadati del formato v2: servono al download per sapere come decifrare (#6).
+        formatVersion: FILE_FORMAT_VERSION,
+        chunkSize: finalConfig.chunkSize,
+        originalSize: fileRef?.size,
         userId: finalConfig.userId,
         userEmail: finalConfig.userEmail,
       }, { headers })
@@ -143,12 +149,21 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     const url = data.urls[part.partNumber]
     if (!url) throw new Error(`No presigned URL for part ${part.partNumber}`)
 
-    const response = await s3Api.put(url, part.chunk, {
-      headers: { 'Content-Type': fileRef?.type || 'application/octet-stream' },
+    const key = encryptionKeyRef.value
+    if (!key) throw new Error('Chiave di cifratura non disponibile')
+
+    // Streaming (#6): il chunk viene letto e cifrato SOLO adesso, uno alla volta. `part.chunk` è una
+    // slice LAZY del file originale → in RAM sta al massimo un chunk per upload attivo, non il file.
+    const raw = await part.chunk.arrayBuffer()
+    const framed = await encryptChunkFramed(raw, key, part.partNumber - 1)
+    const body = new Blob([framed])
+
+    const response = await s3Api.put(url, body, {
+      headers: { 'Content-Type': 'application/octet-stream' },
       onUploadProgress: (evt) => {
         if (evt.total) {
           activePartsProgress.value = { ...activePartsProgress.value, [part.partNumber]: evt.loaded }
-          updateProgress(calculateTotalProgress(), fileRef?.size || 0)
+          updateProgress(calculateTotalProgress(), totalEncryptedBytes)
         }
       },
       signal: abortController.value?.signal,
@@ -161,10 +176,10 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     delete newProgress[part.partNumber]
     activePartsProgress.value = newProgress
 
-    uploadedParts.value = [...uploadedParts.value, { PartNumber: part.partNumber, ETag: eTag, size: part.chunk.size }]
+    uploadedParts.value = [...uploadedParts.value, { PartNumber: part.partNumber, ETag: eTag, size: body.size }]
     activeUploads--
 
-    updateProgress(calculateTotalProgress(), fileRef?.size || 0)
+    updateProgress(calculateTotalProgress(), totalEncryptedBytes)
     processQueue({ uploadId, fileKey })
   }
 
@@ -233,20 +248,29 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
 
     try {
       const encryptionKey = await generateAESKey()
-      const { encrypted: encryptedBlob, iv: encryptionIV } = await encryptFile(file, encryptionKey)
+      // IV "di file": vestigiale in v2 (gli IV veri sono per-chunk, dentro il file stesso). Lo teniamo
+      // per non cambiare lo schema dello store delle chiavi né il formato dei link pubblici; NON viene
+      // usato per decifrare un file v2.
+      const encryptionIV = generateIV()
 
       encryptionKeyRef.value = encryptionKey
       encryptionIVRef.value = encryptionIV
       state.value.encryptionKey = encryptionKey
       state.value.encryptionIV = encryptionIV
 
+      const chunkSize = finalConfig.chunkSize
+      const totalParts = Math.max(1, Math.ceil(file.size / chunkSize))
+      totalEncryptedBytes = encryptedSizeV2(file.size, chunkSize)
+
       const headers = await getHeaders()
       const { data: initData } = await api.post<InitUploadResponse>('/upload/multipart/init', {
         fileName: file.name,
         fileType: file.type,
-        fileSize: encryptedBlob.size,
+        fileSize: totalEncryptedBytes,
         originalSize: file.size,
         isEncrypted: true,
+        formatVersion: FILE_FORMAT_VERSION,
+        chunkSize,
         userId: finalConfig.userId,
       }, { headers })
 
@@ -257,17 +281,18 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       const existingPartNumbers = new Set((initData.existingParts || []).map(p => p.PartNumber))
       if (initData.existingParts) {
         uploadedParts.value = initData.existingParts
-        updateProgress(calculateTotalProgress(), encryptedBlob.size)
+        updateProgress(calculateTotalProgress(), totalEncryptedBytes)
       }
 
-      const totalParts = Math.ceil(encryptedBlob.size / finalConfig.chunkSize)
+      // Le parti in coda sono slice LAZY del file ORIGINALE: niente viene letto né cifrato finché
+      // uploadPart non le processa, una alla volta (#6 — niente più file intero in RAM).
       const newQueue: PendingPart[] = []
       for (let i = 0; i < totalParts; i++) {
         const partNumber = i + 1
         if (existingPartNumbers.has(partNumber)) continue
-        const start = i * finalConfig.chunkSize
-        const end = Math.min(start + finalConfig.chunkSize, encryptedBlob.size)
-        newQueue.push({ partNumber, chunk: encryptedBlob.slice(start, end), retries: 0 })
+        const start = i * chunkSize
+        const end = Math.min(start + chunkSize, file.size)
+        newQueue.push({ partNumber, chunk: file.slice(start, end), retries: 0 })
       }
       partsQueue.value = newQueue
 
@@ -308,6 +333,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     uploadedParts.value = []
     activePartsProgress.value = {}
     activeUploads = 0
+    totalEncryptedBytes = 0
     encryptionKeyRef.value = null
     encryptionIVRef.value = null
   }

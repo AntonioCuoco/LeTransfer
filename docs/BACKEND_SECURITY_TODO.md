@@ -88,6 +88,17 @@ sull'Express **non ripetere** l'errore.
   → altrimenti `403` (ownership).
 - `complete`: scrivere i metadati su DynamoDB (`ownerUserId: sub`).
 
+**🆕 Metadati formato v2 (streaming encryption #6 — GIÀ ATTIVO lato frontend).** Il frontend ora invia
+tre campi nuovi che il backend deve **persistere** e **restituire** (senza questi il download non sa
+come decifrare i file nuovi):
+- **`init`** (body): `{ fileName, fileType, fileSize, originalSize, isEncrypted, formatVersion, chunkSize, userId }`.
+- **`complete`** (body): `{ ..., formatVersion, chunkSize, originalSize, ... }`.
+- **Persistere** su DynamoDB: `formatVersion` (number, es. 2), `chunkSize` (number), `originalSize` (number).
+- **Restituire** questi 3 campi in **tutte** le risposte che elencano/servono file:
+  `GET /user/files/dynamo`, `GET /shared-files`, e l'info del link pubblico `GET /shared-links/:token`.
+- I file **senza** `formatVersion` (o `=1`) sono legacy → il frontend usa il vecchio percorso. Nessuna
+  migrazione dei dati esistenti.
+
 ---
 
 ## 🟠 4. CORS ristretto + niente leak di errori interni
@@ -139,16 +150,17 @@ Referrer-Policy: strict-origin-when-cross-origin
 
 ---
 
-## 🔵 7. Preparare per le fasi frontend successive (non urgenti)
+## 🟠 7. Metadati formato v2 (#6 streaming) — ORA ATTIVO
 
-Modifiche che serviranno quando il frontend farà Fase 1/2. Solo da tenere presente ora.
+> Il frontend è **già passato** alla cifratura a chunk (#6 implementato). Questo blocco non è più
+> "futuro": senza questi campi i **nuovi** file non si possono decifrare in download.
 
-- **`formatVersion` sui file (per lo streaming encryption, #6):** quando il frontend passerà alla
-  cifratura a chunk, il record del file su DynamoDB dovrà avere un campo `formatVersion` (number),
-  scritto in `complete` e restituito in lista/get, per sapere come decifrare. I file esistenti = v1.
-- **Versione sui wrapped key (#9, opzionale):** il frontend legherà la file key al suo `s3Key` via
-  AAD. Gestibile interamente lato client con fallback, ma se volete un campo `keyVersion` sul record
-  della file key facilita la transizione. **Non necessario** se il frontend fa il fallback.
+- **Persistere** su DynamoDB, dalla `complete` (e leggere dalla `init`): `formatVersion` (number),
+  `chunkSize` (number), `originalSize` (number). Dettaglio dei body in §3.
+- **Restituire** i tre campi in `GET /user/files/dynamo`, `GET /shared-files`, `GET /shared-links/:token`.
+- File senza `formatVersion` (o `=1`) = legacy, restano leggibili (nessuna migrazione).
+- **Opzionale (#9):** un `keyVersion` sul record della file key facilita la transizione dell'AAD, ma
+  **non è necessario** (il frontend fa fallback). Ignorabile.
 
 ---
 
@@ -160,7 +172,7 @@ Modifiche che serviranno quando il frontend farà Fase 1/2. Solo da tenere prese
 - [ ] CORS whitelist (dev + prod) e nessun `error.message` nelle risposte.
 - [ ] Cognito password policy ≥12 con classi di caratteri.
 - [ ] CSP + security headers sull'host del frontend (prod) + HTTPS.
-- [ ] (Futuro) `formatVersion` sui file; (opz.) `keyVersion` sulle file key.
+- [ ] **(#6 attivo)** `formatVersion`/`chunkSize`/`originalSize` persistiti in `complete` e restituiti in lista/get/link.
 
 > Note di coordinamento: `email` non è nell'access token → risolverla via Cognito dove serve.
 > Verificare che gli endpoint di logout usati dal frontend esistano (`/auth/logout` e/o `/logout`):

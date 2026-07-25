@@ -52,9 +52,48 @@ export async function decryptFile(encryptedBlob: Blob, key: CryptoKey, iv: Uint8
   return new Blob([decryptedBuffer])
 }
 
-export async function decryptChunk(encryptedChunk: ArrayBuffer, key: CryptoKey, iv: Uint8Array, chunkIndex: number): Promise<ArrayBuffer> {
+export async function decryptChunk(encryptedChunk: BufferSource, key: CryptoKey, iv: Uint8Array, chunkIndex: number): Promise<ArrayBuffer> {
   const aad = new TextEncoder().encode(`chunk-${chunkIndex}`)
   return crypto.subtle.decrypt({ name: AES_ALGORITHM, iv, additionalData: aad }, key, encryptedChunk)
+}
+
+// ─── Formato file "v2" — cifratura a chunk in streaming (#6) ──────────────────────────────────
+// L'oggetto su S3 è la sequenza dei chunk, ognuno: [IV 12B][ciphertext + tag GCM 16B].
+// IV unico per chunk + AAD = indice del chunk → previene riordino/sostituzione di chunk.
+// I file "v1" (unico blob GCM con un solo IV) restano leggibili dal percorso legacy.
+
+export const FILE_FORMAT_VERSION = 2
+export const CHUNK_IV_BYTES = 12
+export const GCM_TAG_BYTES = 16
+export const CHUNK_OVERHEAD = CHUNK_IV_BYTES + GCM_TAG_BYTES // 28 byte per chunk
+
+/** Dimensione totale del file una volta cifrato in v2 (serve a init/progress). */
+export function encryptedSizeV2(originalSize: number, chunkSize: number): number {
+  const chunks = Math.max(1, Math.ceil(originalSize / chunkSize))
+  return originalSize + chunks * CHUNK_OVERHEAD
+}
+
+/** Dimensione del chunk cifrato i-esimo (l'ultimo è più corto). */
+export function encryptedChunkSizeV2(index: number, originalSize: number, chunkSize: number): number {
+  const plain = Math.min(chunkSize, Math.max(0, originalSize - index * chunkSize))
+  return plain + CHUNK_OVERHEAD
+}
+
+/** Cifra un chunk in v2 → [IV][ciphertext+tag], pronto da caricare come parte multipart. */
+export async function encryptChunkFramed(raw: ArrayBuffer, key: CryptoKey, index: number): Promise<Uint8Array> {
+  const iv = generateIV()
+  const encrypted = await encryptChunk(raw, key, iv, index)
+  const out = new Uint8Array(CHUNK_IV_BYTES + encrypted.byteLength)
+  out.set(iv, 0)
+  out.set(new Uint8Array(encrypted), CHUNK_IV_BYTES)
+  return out
+}
+
+/** Decifra un chunk in v2 ([IV][ciphertext+tag]). Lancia se il tag GCM non torna (chunk manomesso). */
+export async function decryptChunkFramed(framed: Uint8Array, key: CryptoKey, index: number): Promise<ArrayBuffer> {
+  const iv = framed.subarray(0, CHUNK_IV_BYTES)
+  const ciphertext = framed.subarray(CHUNK_IV_BYTES)
+  return decryptChunk(ciphertext, key, iv, index)
 }
 
 export async function exportKeyToBase64(key: CryptoKey): Promise<string> {
