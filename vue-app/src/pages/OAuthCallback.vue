@@ -28,7 +28,7 @@ onMounted(async () => {
       if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
     }
     sessionStorage.removeItem('pkce_verifier')
-    router.replace('/')
+    router.replace('/app')
   } catch { router.replace('/login') }
 })
 </script>

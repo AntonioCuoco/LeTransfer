@@ -5,15 +5,20 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     // Public routes
-    { path: '/landing', component: () => import('@/src/pages/LandingPage.vue') },
+    // La facciata pubblica ("invio senza account") è ora la root.
+    { path: '/', component: () => import('@/src/pages/LandingPage.vue') },
+    { path: '/landing', redirect: '/' }, // retrocompatibilità con eventuali vecchi link
+    { path: '/come-funziona', component: () => import('@/src/pages/HowItWorksPage.vue') },
+    { path: '/prezzi', component: () => import('@/src/pages/PricingPage.vue') },
+    { path: '/sicurezza', component: () => import('@/src/pages/SecurityPage.vue') },
     { path: '/login', component: () => import('@/src/pages/LoginPage.vue') },
     { path: '/register', component: () => import('@/src/pages/RegisterPage.vue') },
     { path: '/oauth2/callback', component: () => import('@/src/pages/OAuthCallback.vue') },
     { path: '/share/:publicToken', component: () => import('@/src/pages/ShareAccessPage.vue') },
 
-    // Protected routes
+    // Protected routes (dashboard) — spostate sotto /app
     {
-      path: '/',
+      path: '/app',
       component: () => import('@/src/components/layout/AppLayout.vue'),
       meta: { requiresAuth: true },
       children: [

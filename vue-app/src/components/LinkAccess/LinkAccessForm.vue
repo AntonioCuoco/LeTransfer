@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import FieldInput from '@/src/components/ui/FieldInput.vue'
+
+/**
+ * Accesso al link pubblico. Volutamente NON è l'eroe della pagina: un campo,
+ * una riga di spiegazione umana, un bottone. Stessa carta chiara del widget
+ * d'invio — chi invia e chi riceve vedono lo stesso oggetto.
+ */
 
 const props = defineProps<{
   isPasswordProtected: boolean
@@ -12,60 +19,47 @@ const emit = defineEmits<{ submit: [visitorName: string, password?: string] }>()
 const visitorName = ref('')
 const password = ref('')
 
-const isFormValid = () => visitorName.value.trim().length >= 2
+const isFormValid = computed(
+  () => visitorName.value.trim().length >= 2 && (!props.isPasswordProtected || password.value.length > 0),
+)
 
 const handleSubmit = () => {
-  if (!isFormValid()) return
+  if (!isFormValid.value || props.isLoading) return
   emit('submit', visitorName.value.trim(), props.isPasswordProtected ? password.value : undefined)
 }
 </script>
 
 <template>
-  <form class="space-y-6" @submit.prevent="handleSubmit">
-    <div>
-      <label class="text-[#DBD4D3] font-medium text-sm mb-2 block">Il tuo nome</label>
-      <div class="relative">
-        <i class="pi pi-user absolute left-3 top-1/2 -translate-y-1/2 text-primary z-10" />
-        <InputText
-          v-model="visitorName"
-          type="text"
-          placeholder="Inserisci il tuo nome"
-          :disabled="isLoading"
-          fluid
-          class="!pl-10"
-        />
-      </div>
-      <p class="text-[#676178] text-xs mt-1">Questo nome sarà visibile al proprietario del file</p>
-    </div>
-
-    <div v-if="isPasswordProtected">
-      <label class="text-[#DBD4D3] font-medium text-sm mb-2 block">Password</label>
-      <div class="relative">
-        <i class="pi pi-lock absolute left-3 top-1/2 -translate-y-1/2 text-primary z-10" />
-        <Password
-          v-model="password"
-          placeholder="Inserisci la password"
-          :feedback="false"
-          toggle-mask
-          fluid
-          input-class="!pl-10"
-          :disabled="isLoading"
-        />
-      </div>
-    </div>
-
-    <div v-if="error" class="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
-      <p class="text-red-400 text-sm m-0">{{ error }}</p>
-    </div>
-
-    <Button
-      type="submit"
-      :label="isLoading ? 'Accesso in corso...' : 'Accedi al file'"
-      :icon="isLoading ? undefined : 'pi pi-sign-in'"
-      :disabled="!isFormValid() || isLoading"
-      :loading="isLoading"
-      size="large"
-      class="w-full"
+  <form class="flex flex-col gap-3.5" @submit.prevent="handleSubmit">
+    <FieldInput
+      v-model="visitorName"
+      label="Chi sta scaricando?"
+      placeholder="Il tuo nome"
+      autocomplete="name"
+      hint="Serve solo a far sapere a chi te l'ha mandato che l'hai ricevuto."
+      :disabled="isLoading"
     />
+
+    <FieldInput
+      v-if="isPasswordProtected"
+      v-model="password"
+      label="Password del link"
+      type="password"
+      placeholder="Quella che ti hanno dato a voce"
+      autocomplete="off"
+      :disabled="isLoading"
+    />
+
+    <div v-if="error" class="rounded-[11px] border border-[#f3cfcc] bg-[#fdeceb] px-3 py-2.5 text-[0.82rem] font-medium text-[#b3352f]">
+      {{ error }}
+    </div>
+
+    <button
+      type="submit"
+      class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+      :disabled="!isFormValid || isLoading"
+    >
+      {{ isLoading ? 'Un attimo…' : 'Apri il file' }}
+    </button>
   </form>
 </template>

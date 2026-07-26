@@ -15,6 +15,11 @@
 > - **Backup keypair** ora è un blob opaco `{ encryptedPrivateKey, iv }` — niente più `salt`/`iterations`. Vedi §4.6/§3.3.
 > - **Metadati streaming encryption** (`formatVersion`, `chunkSize`, `originalSize`) persistiti su `complete` e restituiti in lista/get/share/link. Vedi §4.3-bis/§4.5/§4.8/§3.
 > - **Errori interni**: le risposte `500` restituiscono un messaggio **generico** (niente più `error: error.message`). Vedi §6.
+>
+> **Aggiornamento — invio senza account + claim + Turnstile (2026-07).** Nuove feature per il frontend:
+> - 🆕 **Invio guest** (`/api/guest/upload/{init,urls,complete,abort}` + `/revoke` + `/report`): upload E2E **senza login**, gated da rate-limit per IP + **Cloudflare Turnstile**. Il download riusa il flusso link pubblico. Vedi §4.9.
+> - 🆕 **Claim** (`POST /api/share/claim`): trasforma un invio guest in file dell'account (owner + retention estesa). Vedi §4.10.
+> - 🆕 Variante "guest" del record `SharedLinks` (`isGuest`/`transferId`/`ttl`/`manageTokenHash`…) — vedi §3.2. Nuove env `TURNSTILE_SECRET`/`GUEST_*`/`TRUST_PROXY_HOPS` — vedi §5 e §5-quater.
 
 ---
 
@@ -49,6 +54,7 @@ Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia
 ```
 /                        → healthRoutes        (health check)
 /api/upload/multipart/*  → multipartRoutes      (upload a parti — NO uploadLimiter)   ⟵ NEW
+/api/guest/*             → guestRoutes          (invio SENZA account — no auth, gated)  ⟵ NEW
 /api/upload/*            → uploadRoutes         (+ uploadLimiter)
 /api/user/*             → userRoutes           (file/immagini/profilo/stats)
 /api/* (share)          → shareRoutes          (POST /api/share, GET /api/shared-files) ⟵ NEW
@@ -59,8 +65,9 @@ Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia
 /api/login | /register | /confirm-registration → auth Cognito (inline in app.js)
 ```
 > `multipartRoutes` è montato **prima** di `/api/upload` (e senza `uploadLimiter`, perché un
-> singolo upload a parti genera molte richieste). `shareRoutes` è montato **prima** di
-> `filesRoutes` per non essere intercettato dal prefisso generico `/api/*`.
+> singolo upload a parti genera molte richieste). `shareRoutes` e `guestRoutes` sono montati **prima** di
+> `filesRoutes` per non essere intercettati dal prefisso generico `/api/*`. Il **claim** (§4.10) è
+> `POST /api/share/claim`, definito dentro `shareRoutes`.
 
 > ⚠️ **Nota collisione prefisso**: sia `userRoutes` che `e2eRoutes` sono montate su `/api/user`. `userRoutes` è registrata **prima**, quindi ha precedenza su path che combaciano. In pratica i path non si sovrappongono (`/files`, `/images`, `/stats` vs `/public-key`, `/file-keys`, `/recovery-key`), ma tienine conto se aggiungi nuovi endpoint.
 
@@ -177,6 +184,23 @@ Link pubblici condivisibili.
 }
 ```
 > Nota: `routes/files.js` (`/api/file-url?share=true`) crea una variante più semplice di questo record con `type: 'shared_link'`, `fileId`, `url` e **senza** `publicToken`/`passwordHash`. Sono due flussi distinti di "condivisione".
+
+**Variante "guest" (§4.9 — invio senza account).** Un invio senza login crea un record `SharedLinks`
+con questi campi extra e **senza `ownerId`/`ownerEmail`** (omessi, non `null` — evitano problemi con eventuali GSI su `ownerId`):
+```js
+{
+  // ... campi SharedLinks sopra, ma SENZA ownerId/ownerEmail ...
+  isGuest: true,           // discrimina il record guest
+  transferId,              // uuid = segmento del prefisso storage uploads/guest/{transferId}/
+  manageTokenHash,         // sha256 del manageToken (revoca/claim) — mai in chiaro
+  abuseReports: 0,         // contatore segnalazioni (quarantena a soglia)
+  ttl,                     // number, epoch secondi → DynamoDB TTL (auto-cancellazione del record)
+  quarantined?             // true se messo in quarantena dai report
+}
+```
+> Il download usa lo **stesso** flusso pubblico (§4.5): `getLinkByPublicToken`/`validateLinkStatus` non
+> assumono un owner. Dopo un **claim** (§4.10) il record perde i marker guest (`isGuest=false`, `ownerId`
+> valorizzato, `ttl`/`manageTokenHash` rimossi).
 
 ### 3.3 `UserPublicKeys` (`USER_PUBLIC_KEYS_TABLE`)
 Chiavi E2E per utente (PK `userId`).
@@ -373,7 +397,7 @@ Flusso pubblico: **info → access (password) → file (con session token)**.
 **Body `POST /api/shared-links`**:
 ```js
 { s3Key*, fileName*, fileSize?, fileType?, password?,
-  expiresInHours? /* default 168, max 720 */, maxDownloads? }
+  expiresInHours? /* default 168, clamp al cap retention del piano — §5-ter */, maxDownloads? }
 ```
 Risposta `201`:
 ```json
@@ -465,6 +489,74 @@ link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md
 
 ---
 
+### 4.9 Invio SENZA account (guest) — `/api/guest`  ⟵ NEW
+
+Upload E2E **senza login**: chiunque carica un file cifrato e ottiene un link pubblico. Il server vede
+**solo ciphertext** (la chiave sta nel fragment `#` del link, mai al server). È il mirror del multipart
+(§4.3-bis) ma **senza `authenticateToken`**: l'"ownership" è per **prefisso** `uploads/guest/` (la capability
+è conoscere `fileKey`+`uploadId`, restituiti solo da `init`). Un invio completato **è** un record `SharedLinks`
+senza owner (§3.2) → il **download riusa il flusso pubblico esistente** (§4.5):
+`GET /api/shared-links/:publicToken` → `.../access` → `.../file`.
+
+**Gate anti-abuso** (§5-quater): rate-limit **per IP** su tutte le rotte + **Cloudflare Turnstile** su `init`.
+
+| Auth | Metodo | Path | Body | Risposta |
+|---|---|---|---|---|
+| 🔓 | `POST` | `/api/guest/upload/init` | `{ fileName*, fileType*, fileSize?, turnstileToken? }` | `{ transferId, publicToken, manageToken, uploadId, fileKey }` |
+| 🔓 | `POST` | `/api/guest/upload/urls` | `{ fileKey*, uploadId*, partNumbers: number[] }` | `{ urls: { [partNumber]: presignedUrl } }` (scad. 1h) |
+| 🔓 | `POST` | `/api/guest/upload/complete` | vedi sotto | `201 { publicToken, url, expiresAt }` |
+| 🔓 | `POST` | `/api/guest/upload/abort` | `{ fileKey*, uploadId* }` | `{ status: 'aborted' }` |
+| 🔓 | `POST` | `/api/guest/:publicToken/revoke` | `{ manageToken* }` | `{ status: 'revoked' }` |
+| 🔓 | `POST` | `/api/guest/report/:publicToken` | `{ reason? }` | `202 { status: 'received' }` |
+
+**`init`** — verifica Turnstile + rate-limit, poi genera `transferId` (uuid), `publicToken` (nanoid 21),
+`manageToken` (nanoid 32, **mostrato una sola volta** — serve per `revoke`/claim), `fileKey` sotto
+`uploads/guest/{transferId}/…` e avvia il multipart. **Nessun record DB** ancora (si scrive a `complete`;
+il multipart abbandonato lo pulisce `abort` o la lifecycle dei multipart incompleti).
+- ⚠️ **Turnstile**: se `TURNSTILE_SECRET` è impostato sul backend, `turnstileToken` è **obbligatorio** →
+  senza/invalido = `403 { errorCode: 'CAPTCHA_REQUIRED' | 'CAPTCHA_FAILED' }`; errore rete Cloudflare = `503 CAPTCHA_UNAVAILABLE`.
+  Se il secret **non** è impostato, il check è disattivato (fail-open, dev). Il token si ottiene dal widget Turnstile (site key) lato frontend.
+
+**`complete`** — body:
+```js
+{ fileKey*, uploadId*, parts*:[{PartNumber,ETag}], publicToken*, manageToken*, transferId?,
+  fileName?, fileSize?, fileType?, formatVersion?, chunkSize?, originalSize?,
+  password?, expiresInHours? /* clamp a GUEST_MAX_EXPIRY, default 168 */, maxDownloads? }
+```
+Assembla l'oggetto, **rivalida la dimensione reale** (`HeadObject` → `413 FILE_TOO_LARGE` + cleanup se oltre
+`GUEST_MAX_FILE_SIZE`), scrive il record `SharedLinks` guest (§3.2: `isGuest:true`, `ttl`, `manageTokenHash`,
+`ownerId` **omesso**), con `password` opzionale (argon2). Risposta: `{ publicToken, url:
+"<FRONTEND_URL>/share/<token>", expiresAt }` — il client appende `#<chiave>` al link (il server non la vede).
+
+**`revoke`** — il **mittente** (che possiede il `manageToken`) disattiva il link: confronto `sha256(manageToken)`
+vs `manageTokenHash` (tempo costante), set `revokedAt` + delete immediato dell'oggetto. Risposta **uniforme**
+`403 FORBIDDEN` se link assente o token errato (nessun leak sull'esistenza).
+
+**`report`** — segnalazione abuso: incrementa `abuseReports`; alla soglia `ABUSE_AUTO_QUARANTINE_THRESHOLD`
+mette il link in **quarantena** (`revokedAt` + `quarantined:true`; l'oggetto è **conservato** per revisione).
+Risposta sempre generica `202` (non rivela l'esistenza del link).
+
+- Errori: `400 INVALID_REQUEST` · `403 FORBIDDEN`/`CAPTCHA_*` · `413 FILE_TOO_LARGE` · `429 RATE_LIMITED` · `503 SERVICE_UNAVAILABLE`/`CAPTCHA_UNAVAILABLE` · `500 INTERNAL_ERROR`.
+
+---
+
+### 4.10 Claim — invio guest → file dell'account — `/api/share/claim`  ⟵ NEW
+
+| Auth | Metodo | Path | Body | Risposta |
+|---|---|---|---|---|
+| 🔑 | `POST` | `/api/share/claim` | `{ publicToken*, manageToken* }` | `{ ok: true, fileId, publicToken, expiresAt }` |
+
+Un utente loggato "reclama" un invio guest fornendo il `manageToken` ricevuto all'upload. Il backend:
+verifica `sha256(manageToken)` (tempo costante) → **ri-ospita** l'oggetto (`CopyObject` `uploads/guest/…` →
+`uploads/files/{sub}/…`, così esce dalla lifecycle guest) → crea un record `SharedFiles` (il file compare nel
+file manager; il suo `id` è `fileId`) → **riassegna la stessa link** all'utente (`ownerId=sub`, `isGuest=false`,
+`publicToken` **invariato** → i link già distribuiti restano validi) → **estende `expiresAt`** al cap del piano →
+rimuove `ttl` e i marker guest → cancella l'oggetto originale.
+- **Nessun re-wrapping di chiavi**: il file resta decifrabile solo con la chiave nel fragment del link.
+- Errori: `400` (campi mancanti) · `403 Not authorized` (link assente / non-guest / token errato, uniforme) · `503` · `500`.
+
+---
+
 ## 5. Configurazione & limiti
 
 ### Variabili d'ambiente
@@ -472,21 +564,67 @@ link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md
 |---|---|---|
 | `PORT` | 3000 | Porta server. |
 | `AWS_REGION` | `eu-central-1` | Regione AWS. |
-| `S3_BUCKET_NAME` | — (obbligatoria) | Bucket S3. |
+| `S3_BUCKET_NAME` | — (obbligatoria se non R2) | Bucket S3. Ignorata se R2 è attivo (vedi §5-bis). |
 | `USER_POOL_ID` | — (obbligatoria) | Cognito User Pool. |
 | `COGNITO_CLIENT_ID` | — (obbligatoria) | Cognito App Client. |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credenziali (Fly.io/prod). Fallback `_2`. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credenziali AWS (DynamoDB/Cognito, e S3 se non R2). Fallback `_2`. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | — | Cloudflare R2. Se **tutte e 4** impostate → lo storage oggetti passa a R2 (§5-bis). |
 | `SESSION_SECRET` | default insicuro | Firma session token link. |
 | `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
 | `MAX_FILE_SIZE` | 5MB | Limite immagini. |
-| `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici. |
-| `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Impostare il nome reale. |
+| `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici (upload singolo). |
+| `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Valore reale: `dev-swiftsend-shares`. |
+| `SUBSCRIPTIONS_TABLE` | — (unset → tutti `free`) | Tabella piani (D.1, §5-ter). Se non impostata, `loadPlan` non interroga Dynamo e tutti sono `free`. |
+| `PLAN_FREE_MAX_FILE_GB` / `PLAN_PRO_MAX_FILE_GB` / `PLAN_BUSINESS_MAX_FILE_GB` | 2 / 20 / 100 | Cap dimensione per piano (GB). |
+| `PLAN_FREE_MAX_EXPIRY_HOURS` / `PLAN_PRO_MAX_EXPIRY_HOURS` | 168 / 720 | Cap retention link per piano (ore). Business = solo ceiling assoluto. |
+| `ABSOLUTE_MAX_EXPIRY_HOURS` | 8760 | Ceiling di sicurezza retention (1 anno). |
+| `TRUST_PROXY_HOPS` | 1 | Hop di proxy fidati per `req.ip` (rate-limit per IP). 1 = solo Fly; 2 se il dominio è dietro proxy Cloudflare. Vedi §5-quater. |
+| `TURNSTILE_SECRET` | — (unset → captcha OFF) | Secret Cloudflare Turnstile. Se impostata, `init` guest richiede `turnstileToken` valido (§4.9). |
+| `GUEST_MAX_FILE_SIZE` | 2 GB | Cap dimensione invio guest (byte). Enforce reale a `complete` via `HeadObject`. |
+| `GUEST_MAX_EXPIRY` | 168 | Cap retention link guest (ore). |
+| `GUEST_RATE_MAX_INIT_PER_HOUR` / `GUEST_RATE_MAX_REQUESTS` | 20 / 300 | Rate-limit per IP: `init`/h e richieste guest/h (finestra `GUEST_RATE_WINDOW_MS`, def. 1h). |
+| `GUEST_TTL_GRACE_SECONDS` | 172800 | Grazia aggiunta a `expiresAt` per il `ttl` DynamoDB del record guest. |
+| `ABUSE_AUTO_QUARANTINE_THRESHOLD` | 3 | N. di `report` oltre cui il link guest va in quarantena (revoca). |
 | `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
 | `NODE_ENV` | `development` | Solo logging richieste in dev. Il **dettaglio errori non è più esposto** al client in nessun ambiente (§6). |
+
+### 5-bis. Object storage: AWS S3 ↔ Cloudflare R2
+
+Lo storage oggetti è **centralizzato** in `config/aws.js`: un solo `AWS.S3` (aws-sdk v2) usato da tutto il codice via `getS3()`. R2 è S3-compatibile, quindi la migrazione è un cambio di configurazione, non di logica.
+
+- **Switch automatico**: se `R2_ACCOUNT_ID`+`R2_ACCESS_KEY_ID`+`R2_SECRET_ACCESS_KEY`+`R2_BUCKET` sono **tutte** presenti, il client punta a R2 (`endpoint https://<account>.r2.cloudflarestorage.com`, `region:'auto'`, path-style) e il bucket attivo diventa `R2_BUCKET`. Altrimenti resta AWS S3 con `S3_BUCKET_NAME`. **DynamoDB e Cognito restano su AWS** in entrambi i casi.
+- **Parametri write**: su R2 vengono **omessi** `ACL:'private'` e `ServerSideEncryption:'AES256'` (R2 li rifiuta: gli oggetti sono privati e cifrati at-rest di default). Su S3 restano invariati.
+- **Passi infra (manuali, lato Cloudflare)** per il cutover:
+  1. Creare bucket R2 + API token scoped (permessi object read/write/multipart/delete).
+  2. **CORS sul bucket R2**: origini frontend (dev+prod), metodi `GET/PUT/HEAD`, header `*`, expose `ETag` (serve al multipart).
+  3. **Lifecycle** su `uploads/guest/` (per §C invii guest) — auto-cancellazione.
+  4. **Copia dati** S3→R2 (es. `rclone`/`aws s3 sync`) **prima** di impostare le env in prod, poi flip.
+  5. Le presigned URL punteranno a R2 → la **CSP** del frontend (`connect-src`) dovrà includere l'host R2 (o il dominio custom/CDN).
+
+### 5-ter. Piani e limiti (D.1)
+
+Enforcement server-side dei limiti per piano. `loadPlan` (dopo `authenticateToken`) risolve il piano da `SUBSCRIPTIONS_TABLE` (PK `userId`, attributo `plan` ∈ `free|pro|business`) e popola `req.plan`/`req.planLimits`. Default `free` se tabella non configurata o lookup fallito (fail-open).
+- **Punti di enforcement**: `POST /api/shared-links` (clamp `expiresInHours` al cap retention del piano), `POST /api/upload/multipart/init` (rifiuta dimensione dichiarata oltre cap → `413`), `POST /api/upload/multipart/complete` (ricontrollo reale via `HeadObject` → `413` + cleanup se oltre cap).
+- **Rimandato**: contatore trasferimenti/mese (richiede tracking usage, arriva con E3/pagamenti).
+
+### 5-quater. Invio guest & anti-abuso (§C)
+
+Il canale guest (§4.9) è no-auth → protetto da tre livelli:
+- **Rate limit per IP** (`middleware/guest.js`): `guestInitLimiter` (solo `init`) + `guestLimiter` (tutte le
+  rotte guest). ⚠️ Richiede `app.set('trust proxy', TRUST_PROXY_HOPS)` **corretto**, altrimenti conta l'IP del
+  proxy invece del client (rate-limit inutile). Default `1` (solo Fly); `2` se dietro proxy Cloudflare.
+- **Cloudflare Turnstile** su `init`: fail-**open** se `TURNSTILE_SECRET` non impostata (dev/pre-config),
+  fail-**closed** se impostata (token mancante/invalido → `403`, errore rete Cloudflare → `503`).
+  ⚠️ **Ordine di rollout**: il frontend deve **già** inviare `turnstileToken` **prima** di impostare il secret,
+  altrimenti tutti gli upload guest vanno in `403`.
+- **Storage/lifecycle**: prefisso `uploads/guest/{transferId}/`; una **lifecycle rule R2** cancella gli oggetti
+  dopo `GUEST_MAX_EXPIRY` giorni (garanzia dura sui byte). Il **TTL DynamoDB** sull'attributo `ttl` ripulisce il
+  record (best-effort ~48h; va **abilitato in console** sulla tabella `SharedLinks`).
 
 ### Rate limiting
 - `uploadLimiter`: 10 richieste / 15 min sulle rotte `/api/upload`.
 - `apiLimiter`: 100 / 15 min (definito, disponibile per uso generale).
+- `guestLimiter` / `guestInitLimiter`: per IP sulle rotte `/api/guest/*` (§5-quater).
 
 ### CORS
 Origini ammesse: `http://localhost:5173`, `http://localhost:3000`, **+ `FRONTEND_URL` se impostata**. Metodi: GET/POST/PUT/DELETE/PATCH/OPTIONS. Header: `Content-Type`, `Authorization`, `X-Requested-With`.
@@ -529,3 +667,5 @@ URL firmati S3: scadenze tipiche **1h** (liste/preview owner), **15 min** (downl
 6. **Ownership**: gli endpoint verificano la proprietà via prefisso s3Key (`uploads/.../{sub}/`) o `ownerUserId`/`ownerId`; richieste su risorse altrui → `403`.
 7. **Categorie file** disponibili per filtri: `image, video, audio, document, archive, text, other`.
 9. **Streaming encryption (#6)**: per i file cifrati a chunk invia `formatVersion`/`chunkSize`/`originalSize` in `multipart/complete`. Il backend li persiste e li **restituisce** in `GET /api/user/files/dynamo`, `GET /api/shared-files` e `GET /api/shared-links/:publicToken`, così hai i parametri per decifrare in download. File **senza** questi campi (o `formatVersion=1`) = legacy → usa il percorso di download precedente. Non serve inviarli a `/api/share` o `/api/shared-links` (il backend li copia dal record file).
+10. **Invio guest (§4.9)**: flusso multipart **no-auth** `init → urls → PUT chunk su S3 → complete`; il download poi usa il flusso pubblico dei link (§4.5). **Conserva il `manageToken`** ricevuto da `init` (mostrato **una volta sola**): serve per `revoke` e per il **claim** (§4.10). Se il backend ha `TURNSTILE_SECRET` impostato, invia `turnstileToken` (dal widget Turnstile) nel body di `init`, altrimenti ricevi `403 CAPTCHA_REQUIRED`. Il link finale è `<url>#<chiave>`: la chiave la aggiunge il client, il server non la vede mai. `expiresInHours` è limitato a `GUEST_MAX_EXPIRY`.
+11. **Claim (§4.10)**: dopo login, `POST /api/share/claim { publicToken, manageToken }` per adottare un invio guest come file dell'account. Il `publicToken` **non cambia** (i link già condivisi restano validi); la retention viene estesa al piano dell'utente.

@@ -1,23 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie } from '@/src/utils/cookieStore'
 import Swal from 'sweetalert2'
 import { AuthFlowType, ChallengeNameType, InitiateAuthCommand, RespondToAuthChallengeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
-import AppSlider from '@/src/components/AppSlider.vue'
-import PasswordInput from '@/src/components/PasswordInput.vue'
+import PublicShell from '@/src/components/landing/PublicShell.vue'
+import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 
-const router = useRouter()
-if (Cookies.get('accessToken')) router.replace('/')
+/**
+ * Accesso — stessa carta chiara di invio e ricezione, dentro il mondo viola.
+ * La logica Cognito è invariata: qui cambia solo il vestito (roadmap F5).
+ */
 
-const view = ref<'login' | 'otp'>('login')
+const router = useRouter()
+if (Cookies.get('accessToken')) router.replace('/app')
+
+const view = ref<'login' | 'newPassword'>('login')
 const session = ref('')
 const email = ref('')
 const password = ref('')
 const newPassword = ref('')
+const isLoading = ref(false)
 
 const isForgotOpen = ref(false)
 const forgotStep = ref<'email' | 'confirm'>('email')
@@ -28,6 +35,8 @@ const isForgotLoading = ref(false)
 
 const emailError = ref('')
 const passwordError = ref('')
+
+const canSubmit = computed(() => !!email.value && !!password.value && !isLoading.value)
 
 const validateForm = () => {
   let ok = true
@@ -42,6 +51,7 @@ const validateForm = () => {
 
 const handleLogin = async () => {
   if (!validateForm()) return
+  isLoading.value = true
   try {
     const response = await cognitoClient.send(new InitiateAuthCommand({
       AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
@@ -49,7 +59,7 @@ const handleLogin = async () => {
       ClientId: clientId,
     }))
     if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
-      session.value = response.Session || ''; view.value = 'otp'
+      session.value = response.Session || ''; view.value = 'newPassword'
     } else if (response.AuthenticationResult) {
       const { AccessToken, IdToken, RefreshToken } = response.AuthenticationResult
       if (AccessToken && IdToken && RefreshToken) {
@@ -57,15 +67,17 @@ const handleLogin = async () => {
         setAuthCookie('idToken', IdToken, 1 / 24)
         setAuthCookie('refreshToken', RefreshToken, 30)
       }
-      Swal.fire({ title: 'Login effettuato!', icon: 'success', confirmButtonText: 'OK' })
-      router.push('/')
+      router.push('/app')
     }
   } catch (error) {
-    Swal.fire({ title: 'Login fallito!', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+    Swal.fire({ title: 'Accesso non riuscito', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+  } finally {
+    isLoading.value = false
   }
 }
 
 const handleChallenge = async () => {
+  isLoading.value = true
   try {
     const response = await cognitoClient.send(new RespondToAuthChallengeCommand({
       ClientId: clientId,
@@ -74,10 +86,14 @@ const handleChallenge = async () => {
       ChallengeResponses: { NEW_PASSWORD: newPassword.value, USERNAME: email.value, NAME: email.value },
     }))
     if (response.$metadata.httpStatusCode === 200) {
-      Swal.fire({ title: 'Nuova password confermata!', icon: 'success', confirmButtonText: 'OK' })
+      Swal.fire({ title: 'Nuova password confermata', icon: 'success', confirmButtonText: 'OK' })
       view.value = 'login'
     }
-  } catch (error) { Swal.fire({ title: 'Errore!', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' }) }
+  } catch (error) {
+    Swal.fire({ title: 'Errore', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const openForgotModal = () => { forgotEmail.value = email.value; forgotStep.value = 'email'; isForgotOpen.value = true }
@@ -87,10 +103,9 @@ const sendForgotEmail = async () => {
   try {
     const res = await cognitoClient.send(new ForgotPasswordCommand({ ClientId: clientId, Username: forgotEmail.value }))
     if (res.$metadata?.httpStatusCode === 200) {
-      Swal.fire({ title: 'Codice inviato!', text: 'Controlla la tua email', icon: 'success' })
       forgotStep.value = 'confirm'
     }
-  } catch (e) { Swal.fire({ title: 'Errore!', text: handleCognitoError(e), icon: 'error' }) }
+  } catch (e) { Swal.fire({ title: 'Errore', text: handleCognitoError(e), icon: 'error' }) }
   finally { isForgotLoading.value = false }
 }
 
@@ -101,63 +116,167 @@ const confirmForgotPassword = async () => {
       ClientId: clientId, Username: forgotEmail.value, ConfirmationCode: forgotCode.value, Password: forgotNewPassword.value,
     }))
     if (res.$metadata?.httpStatusCode === 200) {
-      Swal.fire({ title: 'Password reimpostata!', icon: 'success' })
+      Swal.fire({ title: 'Password reimpostata', icon: 'success' })
       isForgotOpen.value = false
       forgotEmail.value = ''; forgotCode.value = ''; forgotNewPassword.value = ''
     }
-  } catch (e) { Swal.fire({ title: 'Errore!', text: handleCognitoError(e), icon: 'error' }) }
+  } catch (e) { Swal.fire({ title: 'Errore', text: handleCognitoError(e), icon: 'error' }) }
   finally { isForgotLoading.value = false }
 }
 </script>
 
 <template>
-  <div class="w-full h-full flex flex-row justify-center items-center bg-[#2c2638]">
-    <div class="w-1/2 h-full"><AppSlider /></div>
-    <div class="w-1/2 h-full flex flex-col gap-12">
-      <form class="pr-12 h-full flex flex-col justify-center items-center gap-8" @submit.prevent="handleLogin">
-        <template v-if="view === 'login'">
-          <h1 class="text-[#DBD4D3] text-4xl font-bold text-center">Accedi al tuo account</h1>
-          <div class="w-full">
-            <InputText v-model="email" type="email" placeholder="Email" fluid :invalid="!!emailError" />
-            <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
+  <PublicShell :show-nav="false">
+    <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1.05fr_minmax(0,430px)] lg:items-center lg:gap-[60px]">
+      <!-- Colonna narrativa: perché l'account, detto una volta sola -->
+      <div class="max-w-[600px]">
+        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
+          Bentornato
+        </p>
+        <h1 class="mb-5 text-balance text-[clamp(2.4rem,6vw,4.6rem)] leading-[1] tracking-[-0.04em] [font-weight:840]">
+          Le tue chiavi<br />ti aspettano.
+        </h1>
+        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-[#b9ace2]">
+          La password apre l'account, non i file: quelli si aprono con la tua chiave privata, che vive
+          cifrata e si sblocca solo in questo browser.
+        </p>
+
+        <!-- Dettaglio tecnico onesto, in mono: è la firma del prodotto -->
+        <dl class="mt-9 grid max-w-[420px] grid-cols-[auto_1fr] gap-x-5 gap-y-2 border-t border-white/10 pt-5 font-mono text-[0.72rem]">
+          <dt class="text-[#8d7fb8]">Account</dt>
+          <dd class="text-[#b9ace2]">email + password (Cognito)</dd>
+          <dt class="text-[#8d7fb8]">File</dt>
+          <dd class="text-[#37e7c4]">RSA-4096 · chiave privata mai in chiaro</dd>
+        </dl>
+      </div>
+
+      <!-- Carta chiara -->
+      <div class="w-[min(430px,100%)] rounded-[22px] bg-[#FBFAFF] p-2.5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)] lg:justify-self-end">
+        <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
+          <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
+            <BrandSeal :size="19" variant="plain" />
+            {{ view === 'login' ? 'Accedi' : 'Nuova password' }}
           </div>
-          <PasswordInput v-model="password" :error="passwordError" placeholder="Password" :show-tooltip="false" />
-          <div class="w-full flex flex-col gap-4">
-            <div class="flex flex-row gap-4 w-full">
-              <Button type="submit" label="Login" class="w-full" size="large" />
-              <Button type="button" label="Register" variant="outlined" class="w-full" size="large" @click="router.push('/register')" />
-            </div>
-            <Button type="button" label="Recupera password" variant="link" size="small" @click="openForgotModal" />
+          <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">connessione TLS</div>
+        </div>
+
+        <form v-if="view === 'login'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleLogin">
+          <FieldInput
+            v-model="email"
+            index="01"
+            label="Email"
+            type="email"
+            placeholder="tu@esempio.it"
+            autocomplete="email"
+            :error="emailError"
+            :disabled="isLoading"
+          />
+          <FieldInput
+            v-model="password"
+            index="02"
+            label="Password"
+            type="password"
+            placeholder="La tua password"
+            autocomplete="current-password"
+            :error="passwordError"
+            :disabled="isLoading"
+          />
+
+          <button
+            type="submit"
+            class="mt-0.5 w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            :disabled="!canSubmit"
+          >
+            {{ isLoading ? 'Accedo…' : 'Entra' }}
+          </button>
+
+          <div class="flex items-center gap-3 py-0.5">
+            <span class="h-px flex-1 bg-[#f0ebfa]" />
+            <span class="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#a79cc4]">oppure</span>
+            <span class="h-px flex-1 bg-[#f0ebfa]" />
           </div>
-          <div class="flex flex-row gap-4 w-full items-center">
-            <div class="w-full h-[1px] bg-[#DBD4D3]" />
-            <p class="text-[#DBD4D3] text-sm whitespace-nowrap">Or login with</p>
-            <div class="w-full h-[1px] bg-[#DBD4D3]" />
+
+          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Errore', text: err, icon: 'error' })" />
+
+          <div class="flex items-center justify-between pt-1 text-[0.82rem]">
+            <button type="button" class="font-semibold text-[#6a5f8c] hover:underline" @click="openForgotModal">
+              Password dimenticata
+            </button>
+            <button type="button" class="font-semibold text-[#12b89a] hover:underline" @click="router.push('/register')">
+              Crea un account →
+            </button>
           </div>
-          <div class="w-full">
-            <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Error', text: err, icon: 'error' })" />
-          </div>
-        </template>
-        <template v-else>
-          <div class="w-full flex flex-col items-start gap-2">
-            <label class="text-[#DBD4D3] text-sm">Enter new password</label>
-            <Password v-model="newPassword" placeholder="Enter new password" :feedback="false" toggle-mask fluid />
-          </div>
-          <Button type="button" label="Save New Password" class="w-full" size="large" @click="handleChallenge" />
-        </template>
-      </form>
+        </form>
+
+        <form v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleChallenge">
+          <p class="px-0.5 text-[0.86rem] leading-snug text-[#6a5f8c]">
+            Il tuo account richiede una nuova password prima di continuare.
+          </p>
+          <FieldInput
+            v-model="newPassword"
+            index="01"
+            label="Nuova password"
+            type="password"
+            placeholder="Almeno 8 caratteri"
+            autocomplete="new-password"
+            :disabled="isLoading"
+          />
+          <button
+            type="submit"
+            class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            :disabled="!newPassword || isLoading"
+          >
+            Salva e continua
+          </button>
+        </form>
+      </div>
     </div>
 
-    <Dialog v-model:visible="isForgotOpen" modal :header="forgotStep === 'email' ? 'Recupera password' : 'Inserisci codice e nuova password'" :style="{ width: '450px' }">
-      <div v-if="forgotStep === 'email'" class="flex flex-col gap-4">
-        <InputText v-model="forgotEmail" type="email" placeholder="Inserisci la tua email" fluid />
-        <Button :disabled="!forgotEmail" :loading="isForgotLoading" :label="isForgotLoading ? 'Invio in corso...' : 'Invia codice'" class="w-full" @click="sendForgotEmail" />
+    <!-- Recupero password: dialog nello stesso vestito -->
+    <Dialog
+      v-model:visible="isForgotOpen"
+      modal
+      dismissable-mask
+      :style="{ width: 'min(420px, 92vw)' }"
+      :pt="{ root: '!rounded-[22px] !border-0 !bg-[#FBFAFF] !text-[#1b1140] !p-2.5', header: '!hidden', content: '!bg-transparent !p-0' }"
+    >
+      <div class="flex items-center gap-2.5 px-3.5 pb-3 pt-3.5 text-[1.04rem] font-bold tracking-[-0.01em]">
+        <BrandSeal :size="19" variant="plain" />
+        {{ forgotStep === 'email' ? 'Recupera la password' : 'Inserisci il codice' }}
       </div>
-      <div v-else class="flex flex-col gap-4">
-        <InputText v-model="forgotCode" type="text" placeholder="Codice ricevuto via email" fluid />
-        <Password v-model="forgotNewPassword" placeholder="Nuova password" :feedback="false" toggle-mask fluid />
-        <Button :disabled="!forgotCode || !forgotNewPassword" :loading="isForgotLoading" :label="isForgotLoading ? 'Conferma in corso...' : 'Conferma nuova password'" class="w-full" @click="confirmForgotPassword" />
+
+      <div v-if="forgotStep === 'email'" class="flex flex-col gap-3.5 px-2.5 pb-2.5">
+        <FieldInput
+          v-model="forgotEmail"
+          label="Email dell'account"
+          type="email"
+          placeholder="tu@esempio.it"
+          autocomplete="email"
+          hint="Ti mandiamo un codice a sei cifre. Non tocca le tue chiavi: quelle restano cifrate."
+          :disabled="isForgotLoading"
+        />
+        <button
+          type="button"
+          class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold text-white transition enabled:hover:-translate-y-px disabled:opacity-50"
+          :disabled="!forgotEmail || isForgotLoading"
+          @click="sendForgotEmail"
+        >
+          {{ isForgotLoading ? 'Invio…' : 'Mandami il codice' }}
+        </button>
+      </div>
+
+      <div v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5">
+        <FieldInput v-model="forgotCode" label="Codice ricevuto" mono placeholder="123456" :disabled="isForgotLoading" />
+        <FieldInput v-model="forgotNewPassword" label="Nuova password" type="password" autocomplete="new-password" :disabled="isForgotLoading" />
+        <button
+          type="button"
+          class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold text-white transition enabled:hover:-translate-y-px disabled:opacity-50"
+          :disabled="!forgotCode || !forgotNewPassword || isForgotLoading"
+          @click="confirmForgotPassword"
+        >
+          {{ isForgotLoading ? 'Confermo…' : 'Reimposta la password' }}
+        </button>
       </div>
     </Dialog>
-  </div>
+  </PublicShell>
 </template>

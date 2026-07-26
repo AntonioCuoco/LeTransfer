@@ -1,0 +1,94 @@
+/*
+ * LeTransfer — landing pubblica ("invio senza account").
+ * CSS non-scoped, volutamente minimo: qui sta SOLO ciò che Tailwind non copre bene
+ * (keyframes del "sigillo", grana, gradienti compositi, contenitore scrollabile).
+ * Tutto il resto è Tailwind nei template dei componenti.
+ */
+
+.ltx-root {
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Mondo viola pieno: gradiente radiale di fondo. */
+.ltx-hero {
+  background: radial-gradient(120% 90% at 78% 12%, #2a1264, #1f0d49 46%, #160934 100%);
+}
+
+/* Grana/texture: segnale di "disegnato", spezza la piattezza del gradiente. */
+.ltx-grain {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+}
+
+/* Vignettatura: fa emergere il contenuto sul fondo animato. */
+.ltx-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(130% 120% at 30% 40%, transparent 40%, rgba(11, 4, 28, 0.55) 100%);
+}
+
+/* Climax del "sigillo": lampo menta a fine cifratura. */
+.ltx-sealflash {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(46% 46% at 72% 50%, rgba(55, 231, 196, 0.55), transparent 70%);
+}
+
+.ltx-sealflash.fire {
+  animation: ltx-flash 1s ease-out;
+}
+
+@keyframes ltx-flash {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Climax del "sigillo": il marchio a rombo che si stampa sul fondo. */
+.ltx-sealstamp {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 72%;
+  width: min(48vh, 440px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) scale(0.55);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ltx-sealstamp svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 46px rgba(55, 231, 196, 0.55));
+}
+
+.ltx-sealstamp.fire {
+  animation: ltx-stamp 1.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes ltx-stamp {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+  28% { opacity: 0.34; }
+  62% { opacity: 0.2; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.06); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ltx-sealflash.fire,
+  .ltx-sealstamp.fire {
+    animation: none;
+  }
+}

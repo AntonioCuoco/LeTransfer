@@ -1,38 +1,78 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import PublicShell from '@/src/components/landing/PublicShell.vue'
 import type { LinkStatus } from '@/src/composables/usePublicLink'
 
-defineProps<{ status: LinkStatus; message?: string }>()
+/**
+ * Link non apribile (scaduto, revocato, limite raggiunto, inesistente).
+ * Resta dentro il mondo pubblico: un link morto è comunque una prima impressione,
+ * e per un prodotto sulla privacy la scadenza è una feature, non un errore da nascondere.
+ */
+
+const props = defineProps<{ status: LinkStatus; message?: string }>()
 
 const router = useRouter()
 
-const errorConfig: Record<string, { icon: string; title: string; description: string }> = {
-  not_found: { icon: 'pi pi-times-circle', title: 'Link non trovato', description: 'Il link che stai cercando non esiste o è stato eliminato.' },
-  expired: { icon: 'pi pi-clock', title: 'Link scaduto', description: 'Questo link è scaduto e non è più accessibile. Contatta il proprietario per richiederne uno nuovo.' },
-  revoked: { icon: 'pi pi-ban', title: 'Link revocato', description: 'Il proprietario ha revocato questo link. Non è più possibile accedere al file.' },
-  download_limit: { icon: 'pi pi-exclamation-triangle', title: 'Limite raggiunto', description: 'Questo link ha raggiunto il numero massimo di download consentiti.' },
-  error: { icon: 'pi pi-exclamation-triangle', title: 'Errore', description: 'Si è verificato un errore durante il caricamento. Riprova più tardi.' },
+const CONFIG: Record<string, { eyebrow: string; title: string; description: string }> = {
+  not_found: {
+    eyebrow: 'Link inesistente',
+    title: 'Qui non c’è niente.',
+    description: 'Il link non esiste, oppure è stato copiato a metà. Chiedi a chi te l’ha mandato di rifarlo.',
+  },
+  expired: {
+    eyebrow: 'Link scaduto',
+    title: 'È scaduto, come doveva.',
+    description: 'Ogni trasferimento ha una data di morte: passata quella, i byte cifrati vengono cancellati. Chiedi un link nuovo.',
+  },
+  revoked: {
+    eyebrow: 'Link revocato',
+    title: 'Chi l’ha inviato l’ha ritirato.',
+    description: 'Il link è stato revocato dal mittente e non apre più nulla.',
+  },
+  download_limit: {
+    eyebrow: 'Limite raggiunto',
+    title: 'Questo link era a numero chiuso.',
+    description: 'Ha raggiunto il numero massimo di download consentiti dal mittente.',
+  },
+  error: {
+    eyebrow: 'Errore',
+    title: 'Non riusciamo ad aprirlo.',
+    description: 'Qualcosa è andato storto nel recupero del link. Riprova tra poco.',
+  },
 }
+
+const config = computed(() => CONFIG[props.status] || CONFIG.error)
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#2c2638] flex items-center justify-center p-4">
-    <div class="max-w-md w-full text-center">
-      <div class="mb-6">
-        <i
-          :class="[
-            (errorConfig[status] || errorConfig.error).icon,
-            { 'text-red-400': status === 'not_found' || status === 'error', 'text-yellow-400': status === 'expired', 'text-orange-400': status === 'revoked', 'text-purple-400': status === 'download_limit' },
-          ]"
-          class="text-6xl"
-        />
+  <PublicShell :show-nav="false">
+    <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1.05fr_minmax(0,430px)] lg:items-center lg:gap-[60px]">
+      <div class="max-w-[600px]">
+        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#b9ace2]">
+          {{ config.eyebrow }}
+        </p>
+        <h1 class="mb-5 text-balance text-[clamp(2.4rem,6vw,4.4rem)] leading-[1] tracking-[-0.04em] [font-weight:840]">
+          {{ config.title }}
+        </h1>
+        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-[#b9ace2]">
+          {{ message || config.description }}
+        </p>
       </div>
-      <h1 class="text-2xl font-bold text-white mb-3">{{ (errorConfig[status] || errorConfig.error).title }}</h1>
-      <p class="text-[#9ca3af] mb-6">{{ message || (errorConfig[status] || errorConfig.error).description }}</p>
-      <div class="bg-[#1a1625] border border-[#4a4554] rounded-xl p-4 mb-6">
-        <p class="text-[#676178] text-sm m-0">Se ritieni che questo sia un errore, contatta la persona che ti ha inviato il link.</p>
+
+      <div class="w-[min(430px,100%)] rounded-[22px] bg-[#FBFAFF] p-5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)] lg:justify-self-end">
+        <p class="mb-1 text-[1.04rem] font-bold tracking-[-0.01em]">Puoi mandarne uno tu.</p>
+        <p class="mb-4 text-[0.86rem] leading-snug text-[#6a5f8c]">
+          Trascina un file, ottieni un link cifrato nel browser. Senza account.
+        </p>
+        <button
+          type="button"
+          class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition hover:-translate-y-px hover:brightness-105"
+          @click="router.push('/')"
+        >
+          Invia un file
+        </button>
       </div>
-      <Button label="Torna alla home" icon="pi pi-home" size="large" @click="router.push('/')" />
     </div>
-  </div>
+  </PublicShell>
 </template>

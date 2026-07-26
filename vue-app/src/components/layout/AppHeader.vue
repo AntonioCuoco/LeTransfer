@@ -23,7 +23,7 @@ const handleLogout = async () => {
 <template>
   <div class="w-full h-fit">
     <header class="w-full h-fit p-4 px-2 sm:px-10 flex items-center justify-between">
-      <p class="text-[#DBD4D3] text-4xl font-bold cursor-pointer" @click="router.push('/')">L.E</p>
+      <p class="text-[#DBD4D3] text-4xl font-bold cursor-pointer" @click="router.push('/app')">L.E</p>
       <div class="w-fit h-fit flex flex-row items-center gap-4">
         <button
           class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"

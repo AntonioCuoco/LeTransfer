@@ -1,72 +1,85 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+
+/**
+ * Pannello di download dopo l'accesso. Non ripete l'identità del file (nome, peso,
+ * tipo): quella sta una sola volta, in cima alla carta. Qui ci sono l'anteprima
+ * quando è possibile, l'azione, e il progresso REALE della decifratura — la stessa
+ * barra viola→menta dell'invio, così il rituale è lo stesso da entrambi i lati.
+ */
+
 const props = defineProps<{
   fileName: string
-  fileSize: string
   fileType: string
   previewUrl?: string
   previewSupported?: boolean
   isDownloading?: boolean
   isDecrypting?: boolean
+  decryptProgress?: number
+  isDone?: boolean
   onDownload?: () => void
   onPreview?: () => void
 }>()
 
-const getFileIcon = (type: string) => {
-  if (type.startsWith('image/')) return 'pi pi-image'
-  if (type === 'application/pdf') return 'pi pi-file-pdf'
-  if (type.startsWith('video/')) return 'pi pi-video'
-  if (type.startsWith('audio/')) return 'pi pi-volume-up'
-  if (type.startsWith('text/') || type.includes('document')) return 'pi pi-file-edit'
-  return 'pi pi-file'
-}
-
 const supportsInlinePreview = (type: string) =>
   type.startsWith('image/') || type === 'application/pdf' || type.startsWith('video/') || type.startsWith('audio/')
 
-const canPreview = () => props.previewSupported && props.previewUrl && supportsInlinePreview(props.fileType)
+const canPreview = computed(() => !!props.previewSupported && !!props.previewUrl && supportsInlinePreview(props.fileType))
+
+const busy = computed(() => !!props.isDownloading || !!props.isDecrypting)
+
+const actionLabel = computed(() => {
+  if (props.isDecrypting) return 'Decifro…'
+  if (props.isDownloading) return 'Recupero i blocchi…'
+  if (props.isDone) return 'Scarica di nuovo'
+  return 'Decifra e scarica'
+})
 </script>
 
 <template>
-  <div class="bg-gradient-to-r from-[#1a1625] to-[#2c2638] border border-[#4a4554] rounded-xl overflow-hidden">
-    <div v-if="canPreview()" class="relative bg-black/30 aspect-video flex items-center justify-center">
-      <img v-if="fileType.startsWith('image/')" :src="previewUrl" :alt="fileName" class="max-w-full max-h-full object-contain" />
-      <iframe v-else-if="fileType === 'application/pdf'" :src="previewUrl" :title="fileName" class="w-full h-full min-h-[300px]" />
-      <video v-else-if="fileType.startsWith('video/')" :src="previewUrl" controls class="max-w-full max-h-full" />
-      <audio v-else-if="fileType.startsWith('audio/')" :src="previewUrl" controls class="w-full max-w-md" />
+  <div class="flex flex-col gap-3">
+    <div v-if="canPreview" class="overflow-hidden rounded-[12px] border border-[#e9e3f6] bg-[#f5f1fd]">
+      <div class="flex aspect-video items-center justify-center bg-[#1f0d49]/5">
+        <img v-if="fileType.startsWith('image/')" :src="previewUrl" :alt="fileName" class="max-h-full max-w-full object-contain" />
+        <iframe v-else-if="fileType === 'application/pdf'" :src="previewUrl" :title="fileName" class="h-full min-h-[240px] w-full" />
+        <video v-else-if="fileType.startsWith('video/')" :src="previewUrl" controls class="max-h-full max-w-full" />
+        <audio v-else-if="fileType.startsWith('audio/')" :src="previewUrl" controls class="w-full max-w-md px-4" />
+      </div>
     </div>
 
-    <div class="p-6">
-      <div class="flex items-center gap-4 mb-6">
-        <div class="w-14 h-14 rounded-xl bg-[#724CF9]/20 flex items-center justify-center flex-shrink-0">
-          <i :class="getFileIcon(fileType)" class="text-primary text-3xl" />
-        </div>
-        <div class="min-w-0">
-          <p class="font-semibold text-white truncate">{{ fileName }}</p>
-          <p class="text-[#9ca3af] text-sm">{{ fileSize }} · {{ fileType }}</p>
-        </div>
+    <!-- Progresso reale della decifratura (nessuno spinner indeterminato) -->
+    <div v-if="busy" class="flex flex-col gap-2">
+      <div class="h-2 overflow-hidden rounded-full bg-[#e4dbf6]">
+        <div
+          class="h-full rounded-full bg-[linear-gradient(90deg,#7c4dff,#37e7c4)] transition-all duration-150"
+          :class="isDecrypting ? '' : 'animate-pulse'"
+          :style="{ width: isDecrypting ? `${decryptProgress ?? 0}%` : '100%' }"
+        />
       </div>
+      <div class="flex justify-between font-mono text-[0.7rem] text-[#6a5f8c]">
+        <span>{{ isDecrypting ? `${decryptProgress ?? 0}%` : '···' }}</span>
+        <span>il server ha mandato solo ciphertext</span>
+      </div>
+    </div>
 
-      <div class="flex gap-3">
-        <Button
-          v-if="canPreview() && onPreview"
-          label="Anteprima"
-          icon="pi pi-eye"
-          severity="secondary"
-          outlined
-          size="large"
-          class="flex-1"
-          @click="onPreview"
-        />
-        <Button
-          :label="isDecrypting ? 'Decifratura...' : isDownloading ? 'Download...' : 'Scarica'"
-          :icon="(isDownloading || isDecrypting) ? undefined : 'pi pi-download'"
-          :loading="isDownloading || isDecrypting"
-          :disabled="isDownloading || isDecrypting"
-          size="large"
-          class="flex-1"
-          @click="onDownload"
-        />
-      </div>
+    <div class="flex gap-2">
+      <button
+        v-if="canPreview && onPreview"
+        type="button"
+        class="flex-none rounded-[13px] border border-[#e9e3f6] bg-white px-4 py-3.5 text-[0.9rem] font-semibold transition hover:border-[#7c4dff] disabled:opacity-50"
+        :disabled="busy"
+        @click="onPreview"
+      >
+        Anteprima
+      </button>
+      <button
+        type="button"
+        class="flex-1 rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-60"
+        :disabled="busy"
+        @click="onDownload"
+      >
+        {{ actionLabel }}
+      </button>
     </div>
   </div>
 </template>

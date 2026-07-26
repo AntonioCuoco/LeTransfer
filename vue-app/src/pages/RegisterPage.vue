@@ -1,29 +1,51 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie } from '@/src/utils/cookieStore'
 import Swal from 'sweetalert2'
 import { AuthFlowType, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
-import AppSlider from '@/src/components/AppSlider.vue'
-import PasswordInput from '@/src/components/PasswordInput.vue'
+import PublicShell from '@/src/components/landing/PublicShell.vue'
+import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 
-const router = useRouter()
-if (Cookies.get('accessToken')) router.replace('/')
+/**
+ * Registrazione — stessa carta chiara delle altre superfici pubbliche.
+ * La conferma del codice è una VISTA della carta, non un dialog che compare dal nulla:
+ * l'utente resta nello stesso oggetto dall'inizio alla fine (pattern Linear/Notion).
+ * Logica Cognito invariata (roadmap F5).
+ */
 
+const router = useRouter()
+if (Cookies.get('accessToken')) router.replace('/app')
+
+const view = ref<'form' | 'confirm'>('form')
 const name = ref('')
 const surname = ref('')
 const email = ref('')
 const password = ref('')
-const isModalOpen = ref(false)
 const confirmCode = ref('')
+const isLoading = ref(false)
 
 const nameError = ref('')
 const surnameError = ref('')
 const emailError = ref('')
 const passwordError = ref('')
+
+// Criteri password mostrati mentre si scrive, non dopo il rifiuto del server.
+const rules = computed(() => [
+  { label: '8+ caratteri', ok: password.value.length >= 8 },
+  { label: 'una maiuscola', ok: /[A-Z]/.test(password.value) },
+  { label: 'una minuscola', ok: /[a-z]/.test(password.value) },
+  { label: 'un numero', ok: /\d/.test(password.value) },
+  { label: 'un simbolo', ok: /[^A-Za-z0-9]/.test(password.value) },
+])
+
+const canSubmit = computed(
+  () => !!name.value && !!surname.value && !!email.value && rules.value.every((rule) => rule.ok) && !isLoading.value,
+)
 
 const validate = () => {
   nameError.value = name.value ? '' : 'Nome obbligatorio'
@@ -35,6 +57,7 @@ const validate = () => {
 
 const handleRegister = async () => {
   if (!validate()) return
+  isLoading.value = true
   try {
     const response = await cognitoClient.send(new SignUpCommand({
       ClientId: clientId,
@@ -46,15 +69,17 @@ const handleRegister = async () => {
       ],
     }))
     if (response.$metadata.httpStatusCode === 200) {
-      Swal.fire({ title: 'Utente registrato!', text: 'Controlla la tua email per il codice di verifica', icon: 'success' })
-      isModalOpen.value = true
+      view.value = 'confirm'
     }
   } catch (error) {
-    Swal.fire({ title: 'Errore durante la registrazione!', text: handleCognitoError(error), icon: 'error' })
+    Swal.fire({ title: 'Registrazione non riuscita', text: handleCognitoError(error), icon: 'error' })
+  } finally {
+    isLoading.value = false
   }
 }
 
 const handleConfirm = async () => {
+  isLoading.value = true
   try {
     const confirmResponse = await cognitoClient.send(new ConfirmSignUpCommand({
       ClientId: clientId, Username: email.value, ConfirmationCode: confirmCode.value,
@@ -72,60 +97,138 @@ const handleConfirm = async () => {
           setAuthCookie('idToken', IdToken, 1 / 24)
           setAuthCookie('refreshToken', RefreshToken, 30)
         }
-        isModalOpen.value = false
-        Swal.fire({ title: 'Registrazione completata!', text: 'Benvenuto nella piattaforma', icon: 'success' })
-        router.push('/')
+        router.push('/app')
       }
     }
-  } catch (error) { Swal.fire({ title: 'Errore!', text: handleCognitoError(error), icon: 'error' }) }
+  } catch (error) {
+    Swal.fire({ title: 'Errore', text: handleCognitoError(error), icon: 'error' })
+  } finally {
+    isLoading.value = false
+  }
 }
 </script>
 
 <template>
-  <div class="w-full h-full flex flex-row justify-center items-center bg-[#2c2638]">
-    <Dialog v-model:visible="isModalOpen" modal :closable="false" :style="{ width: '450px' }" :pt="{ header: '!hidden' }">
-      <div class="flex flex-col items-center justify-center gap-4 py-4">
-        <p class="text-[#DBD4D3] text-2xl font-bold">Codice di verifica</p>
-        <InputText v-model="confirmCode" type="text" placeholder="Codice di verifica" fluid />
-      </div>
-      <template #footer>
-        <Button label="Annulla" severity="secondary" outlined @click="isModalOpen = false" />
-        <Button label="Conferma" @click="handleConfirm" />
-      </template>
-    </Dialog>
+  <PublicShell :show-nav="false">
+    <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1fr_minmax(0,450px)] lg:items-center lg:gap-[60px]">
+      <div class="max-w-[600px]">
+        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
+          Crea un account
+        </p>
+        <h1 class="mb-5 text-balance text-[clamp(2.4rem,6vw,4.6rem)] leading-[1] tracking-[-0.04em] [font-weight:840]">
+          Un posto<br />per le tue<br /><em class="not-italic text-[#37e7c4]">chiavi.</em>
+        </h1>
+        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-[#b9ace2]">
+          Senza account puoi già inviare. Con l'account tieni lo storico, revochi i link quando vuoi,
+          alzi i limiti — e i file restano cifrati esattamente come prima.
+        </p>
 
-    <div class="w-1/2 h-full"><AppSlider /></div>
-    <div class="w-1/2 h-full flex flex-col gap-12">
-      <form class="pr-12 h-full flex flex-col justify-center items-center gap-8" @submit.prevent="handleRegister">
-        <h1 class="text-[#DBD4D3] text-4xl font-bold text-center">Registrati all'applicazione</h1>
-        <div class="flex flex-row gap-4 w-full">
-          <div class="w-full">
-            <InputText v-model="name" type="text" placeholder="Nome" fluid :invalid="!!nameError" />
-            <p v-if="nameError" class="text-[#F4743B] mt-1 text-sm">{{ nameError }}</p>
+        <ul class="mt-9 grid max-w-[440px] gap-2.5 border-t border-white/10 pt-5 font-mono text-[0.74rem] text-[#b9ace2]">
+          <li class="flex items-baseline gap-3"><span class="text-[#37e7c4]">→</span> La coppia di chiavi nasce in questo browser</li>
+          <li class="flex items-baseline gap-3"><span class="text-[#37e7c4]">→</span> La privata resta cifrata, anche da noi</li>
+          <li class="flex items-baseline gap-3"><span class="text-[#37e7c4]">→</span> Una recovery key da 24 parole per non perderla</li>
+        </ul>
+      </div>
+
+      <div class="w-[min(450px,100%)] rounded-[22px] bg-[#FBFAFF] p-2.5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)] lg:justify-self-end">
+        <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
+          <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
+            <BrandSeal :size="19" :variant="view === 'confirm' ? 'check' : 'plain'" />
+            {{ view === 'form' ? 'Nuovo account' : 'Conferma l\'email' }}
           </div>
-          <div class="w-full">
-            <InputText v-model="surname" type="text" placeholder="Cognome" fluid :invalid="!!surnameError" />
-            <p v-if="surnameError" class="text-[#F4743B] mt-1 text-sm">{{ surnameError }}</p>
+          <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">
+            {{ view === 'form' ? 'passo 1 di 2' : 'passo 2 di 2' }}
           </div>
         </div>
-        <div class="w-full">
-          <InputText v-model="email" type="email" placeholder="Email" fluid :invalid="!!emailError" />
-          <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
-        </div>
-        <PasswordInput v-model="password" :error="passwordError" placeholder="Password" :show-tooltip="true" />
-        <div class="flex flex-row gap-4 w-full">
-          <Button type="submit" label="Register" class="w-full" size="large" />
-          <Button type="button" label="Login" variant="outlined" class="w-full" size="large" @click="router.push('/login')" />
-        </div>
-        <div class="flex flex-row gap-4 w-full items-center">
-          <div class="w-full h-[1px] bg-[#DBD4D3]" />
-          <p class="text-[#DBD4D3] text-sm whitespace-nowrap">Or register with</p>
-          <div class="w-full h-[1px] bg-[#DBD4D3]" />
-        </div>
-        <div class="w-full">
-          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Error', text: err, icon: 'error' })" />
-        </div>
-      </form>
+
+        <form v-if="view === 'form'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleRegister">
+          <div class="grid grid-cols-2 gap-2.5">
+            <FieldInput v-model="name" index="01" label="Nome" placeholder="Antonio" autocomplete="given-name" :error="nameError" :disabled="isLoading" />
+            <FieldInput v-model="surname" index="02" label="Cognome" placeholder="Rossi" autocomplete="family-name" :error="surnameError" :disabled="isLoading" />
+          </div>
+
+          <FieldInput
+            v-model="email"
+            index="03"
+            label="Email"
+            type="email"
+            placeholder="tu@esempio.it"
+            autocomplete="email"
+            :error="emailError"
+            :disabled="isLoading"
+          />
+
+          <div>
+            <FieldInput
+              v-model="password"
+              index="04"
+              label="Password"
+              type="password"
+              placeholder="Scegline una lunga"
+              autocomplete="new-password"
+              :error="passwordError"
+              :disabled="isLoading"
+            />
+            <!-- Criteri live: si spengono uno a uno mentre scrivi -->
+            <ul class="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[0.68rem]">
+              <li
+                v-for="rule in rules"
+                :key="rule.label"
+                class="flex items-center gap-1 transition-colors"
+                :class="rule.ok ? 'text-[#12b89a]' : 'text-[#a79cc4]'"
+              >
+                <span>{{ rule.ok ? '✓' : '·' }}</span>{{ rule.label }}
+              </li>
+            </ul>
+          </div>
+
+          <button
+            type="submit"
+            class="mt-0.5 w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            :disabled="!canSubmit"
+          >
+            {{ isLoading ? 'Creo l\'account…' : 'Crea l\'account' }}
+          </button>
+
+          <div class="flex items-center gap-3 py-0.5">
+            <span class="h-px flex-1 bg-[#f0ebfa]" />
+            <span class="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#a79cc4]">oppure</span>
+            <span class="h-px flex-1 bg-[#f0ebfa]" />
+          </div>
+
+          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Errore', text: err, icon: 'error' })" />
+
+          <div class="pt-1 text-center text-[0.82rem] text-[#6a5f8c]">
+            Hai già un account?
+            <button type="button" class="font-semibold text-[#12b89a] hover:underline" @click="router.push('/login')">Accedi</button>
+          </div>
+        </form>
+
+        <form v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleConfirm">
+          <p class="px-0.5 text-[0.86rem] leading-snug text-[#6a5f8c]">
+            Abbiamo mandato un codice a <b class="font-mono text-[0.82rem] text-[#1b1140]">{{ email }}</b>.
+            Incollalo qui e sei dentro.
+          </p>
+          <FieldInput
+            v-model="confirmCode"
+            label="Codice di verifica"
+            mono
+            placeholder="123456"
+            autocomplete="one-time-code"
+            :disabled="isLoading"
+          />
+          <button
+            type="submit"
+            class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            :disabled="!confirmCode || isLoading"
+          >
+            {{ isLoading ? 'Verifico…' : 'Conferma e entra' }}
+          </button>
+          <button type="button" class="text-[0.82rem] font-semibold text-[#6a5f8c] hover:underline" @click="view = 'form'">
+            ← Correggi i dati
+          </button>
+        </form>
+      </div>
     </div>
-  </div>
+  </PublicShell>
 </template>

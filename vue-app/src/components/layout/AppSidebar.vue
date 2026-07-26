@@ -12,8 +12,8 @@ const encryptionStore = useEncryptionStore()
 // `exact: true` for the home route — otherwise `/` matches every path as a
 // prefix and the Home item would stay highlighted on every page.
 const navItems = [
-  { path: '/', icon: 'pi pi-home', label: 'Home', exact: true },
-  { path: '/profile', icon: 'pi pi-user', label: 'Profilo', exact: false },
+  { path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
+  { path: '/app/profile', icon: 'pi pi-user', label: 'Profilo', exact: false },
 ]
 
 const handleLogout = async () => {
@@ -36,7 +36,7 @@ const handleLogout = async () => {
   <aside class="fixed left-0 top-0 h-screen w-[72px] bg-[#3c364c] border-r border-[#4a4554]/50 flex flex-col items-center justify-between py-4 px-2 z-50">
     <!-- Logo -->
     <div class="mb-8">
-      <RouterLink to="/" class="w-14 h-14 flex items-center justify-center rounded-[10px] hover:scale-105 transition-transform">
+      <RouterLink to="/app" class="w-14 h-14 flex items-center justify-center rounded-[10px] hover:scale-105 transition-transform">
         <img :src="logo" alt="Logo" />
       </RouterLink>
     </div>
@@ -75,7 +75,7 @@ const handleLogout = async () => {
       <button
         class="relative w-full h-12 flex items-center justify-center rounded-[10px] text-[#9ca3af] hover:bg-[#724CF9]/15 hover:text-white transition-all duration-150 group"
         title="Impostazioni"
-        @click="router.push('/settings')"
+        @click="router.push('/app/settings')"
       >
         <i class="pi pi-cog text-xl" />
         <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">

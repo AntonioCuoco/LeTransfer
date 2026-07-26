@@ -32,7 +32,7 @@ const handleGoogleLogin = async () => {
   <button
     type="button"
     :disabled="disabled || isLoading"
-    class="w-full flex items-center justify-center gap-3 bg-white text-gray-700 font-medium py-2.5 px-4 rounded-md border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+    class="flex w-full items-center justify-center gap-3 rounded-[13px] border border-[#e9e3f6] bg-white px-4 py-3 text-[0.92rem] font-semibold text-[#1b1140] transition hover:-translate-y-px hover:border-[#7c4dff] disabled:cursor-not-allowed disabled:opacity-60"
     @click="handleGoogleLogin"
   >
     <svg viewBox="0 0 24 24" class="w-5 h-5" xmlns="http://www.w3.org/2000/svg">
