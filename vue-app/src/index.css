@@ -1,11 +1,16 @@
 @import "tailwindcss";
 @import "tailwindcss-primeui";
 
+/* Design system: token + primitivi (roadmap F0). Unica fonte di verità di colori,
+   raggi, ombre e movimento — vedi assets/tokens.css. */
+@import "./assets/tokens.css";
+
 /* Match Tailwind's `dark:` variant to the same `.dark` class PrimeVue uses
    (set on <html> by stores/theme.ts), so utilities and components agree. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* PrimeVue injects its styles into the `primevue` CSS layer (configured in
    main.ts). Declaring the layer order here guarantees Tailwind utilities can
-   override component styles when needed. */
-@layer theme, base, primevue, utilities;
+   override component styles when needed. `components` (i primitivi .lt-*) sta
+   dopo primevue e prima di utilities: sovrascrive PrimeVue, cede alle utility. */
+@layer theme, base, primevue, components, utilities;

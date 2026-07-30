@@ -38,8 +38,8 @@ function onKey(event: KeyboardEvent) {
 
 <template>
   <div>
-    <label :for="inputId" class="mb-1.5 flex items-baseline gap-2 font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">
-      <span v-if="index" class="text-[#c3b6e6]">{{ index }}</span>
+    <label :for="inputId" class="lt-label mb-1.5 flex items-baseline gap-2">
+      <span v-if="index" class="text-lilac-600">{{ index }}</span>
       {{ label }}
     </label>
 
@@ -52,9 +52,8 @@ function onKey(event: KeyboardEvent) {
         :disabled="disabled"
         :autocomplete="autocomplete"
         :aria-invalid="!!error"
-        class="w-full rounded-[11px] border bg-white px-3 py-2.5 text-[0.92rem] outline-none transition-colors placeholder:font-normal placeholder:text-[#a79cc4] focus:border-[#724cf9] disabled:opacity-60"
+        class="lt-field"
         :class="[
-          error ? 'border-[#e9b3af]' : 'border-[#e9e3f6]',
           mono || type === 'password' ? 'font-mono text-[0.86rem] placeholder:font-sans' : 'font-semibold',
           type === 'password' ? 'pr-[4.6rem]' : '',
         ]"
@@ -66,15 +65,15 @@ function onKey(event: KeyboardEvent) {
         v-if="type === 'password'"
         type="button"
         tabindex="-1"
-        class="absolute right-2 top-1/2 -translate-y-1/2 rounded-[7px] px-2 py-1 font-mono text-[0.64rem] uppercase tracking-[0.1em] text-[#6a5f8c] transition-colors hover:bg-[#f0ebfa] hover:text-[#1b1140]"
+        class="absolute right-2 top-1/2 -translate-y-1/2 rounded-badge px-2 py-1 font-mono text-[0.64rem] uppercase tracking-[0.1em] text-ink-500 transition-colors hover:bg-lilac-200 hover:text-ink-900"
         @click="revealed = !revealed"
       >
         {{ revealed ? 'nascondi' : 'mostra' }}
       </button>
     </div>
 
-    <p v-if="error" class="mt-1.5 font-mono text-[0.72rem] text-[#b3352f]">{{ error }}</p>
-    <p v-else-if="capsLock" class="mt-1.5 font-mono text-[0.72rem] text-[#8a6d1f]">bloc maiusc attivo</p>
-    <p v-else-if="hint" class="mt-1.5 text-[0.76rem] leading-snug text-[#8a7fae]">{{ hint }}</p>
+    <p v-if="error" class="mt-1.5 font-mono text-[0.72rem] text-crit-600">{{ error }}</p>
+    <p v-else-if="capsLock" class="mt-1.5 font-mono text-[0.72rem] text-warn-700">bloc maiusc attivo</p>
+    <p v-else-if="hint" class="mt-1.5 text-[0.76rem] leading-snug text-ink-400">{{ hint }}</p>
   </div>
 </template>

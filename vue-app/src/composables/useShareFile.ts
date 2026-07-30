@@ -35,6 +35,15 @@ export const useShareFile = () => {
         if (keyData) {
           const recipientPublicKey = await getRecipientPublicKey(targetEmail)
           if (!recipientPublicKey) throw new Error('Il destinatario non ha ancora configurato la cifratura E2E.')
+
+          // Verifica dell'impronta (F2): l'ultimo momento utile per accorgersi che la
+          // chiave pubblica servita non è quella della persona giusta. Se l'utente non
+          // conferma, ci si ferma qui — senza wrappare e senza chiamare il server.
+          if (options?.verifyRecipient) {
+            const approved = await options.verifyRecipient(recipientPublicKey, targetEmail)
+            if (!approved) return null // il `finally` rimette isSharing a false
+          }
+
           const aesKey = await importKeyFromBase64(keyData.key)
           encryptedAESKey = await wrapKeyWithPublicKey(aesKey, recipientPublicKey)
           encryptionIV = keyData.iv

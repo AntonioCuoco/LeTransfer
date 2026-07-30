@@ -50,15 +50,11 @@ const handleSubmit = () => {
       :disabled="isLoading"
     />
 
-    <div v-if="error" class="rounded-[11px] border border-[#f3cfcc] bg-[#fdeceb] px-3 py-2.5 text-[0.82rem] font-medium text-[#b3352f]">
+    <div v-if="error" class="rounded-field border border-crit-200 bg-crit-100 px-3 py-2.5 text-[0.82rem] font-medium text-crit-600">
       {{ error }}
     </div>
 
-    <button
-      type="submit"
-      class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
-      :disabled="!isFormValid || isLoading"
-    >
+    <button type="submit" class="lt-btn" :disabled="!isFormValid || isLoading">
       {{ isLoading ? 'Un attimo…' : 'Apri il file' }}
     </button>
   </form>

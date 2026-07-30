@@ -130,13 +130,13 @@ const confirmForgotPassword = async () => {
     <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1.05fr_minmax(0,430px)] lg:items-center lg:gap-[60px]">
       <!-- Colonna narrativa: perché l'account, detto una volta sola -->
       <div class="max-w-[600px]">
-        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
+        <p class="lt-eyebrow mb-[22px]">
           Bentornato
         </p>
-        <h1 class="mb-5 text-balance text-[clamp(2.4rem,6vw,4.6rem)] leading-[1] tracking-[-0.04em] [font-weight:840]">
+        <h1 class="lt-display mb-5">
           Le tue chiavi<br />ti aspettano.
         </h1>
-        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-[#b9ace2]">
+        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-haze-300">
           La password apre l'account, non i file: quelli si aprono con la tua chiave privata, che vive
           cifrata e si sblocca solo in questo browser.
         </p>
@@ -151,7 +151,7 @@ const confirmForgotPassword = async () => {
       </div>
 
       <!-- Carta chiara -->
-      <div class="w-[min(430px,100%)] rounded-[22px] bg-[#FBFAFF] p-2.5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)] lg:justify-self-end">
+      <div class="lt-card w-[min(430px,100%)] p-2.5 lg:justify-self-end">
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
             <BrandSeal :size="19" variant="plain" />
@@ -184,7 +184,7 @@ const confirmForgotPassword = async () => {
 
           <button
             type="submit"
-            class="mt-0.5 w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            class="lt-btn mt-0.5"
             :disabled="!canSubmit"
           >
             {{ isLoading ? 'Accedo…' : 'Entra' }}
@@ -223,7 +223,7 @@ const confirmForgotPassword = async () => {
           />
           <button
             type="submit"
-            class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            class="lt-btn"
             :disabled="!newPassword || isLoading"
           >
             Salva e continua
@@ -257,7 +257,7 @@ const confirmForgotPassword = async () => {
         />
         <button
           type="button"
-          class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold text-white transition enabled:hover:-translate-y-px disabled:opacity-50"
+          class="lt-btn"
           :disabled="!forgotEmail || isForgotLoading"
           @click="sendForgotEmail"
         >
@@ -270,7 +270,7 @@ const confirmForgotPassword = async () => {
         <FieldInput v-model="forgotNewPassword" label="Nuova password" type="password" autocomplete="new-password" :disabled="isForgotLoading" />
         <button
           type="button"
-          class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold text-white transition enabled:hover:-translate-y-px disabled:opacity-50"
+          class="lt-btn"
           :disabled="!forgotCode || !forgotNewPassword || isForgotLoading"
           @click="confirmForgotPassword"
         >

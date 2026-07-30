@@ -112,13 +112,13 @@ const handleConfirm = async () => {
   <PublicShell :show-nav="false">
     <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1fr_minmax(0,450px)] lg:items-center lg:gap-[60px]">
       <div class="max-w-[600px]">
-        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
+        <p class="lt-eyebrow mb-[22px]">
           Crea un account
         </p>
-        <h1 class="mb-5 text-balance text-[clamp(2.4rem,6vw,4.6rem)] leading-[1] tracking-[-0.04em] [font-weight:840]">
-          Un posto<br />per le tue<br /><em class="not-italic text-[#37e7c4]">chiavi.</em>
+        <h1 class="lt-display mb-5">
+          Un posto<br />per le tue<br /><em class="not-italic text-verified-400">chiavi.</em>
         </h1>
-        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-[#b9ace2]">
+        <p class="max-w-[46ch] text-[clamp(1rem,1.5vw,1.18rem)] leading-relaxed text-haze-300">
           Senza account puoi già inviare. Con l'account tieni lo storico, revochi i link quando vuoi,
           alzi i limiti — e i file restano cifrati esattamente come prima.
         </p>
@@ -130,7 +130,7 @@ const handleConfirm = async () => {
         </ul>
       </div>
 
-      <div class="w-[min(450px,100%)] rounded-[22px] bg-[#FBFAFF] p-2.5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)] lg:justify-self-end">
+      <div class="lt-card w-[min(450px,100%)] p-2.5 lg:justify-self-end">
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
             <BrandSeal :size="19" :variant="view === 'confirm' ? 'check' : 'plain'" />
@@ -184,7 +184,7 @@ const handleConfirm = async () => {
 
           <button
             type="submit"
-            class="mt-0.5 w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            class="lt-btn mt-0.5"
             :disabled="!canSubmit"
           >
             {{ isLoading ? 'Creo l\'account…' : 'Crea l\'account' }}
@@ -219,7 +219,7 @@ const handleConfirm = async () => {
           />
           <button
             type="submit"
-            class="w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50"
+            class="lt-btn"
             :disabled="!confirmCode || isLoading"
           >
             {{ isLoading ? 'Verifico…' : 'Conferma e entra' }}

@@ -66,18 +66,13 @@ const actionLabel = computed(() => {
       <button
         v-if="canPreview && onPreview"
         type="button"
-        class="flex-none rounded-[13px] border border-[#e9e3f6] bg-white px-4 py-3.5 text-[0.9rem] font-semibold transition hover:border-[#7c4dff] disabled:opacity-50"
+        class="lt-btn-ghost flex-none"
         :disabled="busy"
         @click="onPreview"
       >
         Anteprima
       </button>
-      <button
-        type="button"
-        class="flex-1 rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-60"
-        :disabled="busy"
-        @click="onDownload"
-      >
+      <button type="button" class="lt-btn flex-1" :disabled="busy" @click="onDownload">
         {{ actionLabel }}
       </button>
     </div>

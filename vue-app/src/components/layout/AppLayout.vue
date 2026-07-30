@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import UploadQueueManager from '@/src/components/UploadQueueManager.vue'
 import AppSecurityPrompt from '@/src/components/AppSecurityPrompt.vue'
 import { useTokenManager } from '@/src/composables/useTokenManager'
+import { redeemPendingClaim } from '@/src/composables/usePendingClaim'
 
 useTokenManager()
+
+// Un invio guest "reclamato" viene adottato qui, all'ingresso nell'area autenticata:
+// è l'unico punto comune a tutti i percorsi di accesso (password, registrazione, Google).
+onMounted(() => { void redeemPendingClaim() })
 </script>
 
 <template>

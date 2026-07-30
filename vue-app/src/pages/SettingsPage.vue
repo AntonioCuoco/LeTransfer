@@ -5,6 +5,7 @@ import { notify } from '@/src/utils/notify'
 import GeneralSection from '@/src/components/settings/GeneralSection.vue'
 import NotificationSection from '@/src/components/settings/NotificationSection.vue'
 import IntegrationSettings from '@/src/components/settings/IntegrationSettings.vue'
+import MyKeyFingerprint from '@/src/components/settings/MyKeyFingerprint.vue'
 
 const confirm = useConfirm()
 const { isLoading, isSaving, saveSettings, resetSettings, hasUnsavedChanges } = useSettings()
@@ -59,7 +60,10 @@ const handleReset = () => {
         <Tab value="4">Organizzazione</Tab>
       </TabList>
       <TabPanels>
-        <TabPanel value="1"><GeneralSection /></TabPanel>
+        <TabPanel value="1">
+          <GeneralSection />
+          <div class="mt-6"><MyKeyFingerprint /></div>
+        </TabPanel>
         <TabPanel value="2"><NotificationSection /></TabPanel>
         <TabPanel value="3"><IntegrationSettings /></TabPanel>
         <TabPanel value="4"><IntegrationSettings /></TabPanel>

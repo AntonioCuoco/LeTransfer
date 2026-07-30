@@ -57,9 +57,11 @@ function onReset() {
         <div class="flex flex-wrap items-center gap-x-10 gap-y-2">
           <span class="font-mono text-[0.66rem] uppercase tracking-[0.18em] text-[#37e7c4]">Perché noi</span>
           <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">Zero-knowledge verificabile</span>
-          <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">Post-quantum ready</span>
+          <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">AES-256 · cifrato nel browser</span>
           <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">Dati in UE · nessun log dei contenuti</span>
-          <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">Open-source</span>
+          <RouterLink to="/sicurezza" class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2] underline-offset-4 transition-colors hover:text-[#F2ECFF] hover:underline">
+            Open-source · cosa non copriamo →
+          </RouterLink>
         </div>
       </div>
     </template>

@@ -5,6 +5,7 @@ import BrandSeal from './BrandSeal.vue'
 import PrivacyReceipt from './PrivacyReceipt.vue'
 import { useGuestUpload } from '@/src/composables/useGuestUpload'
 import { useTurnstile } from '@/src/composables/useTurnstile'
+import { savePendingClaim } from '@/src/composables/usePendingClaim'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
 
@@ -41,10 +42,12 @@ const fileInputEl = ref<HTMLInputElement | null>(null)
 const folderInputEl = ref<HTMLInputElement | null>(null)
 const turnstileEl = ref<HTMLElement | null>(null)
 
+// Senza account il cap reale è GUEST_MAX_EXPIRY = 168h: oltre, il backend clampa in
+// silenzio. Meglio mostrare il limite (e l'upgrade) che promettere una scadenza falsa.
 const expiryOptions = [
-  { value: 1, label: '24h' },
-  { value: 7, label: '7 giorni' },
-  { value: 30, label: '30 giorni' },
+  { value: 1, label: '24h', locked: false },
+  { value: 7, label: '7 giorni', locked: false },
+  { value: 30, label: '30 giorni', locked: true },
 ]
 const maxDownloadOptions = [
   { value: null, label: '∞' },
@@ -167,14 +170,11 @@ function copyLink() {
 
 function claimTransfer() {
   if (result.value) {
-    try {
-      localStorage.setItem(
-        'letransfer_pending_claim',
-        JSON.stringify({ publicToken: result.value.publicToken, manageToken: result.value.manageToken }),
-      )
-    } catch {
-      // storage non disponibile
-    }
+    savePendingClaim({
+      publicToken: result.value.publicToken,
+      manageToken: result.value.manageToken,
+      fileName: files.value.length === 1 ? files.value[0].name : `${files.value.length} file`,
+    })
   }
   claimLabel.value = 'Ti portiamo alla registrazione…'
   router.push('/register')
@@ -198,7 +198,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="w-[min(460px,100%)] rounded-[22px] bg-[#FBFAFF] p-2.5 text-[#1b1140] shadow-[0_40px_90px_-30px_rgba(8,2,24,0.7),inset_0_2px_0_rgba(255,255,255,0.5)]">
+  <div class="lt-card w-[min(460px,100%)] p-2.5">
     <!-- Intestazione -->
     <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
       <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
@@ -251,7 +251,7 @@ onMounted(() => {
         <span>{{ files.length }} file</span><span class="font-bold text-[#1b1140]">{{ totalLabel }}</span>
       </div>
 
-      <div class="my-2.5 h-px bg-[#f0ebfa]"></div>
+      <div class="lt-rule my-2.5"></div>
 
       <!-- Opzioni (dropdown chiuso di default) -->
       <button type="button" class="flex w-full items-center justify-between rounded-[11px] px-2.5 py-2.5 text-left text-[0.9rem] font-semibold transition hover:bg-[#f5f1fd]" @click="optionsOpen = !optionsOpen">
@@ -270,9 +270,24 @@ onMounted(() => {
             Scade tra
           </span>
           <div class="flex gap-1.5">
-            <button v-for="opt in expiryOptions" :key="opt.value" type="button" class="rounded-[9px] border px-2.5 py-1 font-mono text-[0.74rem] font-semibold transition hover:border-[#7c4dff]" :class="expiryDays === opt.value ? 'border-[#724cf9] bg-[#724cf9] text-white' : 'border-[#e9e3f6] bg-white text-[#6a5f8c]'" @click="expiryDays = opt.value">{{ opt.label }}</button>
+            <button
+              v-for="opt in expiryOptions"
+              :key="opt.value"
+              type="button"
+              class="rounded-[9px] border px-2.5 py-1 font-mono text-[0.74rem] font-semibold transition"
+              :class="opt.locked
+                ? 'cursor-default border-dashed border-[#e0d8f4] bg-transparent text-[#b3a8cf]'
+                : expiryDays === opt.value
+                  ? 'border-[#724cf9] bg-[#724cf9] text-white'
+                  : 'border-[#e9e3f6] bg-white text-[#6a5f8c] hover:border-[#7c4dff]'"
+              :title="opt.locked ? 'Serve un account' : undefined"
+              @click="opt.locked ? router.push('/register') : (expiryDays = opt.value)"
+            >
+              {{ opt.locked ? `🔒 ${opt.label}` : opt.label }}
+            </button>
           </div>
         </div>
+        <p class="px-1 pb-1 text-[0.72rem] text-[#9086ad]">Senza account i link durano al massimo 7 giorni.</p>
 
         <!-- Password -->
         <div class="flex items-center justify-between gap-3 py-2">
@@ -300,7 +315,7 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="my-2.5 h-px bg-[#f0ebfa]"></div>
+      <div class="lt-rule my-2.5"></div>
 
       <div class="flex items-center gap-2 px-1.5 pb-1 font-mono text-[0.7rem] text-[#6a5f8c]">
         <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="#12b89a" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
@@ -309,7 +324,7 @@ onMounted(() => {
 
       <div v-if="turnstileEnabled" ref="turnstileEl" class="my-2 flex justify-center px-1.5"></div>
 
-      <button type="button" class="mt-1 w-full rounded-[13px] bg-[linear-gradient(140deg,#724cf9,#5a30eb)] p-3.5 text-base font-bold tracking-[-0.01em] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] transition enabled:hover:-translate-y-px enabled:hover:brightness-105 disabled:opacity-50" :disabled="files.length === 0" @click="startUpload">
+      <button type="button" class="lt-btn mt-1" :disabled="files.length === 0" @click="startUpload">
         Cifra e crea il link
       </button>
     </div>

@@ -40,6 +40,23 @@ Fatti dal codice, che condizionano tutto:
 
 ---
 
+## 📍 Stato al 2026-07-30
+
+| Fase | Stato | Cosa resta |
+|---|---|---|
+| **F0** Design system | 🟡 in corso | Token unificati ✅ (`assets/tokens.css` + preset PrimeVue allineato + primitivi `.lt-*`). Restano: **font self-hosted**, **primitivi GSAP** (F0.2), ridefinizione `theme/pt.ts` (F0.4) |
+| **F1** Invio senza account | 🟢 quasi chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici ✅. Restano: **progresso per-file**, **QR del link** |
+| **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
+| **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
+| **F4** AI on-device | ⚪ non iniziata | tutto |
+| **F5** Redesign schermate | 🟡 in corso | Auth ✅. Restano: dashboard, tabelle, layout app, profilo, onboarding chiavi |
+
+> ⚠️ **Da decidere prima del pubblico**: i prezzi in `/prezzi` sono segnaposto (i *limiti* sono reali,
+> presi dai default del backend); `security@letransfer.app` deve esistere prima di pubblicare `/sicurezza`.
+> `AppSlider.vue` e `PasswordInput.vue` sono rimasti orfani dopo il redesign auth.
+
+---
+
 ## Fasi (a step, per una modifica grossa)
 
 **F0 — Design system** · **F1 — Invio senza account (E1)** · **F2 — Privacy verificabile (E2)** ·
@@ -56,22 +73,26 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 > privacy resa *visibile*: cifra/sigillo, fingerprint, ricevuta). È la fondazione di ogni schermata.
 
 ### F0.1 Token unificati
-- [ ] **Colore.** Primary = viola evoluto (`#724cf9` → scala già nel preset). Neutri viola-tinti (già:
-  `#1e1a2a`/`#2c2638`/`#3c364c`). 🆕 **accento "verified"** distinto dal brand (mint/teal freddo) per gli
-  stati di fiducia (cifrato/verificato). Semantici (good/warn/crit) separati dal brand.
-- [ ] **Tipografia.** Display grotesque moderno + body leggibile + **mono** per fingerprint/ciphertext/dati
-  (la "firma" visiva). Caricare i font come `@font-face` self-hosted (niente CDN → CSP).
-- [ ] **Spazio/raggi/ombre/motion**: scala di spaziatura, raggi, ombre soft "premium", durate/easing standard.
-- [ ] Esporre tutto come **CSS custom properties** + allineare **preset PrimeVue** e **tailwind.config** agli
-  stessi valori (oggi il preset ha la palette, Tailwind quasi nulla → unificare).
+- [x] **Colore.** Scale `brand` (viola), `verified` (menta — solo stati di fiducia), `deep`/`haze` (mondo
+  scuro), `lilac`/`ink` (carta chiara), semantici `warn`/`crit`/`info` separati dal brand, `shell` per la
+  dashboard legacy. Tutto in [tokens.css](../vue-app/src/assets/tokens.css).
+- [ ] **Tipografia.** Token `--font-display|sans|mono` definiti, ma con **fallback di sistema**: mancano i
+  file dei font veri, da caricare come `@font-face` self-hosted (niente CDN → CSP).
+- [x] **Spazio/raggi/ombre/motion**: `--radius-*`, `--shadow-*`, `--ease-soft`, `--duration-*`.
+- [x] Esposto tutto come **CSS custom properties** (`@theme` di Tailwind v4 → genera anche le utility) e
+  **preset PrimeVue** che referenzia le stesse variabili (`var(--color-brand-500)`): una sola fonte di verità.
+  ⚠️ `tailwind.config.js` era **morto** (v4 lo legge solo con `@config`) → neutralizzato con una nota.
 
 ### F0.2 Primitivi di movimento (GSAP)
 - [ ] Wrapper/composables per: **page-load orchestrato**, **scroll-reveal**, **micro-interazioni** hover/press.
 - [ ] Rispettare **`prefers-reduced-motion`** ovunque (fallback statico).
 
 ### F0.3 Motivo "cifra/sigillo" (l'identità)
-- [ ] Componente **fingerprint** (hex `A3:F1:…` in mono), **ciphertext shimmer**, badge **"cifrato in questo browser"**.
-- [ ] Componente **`PrivacyReceipt`** riusabile (vedi F2) — è il cuore dell'identità.
+- [x] Componente **fingerprint** ([KeyFingerprint.vue](../vue-app/src/components/ui/KeyFingerprint.vue)):
+  digest SHA-256 **intero** in coppie esadecimali su griglia — troncarlo starebbe più comodo ma renderebbe
+  il confronto a voce meno solido. Impronta canonica **RFC 7638** ([fingerprint.ts](../vue-app/src/utils/fingerprint.ts)).
+- [x] Badge "cifrato in questo browser" + campo generativo `CipherField` + climax del sigillo.
+- [x] Componente **`PrivacyReceipt`** riusabile: variante `send` (link pronto) e `receive` (dopo la decifratura).
 
 ### F0.4 Componenti base (su PrimeVue v4 via `pt`/`:pt`)
 - [ ] Bottoni, input, dialog, toast, progress, tabella, card, tooltip — ridefiniti nei token nuovi in `theme/pt.ts`.
@@ -84,8 +105,11 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 > work order. **Il wow**: rendere *visibile e bella* la cifratura nel browser (nessun concorrente lo fa).
 
 ### F1.0 Routing + shell pubblica
-- [ ] Applicare la nuova mappa rotte (§0): `/` pubblica, dashboard → `/app`, aggiornare `beforeEach`.
-- [ ] Header pubblico (logo, "Come funziona", "Prezzi", "Accedi") + footer con i **trust signal** (open-source, EU, no-log).
+- [x] Nuova mappa rotte applicata: `/` pubblica, dashboard sotto `/app`, `beforeEach` aggiornato.
+      🆕 `/come-funziona`, `/prezzi`, `/sicurezza` (prima erano `href="#"` morti).
+- [x] Header e footer pubblici in **[PublicShell.vue](../vue-app/src/components/landing/PublicShell.vue)**,
+      condiviso da landing, ricezione, auth e pagine di contenuto: il "mondo viola" sta in un posto solo.
+      Footer sotto la piega, così l'hero resta esattamente un viewport.
 
 ### F1.1 Componente `SendBox` (drop zone)
 - [ ] Drop zone grande con **doppia interazione** (drag-and-drop **+** "Scegli file") e stato hover evidente
@@ -123,29 +147,41 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 - [ ] **Concept visivo di riferimento** (direzione approvata): https://claude.ai/code/artifact/19c6b6b2-dc22-40bb-b34b-cb2da34979ec — mondo viola pieno, campo generativo di "ciphertext" alla WeTransfer, widget d'invio umile, firma viola→menta, climax del "sigillo". Ricrearlo con GSAP + Canvas, `reduced-motion` a norma.
 
 ### F1.4 Ricezione (riuso)
-- [ ] `/share/:token` ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue)) resta il flusso info→access→file:
-  rifinirla nel nuovo design + mostrare la `PrivacyReceipt` anche in download. Legge la chiave dal fragment (già).
+- [x] `/share/:token` ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue)) rifatta nel nuovo mondo:
+  stessa carta chiara del widget d'invio, nome del file come elemento più grande, mittente in cima,
+  metadati mono (peso · tipo · scadenza), **progresso reale della decifratura**, `PrivacyReceipt` variante
+  `receive` e **sigillo che si stampa** a fine decifratura — il rituale si chiude su entrambi i lati.
+  Anche gli stati "link morto" ([LinkExpiredError.vue](../vue-app/src/components/LinkAccess/LinkExpiredError.vue))
+  vivono nel mondo pubblico, con un invito a mandarne uno.
 
 ---
 
 ## F2 — Privacy verificabile (E2): il differenziatore reso UI
 
-- [ ] **`PrivacyReceipt`** (componente riusabile in F1 e F1.4): "il server ha visto **solo ciphertext** ·
-  non ha mai visto file/chiave/nome · chiave nata nel tuo browser · hash verificabile ✓". Mono + motivo cifra.
-- [ ] **Verifica fingerprint destinatario (#5)**: nel flusso di condivisione **utente-a-utente**, modale che
-  mostra il fingerprint SHA-256 della chiave pubblica JWK del destinatario + verifica out-of-band opt-in.
-  Aggancia `useUserKeyPair`/`useShareFile`.
-- [ ] **Badge di fiducia** coerenti ("cifrato in questo browser", "zero-knowledge") come rassicurazione calma
-  (lezione Proton), non muro tecnico.
-- [ ] Link **"Come lo verifichi"** → client open-source + hash del bundle (build riproducibili).
+- [x] **`PrivacyReceipt`** in invio e in ricezione (varianti `send`/`receive`).
+- [x] **Verifica fingerprint destinatario (#5)**: [RecipientFingerprintDialog.vue](../vue-app/src/components/RecipientFingerprintDialog.vue)
+  si interpone tra "chiave pubblica scaricata" e "chiave del file wrappata" (gancio `verifyRecipient` in
+  `useShareFile`). Tre stati: `new` (invito calmo), `known` (conferma discreta), **`changed` (allarme, con
+  conferma esplicita obbligatoria)** — il caso `changed` è l'unica ragione per cui la funzione esiste:
+  è il solo punto in cui l'utente può accorgersi di una chiave sostituita. Memoria TOFU in
+  [useVerifiedKeys.ts](../vue-app/src/composables/useVerifiedKeys.ts).
+- [x] **La propria impronta** in Impostazioni ([MyKeyFingerprint.vue](../vue-app/src/components/settings/MyKeyFingerprint.vue)):
+  senza, la verifica sarebbe monca — l'altra parte non avrebbe nulla da leggere a voce.
+- [x] **Badge di fiducia** calmi (striscia landing, riga "si decifra nel tuo browser", stati mono).
+- [x] Link **"Come lo verifichi"** → pagina [/sicurezza](../vue-app/src/pages/SecurityPage.vue), con la
+  sezione "da cosa **non** ti protegge" e lo stato dichiarato (audit: non ancora).
+- [ ] Hash del bundle / **build riproducibili** — l'unico pezzo di F2 ancora aperto.
 
 ---
 
 ## F3 — Piani, claim e conversione (E3)
 
-- [ ] **Pagina `/pricing`**: Free / Pro / Business, con i limiti reali (allineati al backend §D.1).
-- [ ] **Flusso "Reclama l'invio"**: dopo un guest-send, CTA → registrazione → `POST /api/share/claim`
-  (passa `publicToken` + `manageToken` conservati lato client). Feedback: "invio salvato nel tuo account".
+- [x] **Pagina [`/prezzi`](../vue-app/src/pages/PricingPage.vue)**: Free / Pro / Business con i **limiti reali**
+  (2/20/100 GB, 168/720 h — default backend §5). ⚠️ Gli **importi sono segnaposto**, da confermare.
+- [x] **Flusso "Reclama l'invio"** ([usePendingClaim.ts](../vue-app/src/composables/usePendingClaim.ts)):
+  il widget mette da parte `publicToken` + `manageToken` in **sessionStorage** (non localStorage: il
+  manageToken è una capability e l'intero percorso avviene nella stessa scheda, anche col redirect OAuth),
+  e `AppLayout` riscatta all'ingresso nell'area autenticata — un punto solo per password, registrazione e Google.
 - [ ] **Limiti per tier nella UI**: mostrare dimensione/retention/quota, con upgrade prompt quando si superano.
 - [ ] **Checkout** (Stripe) + gestione abbonamento nelle impostazioni.
 - [ ] **Notifiche di download** (per invii con account): impostazioni + badge in dashboard.
@@ -168,7 +204,10 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
 - [ ] **Dashboard** ([Homepage.vue](../vue-app/src/pages/Homepage.vue), [FilesTable.vue](../vue-app/src/components/FilesTable.vue), [FileStatsGrid.vue](../vue-app/src/components/FileStatsGrid.vue)).
 - [ ] **Gestione link** ([SharedLinksTable.vue](../vue-app/src/components/SharedLinksTable.vue)) + modale condivisione ([ShareFileModal.vue](../vue-app/src/components/ShareFileModal.vue)).
 - [ ] **Layout app** ([AppHeader.vue](../vue-app/src/components/layout/AppHeader.vue), [AppSidebar.vue](../vue-app/src/components/layout/AppSidebar.vue), [AppFooter.vue](../vue-app/src/components/layout/AppFooter.vue)).
-- [ ] **Auth** ([LoginPage.vue](../vue-app/src/pages/LoginPage.vue), [RegisterPage.vue](../vue-app/src/pages/RegisterPage.vue)).
+- [x] **Auth** ([LoginPage.vue](../vue-app/src/pages/LoginPage.vue), [RegisterPage.vue](../vue-app/src/pages/RegisterPage.vue)):
+  dentro `PublicShell` e la carta chiara condivisa; campi numerati, avviso BLOC MAIUSC, criteri password live,
+  conferma del codice come **vista della carta** invece che dialog. Logica Cognito invariata.
+  → `AppSlider.vue` e `PasswordInput.vue` sono rimasti **orfani**.
 - [ ] **Impostazioni/profilo** ([SettingsPage.vue](../vue-app/src/pages/SettingsPage.vue), [Profile.vue](../vue-app/src/pages/Profile.vue)).
 - [ ] **Onboarding chiavi/recovery** ([RecoveryKeySetup.vue](../vue-app/src/components/RecoveryKeySetup.vue), [AppSecurityPrompt.vue](../vue-app/src/components/AppSecurityPrompt.vue)) — spiegato in modo umano (dove si perdono gli utenti E2E).
 

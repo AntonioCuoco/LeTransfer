@@ -2,33 +2,37 @@ import { definePreset } from '@primeuix/themes'
 import Aura from '@primeuix/themes/aura'
 
 /**
- * LeTransfer brand theme — built on top of PrimeVue's Aura preset.
+ * Tema PrimeVue di LeTransfer, costruito sopra il preset Aura.
  *
- * - `primary`  → brand purple (#724CF9 family), drives buttons, links, focus rings…
- * - dark `surface` → purple-gray scale matching the app background (#2c2638),
- *   so cards/inputs/tables render in our palette instead of Aura's default slate.
+ * ⚠️ Nessun colore è definito QUI: i valori vengono da `assets/tokens.css` (roadmap F0.1),
+ * referenziati come CSS custom properties. PrimeVue emette questi token come
+ * `--p-primary-500: var(--color-brand-500)`, quindi cambiare la palette in tokens.css
+ * aggiorna insieme utility Tailwind, CSS a mano e componenti PrimeVue.
+ * Prima erano due scale gemelle da tenere allineate a mano: non esiste più il rischio.
  *
- * Per-component default classes go in the global `pt` preset (see main.ts),
- * per-instance overrides use the `:pt` prop on the component itself.
+ * - `primary` → viola del brand: bottoni, link, focus ring…
+ * - dark `surface` → i grigi-viola della dashboard (token `shell-*`).
+ *
+ * Le classi di default per componente stanno nel `pt` globale (vedi theme/pt.ts),
+ * gli override per istanza usano la prop `:pt` sul componente.
  */
 export const LeTransferPreset = definePreset(Aura, {
   semantic: {
     primary: {
-      50: '#f5f3ff',
-      100: '#ede9fe',
-      200: '#ddd6fe',
-      300: '#c4b5fd',
-      400: '#a78bfa',
-      500: '#724cf9',
-      600: '#5a30eb',
-      700: '#4923d1',
-      800: '#3b1ca7',
-      900: '#2f1881',
-      950: '#1c0d54',
+      50: 'var(--color-brand-50)',
+      100: 'var(--color-brand-100)',
+      200: 'var(--color-brand-200)',
+      300: 'var(--color-brand-300)',
+      400: 'var(--color-brand-400)',
+      500: 'var(--color-brand-500)',
+      600: 'var(--color-brand-600)',
+      700: 'var(--color-brand-700)',
+      800: 'var(--color-brand-800)',
+      900: 'var(--color-brand-900)',
+      950: 'var(--color-brand-950)',
     },
     colorScheme: {
       dark: {
-        // Purple-gray surfaces that match the app shell (#2c2638 / #3c364c).
         surface: {
           0: '#ffffff',
           50: '#f0edf5',
@@ -38,10 +42,10 @@ export const LeTransferPreset = definePreset(Aura, {
           400: '#8c7f8d',
           500: '#6b6070',
           600: '#524759',
-          700: '#4a4554',
-          800: '#3c364c',
-          900: '#2c2638',
-          950: '#1e1a2a',
+          700: 'var(--color-shell-700)',
+          800: 'var(--color-shell-800)',
+          900: 'var(--color-shell-900)',
+          950: 'var(--color-shell-950)',
         },
       },
     },

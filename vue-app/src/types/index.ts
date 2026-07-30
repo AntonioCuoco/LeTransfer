@@ -273,6 +273,12 @@ export interface SendEmailOptions {
 export interface ShareFileOptions {
   onSuccess?: (response: ShareFileResponse) => void
   onError?: (error: Error) => void
+  /**
+   * Gancio di verifica del destinatario (roadmap F2): viene chiamato con la chiave
+   * pubblica appena scaricata, PRIMA di wrapparci dentro la chiave del file.
+   * Se risolve `false` la condivisione si interrompe senza consegnare nulla.
+   */
+  verifyRecipient?: (publicKey: CryptoKey, targetEmail: string) => Promise<boolean>
 }
 
 // ==================== COMPONENT PROPS TYPES ====================

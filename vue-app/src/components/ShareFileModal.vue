@@ -5,6 +5,9 @@ import { notify } from '@/src/utils/notify'
 import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
 import { useEncryptionStore } from '@/src/stores/encryption'
+import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVerifiedKeys'
+import { keyThumbprint } from '@/src/utils/fingerprint'
+import RecipientFingerprintDialog from '@/src/components/RecipientFingerprintDialog.vue'
 import type { DynamoDBFile } from '@/src/types'
 
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
@@ -21,6 +24,7 @@ const confirm = useConfirm()
 const { shareFile, isSharing } = useShareFile()
 const { createLink, isCreating } = useSharedLinks()
 const encryptionStore = useEncryptionStore()
+const { checkRecipient, getVerified } = useVerifiedKeys()
 
 const email = ref('')
 const emailError = ref('')
@@ -53,9 +57,36 @@ const validateEmail = (val: string) => {
   return true
 }
 
+// ── Verifica dell'impronta del destinatario (roadmap F2) ─────────────────────
+// Il dialog si interpone tra "ho la chiave pubblica di X" e "ci wrappo dentro la
+// chiave del file": è lì che l'utente può accorgersi che la chiave non è quella giusta.
+const fingerprintVisible = ref(false)
+const fingerprintEmail = ref('')
+const fingerprintHex = ref('')
+const fingerprintState = ref<VerificationState>('new')
+const fingerprintVerifiedAt = ref<string | null>(null)
+let resolveVerification: ((approved: boolean) => void) | null = null
+
+const askFingerprintApproval = async (publicKey: CryptoKey, targetEmail: string): Promise<boolean> => {
+  const thumbprint = await keyThumbprint(publicKey)
+  fingerprintEmail.value = targetEmail
+  fingerprintHex.value = thumbprint
+  fingerprintState.value = await checkRecipient(targetEmail, thumbprint)
+  fingerprintVerifiedAt.value = (await getVerified(targetEmail))?.verifiedAt ?? null
+  fingerprintVisible.value = true
+  return new Promise<boolean>((resolve) => { resolveVerification = resolve })
+}
+
+const settleVerification = (approved: boolean) => {
+  fingerprintVisible.value = false
+  resolveVerification?.(approved)
+  resolveVerification = null
+}
+
 const handleEmailSubmit = async () => {
   if (!props.file || !validateEmail(email.value)) return
   await shareFile(props.file.s3Key, email.value.trim(), {
+    verifyRecipient: askFingerprintApproval,
     onSuccess: () => {
       props.onClose()
       props.onSuccess?.()
@@ -280,4 +311,15 @@ const handleCopyLink = () => {
       </div>
     </div>
   </Dialog>
+
+  <!-- Si apre sopra il modale, tra "chiave pubblica scaricata" e "chiave del file consegnata" -->
+  <RecipientFingerprintDialog
+    :visible="fingerprintVisible"
+    :email="fingerprintEmail"
+    :thumbprint="fingerprintHex"
+    :state="fingerprintState"
+    :verified-at="fingerprintVerifiedAt"
+    @confirm="settleVerification(true)"
+    @cancel="settleVerification(false)"
+  />
 </template>

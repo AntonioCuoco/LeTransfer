@@ -1,0 +1,225 @@
+/*
+ * LeTransfer — design system (roadmap F0.1).
+ *
+ * UNICA fonte di verità del linguaggio visivo. Tailwind v4 legge questo blocco
+ * `@theme` e genera da solo le utility corrispondenti (`bg-brand-500`,
+ * `text-verified-400`, `rounded-card`, `shadow-card`…), e allo stesso tempo
+ * espone tutto come CSS custom properties per PrimeVue e per il CSS a mano.
+ *
+ * Regole della palette:
+ *  • brand (viola)    → identità, azioni, stato "in corso"
+ *  • verified (menta) → SOLO stati di fiducia (cifrato, verificato, decifrato).
+ *                       Non è un secondo brand: se lo usi per decorare, smette di
+ *                       significare qualcosa. 400 su fondo scuro, 600 su carta chiara.
+ *  • deep / haze      → il "mondo viola" (fondi scuri e testi sopra di essi)
+ *  • lilac / ink      → la carta chiara e i testi sopra di essa
+ *  • warn / crit      → semantici, tenuti separati dal brand
+ */
+
+@theme {
+  /* ── Brand: viola ─────────────────────────────────────────────────────────── */
+  --color-brand-50: #f5f3ff;
+  --color-brand-100: #ede9fe;
+  --color-brand-200: #ddd6fe;
+  --color-brand-300: #8b6bff;
+  --color-brand-400: #7c4dff;
+  --color-brand-500: #724cf9;
+  --color-brand-600: #5a30eb;
+  --color-brand-700: #4923d1;
+  --color-brand-800: #3b1ca7;
+  --color-brand-900: #2f1881;
+  --color-brand-950: #1c0d54;
+
+  /* ── Verified: menta. L'accento della fiducia, distinto dal brand ─────────── */
+  --color-verified-300: #6ff0d8;
+  --color-verified-400: #37e7c4;
+  --color-verified-500: #22cfae;
+  --color-verified-600: #12b89a;
+
+  /* ── Deep: i fondi del mondo viola ────────────────────────────────────────── */
+  --color-deep-600: #2a1264;
+  --color-deep-700: #1f0d49;
+  --color-deep-800: #1b1140;
+  --color-deep-900: #160934;
+  --color-deep-950: #0b041c;
+
+  /* ── Haze: testi e bordi SOPRA i fondi scuri ──────────────────────────────── */
+  --color-haze-100: #f2ecff;
+  --color-haze-200: #d9cffa;
+  --color-haze-300: #b9ace2;
+  --color-haze-400: #8d7fb8;
+  --color-haze-500: #6a5f8c;
+
+  /* ── Lilac: la carta chiara e le sue superfici ────────────────────────────── */
+  --color-lilac-50: #fbfaff;
+  --color-lilac-100: #f5f1fd;
+  --color-lilac-200: #f0ebfa;
+  --color-lilac-300: #e9e3f6;
+  --color-lilac-400: #e4dbf6;
+  --color-lilac-500: #cdbff0;
+  --color-lilac-600: #b3a8cf;
+
+  /* ── Ink: testi SOPRA la carta chiara ─────────────────────────────────────── */
+  --color-ink-900: #1b1140;
+  --color-ink-700: #3d3260;
+  --color-ink-500: #6a5f8c;
+  --color-ink-400: #8a7fae;
+  --color-ink-300: #a79cc4;
+
+  /* ── Shell: i grigi-viola della dashboard (area autenticata).
+   * Sono l'eredità del vecchio design: F5 li porterà sul mondo `deep`. Averli
+   * qui come token significa poterli ritirare da un punto solo. */
+  --color-shell-700: #4a4554;
+  --color-shell-800: #3c364c;
+  --color-shell-900: #2c2638;
+  --color-shell-950: #1e1a2a;
+
+  /* ── Semantici, separati dal brand ────────────────────────────────────────── */
+  --color-warn-400: #e0b34a;
+  --color-warn-700: #8a6d1f;
+  --color-crit-400: #d64545;
+  --color-crit-600: #b3352f;
+  --color-crit-100: #fdeceb;
+  --color-crit-200: #f3cfcc;
+  --color-info-500: #2b74e0;
+  --color-media-500: #e08a2b;
+
+  /* ── Tipografia ───────────────────────────────────────────────────────────
+   * Il mono è la firma del prodotto: fingerprint, ciphertext, dati tecnici.
+   * TODO F0.1: sostituire i fallback di sistema con font self-hosted (@font-face),
+   * mai da CDN — la CSP di produzione non lo consentirebbe.
+   */
+  --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+
+  /* ── Raggi ────────────────────────────────────────────────────────────────── */
+  --radius-card: 22px;
+  --radius-panel: 18px;
+  --radius-well: 14px;
+  --radius-control: 13px;
+  --radius-field: 11px;
+  --radius-chip: 9px;
+  --radius-badge: 7px;
+
+  /* ── Ombre: profonde e morbide, mai nere piatte ───────────────────────────── */
+  --shadow-card: 0 40px 90px -30px rgba(8, 2, 24, 0.7), inset 0 2px 0 rgba(255, 255, 255, 0.5);
+  --shadow-control: 0 14px 30px -12px rgba(90, 48, 235, 0.85);
+  --shadow-header: 0 8px 24px -16px rgba(20, 9, 58, 0.35);
+  --shadow-pill: 0 8px 20px -8px rgba(114, 76, 249, 0.6);
+
+  /* ── Movimento ────────────────────────────────────────────────────────────── */
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --duration-quick: 150ms;
+  --duration-base: 260ms;
+  --duration-slow: 700ms;
+}
+
+/*
+ * Primitivi di interfaccia costruiti sui token. Esistono perché le stesse dieci
+ * classi Tailwind si ripetevano in otto file: qui la forma si cambia in un punto solo.
+ * Stanno nel layer `components` → le utility Tailwind possono sempre sovrascriverli.
+ */
+@layer components {
+  /* La carta chiara: l'oggetto che chi invia, chi riceve e chi si registra vedono uguale. */
+  .lt-card {
+    border-radius: var(--radius-card);
+    background: var(--color-lilac-50);
+    color: var(--color-ink-900);
+    box-shadow: var(--shadow-card);
+  }
+
+  /* Azione primaria. */
+  .lt-btn {
+    width: 100%;
+    padding: 0.875rem;
+    border-radius: var(--radius-control);
+    background: linear-gradient(140deg, var(--color-brand-500), var(--color-brand-600));
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    box-shadow: var(--shadow-control);
+    transition: transform var(--duration-quick) var(--ease-soft), filter var(--duration-quick);
+  }
+  .lt-btn:hover:enabled { transform: translateY(-1px); filter: brightness(1.05); }
+  .lt-btn:disabled { opacity: 0.5; }
+
+  /* Azione secondaria sulla carta chiara. */
+  .lt-btn-ghost {
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--color-lilac-300);
+    background: #fff;
+    color: var(--color-ink-900);
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: border-color var(--duration-quick), transform var(--duration-quick) var(--ease-soft);
+  }
+  .lt-btn-ghost:hover:enabled { border-color: var(--color-brand-400); transform: translateY(-1px); }
+  .lt-btn-ghost:disabled { opacity: 0.5; }
+
+  /* Azione secondaria sul fondo scuro. */
+  .lt-btn-dark {
+    padding: 0.875rem 1.25rem;
+    border-radius: var(--radius-control);
+    border: 1px solid rgb(255 255 255 / 0.15);
+    background: rgb(255 255 255 / 0.06);
+    color: var(--color-haze-100);
+    font-size: 0.95rem;
+    font-weight: 700;
+    transition: border-color var(--duration-quick), transform var(--duration-quick) var(--ease-soft);
+  }
+  .lt-btn-dark:hover:enabled { border-color: rgb(255 255 255 / 0.3); transform: translateY(-1px); }
+
+  /* Campo di input della carta chiara. */
+  .lt-field {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border-radius: var(--radius-field);
+    border: 1px solid var(--color-lilac-300);
+    background: #fff;
+    font-size: 0.92rem;
+    outline: none;
+    transition: border-color var(--duration-quick);
+  }
+  .lt-field:focus { border-color: var(--color-brand-500); }
+  .lt-field:disabled { opacity: 0.6; }
+  .lt-field::placeholder { color: var(--color-ink-300); font-weight: 400; }
+  .lt-field[aria-invalid='true'] { border-color: #e9b3af; }
+
+  /* Micro-etichetta mono: la voce "tecnica" dell'interfaccia. */
+  .lt-label {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--color-ink-500);
+  }
+
+  /* Occhiello mono sui fondi scuri (sopra i titoli). */
+  .lt-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    color: var(--color-verified-400);
+  }
+
+  /* Titolo da facciata: la scala tipografica dell'hero, in un posto solo. */
+  .lt-display {
+    text-wrap: balance;
+    font-size: clamp(2.4rem, 6vw, 4.6rem);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 840;
+  }
+
+  .lt-rule { height: 1px; background: var(--color-lilac-200); }
+}
+
+/* Chi preferisce meno movimento non deve subire le nostre transizioni. */
+@media (prefers-reduced-motion: reduce) {
+  .lt-btn, .lt-btn-ghost, .lt-btn-dark, .lt-field { transition: none; }
+  .lt-btn:hover:enabled, .lt-btn-ghost:hover:enabled, .lt-btn-dark:hover:enabled { transform: none; }
+}
