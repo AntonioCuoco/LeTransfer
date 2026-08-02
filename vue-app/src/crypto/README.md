@@ -159,6 +159,38 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 
 ---
 
+## 8-bis. Test
+
+`npm test` (Vitest, ambiente Node — Node 22 espone le stesse Web Crypto del browser,
+quindi si testa il codice vero e non un rimpiazzo). Coprono ciò che, se si rompe, non
+produce una schermata sbagliata ma **file che non si riaprono**:
+
+- round-trip cifra→decifra sul formato a chunk, e la garanzia dell'AAD (un chunk
+  decifrato con l'indice sbagliato **deve** fallire);
+- manomissione di un singolo byte → tag GCM che rifiuta;
+- aritmetica delle dimensioni (`encryptedSizeV2`, ultimo chunk più corto);
+- chiave nel frammento: export → URL → parse → import, inclusi i caratteri base64
+  che vanno codificati;
+- wrap/unwrap RSA fra utenti;
+- impronta: **vettore ufficiale RFC 7638** più l'invarianza rispetto all'ordine dei
+  membri della JWK;
+- derivazione dalla mnemonica: determinismo e dipendenza dal salt;
+- giro completo download→decifratura con stream simulato, incluso il rifiuto di uno
+  stream troncato;
+- **invarianti della wordlist**: 2048 voci, nessun duplicato, ordine alfabetico.
+
+⚠️ **Nota sulla wordlist.** La lista era corrotta: `"night"` compariva due volte, anche
+al posto di `"tonight"`. Poiché la generazione usa l'indice e la verifica usa
+`indexOf()` (che restituisce la prima occorrenza), **circa una frase su 86 risultava
+invalida per l'applicazione stessa**. Corretto, con i test che presidiano l'invariante.
+Resta però che la lista **non è identica a quella ufficiale BIP39** (manca `"tool"`):
+funziona — qualsiasi insieme di 2048 parole distinte dà 256 bit di entropia — ma **non
+va dichiarata interoperabile con altri strumenti BIP39** finché non viene sostituita con
+quella ufficiale. La sostituzione va fatta **prima** che un utente reale generi una
+frase: dopo, invaliderebbe le frasi già consegnate.
+
+---
+
 ## 9. Regole per chi modifica questa cartella
 
 - Nessuna dipendenza da Vue, dagli store, dalla rete o dal DOM applicativo.

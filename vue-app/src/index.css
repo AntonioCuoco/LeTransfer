@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tailwindcss-primeui";
 
+/* Font self-hosted (roadmap F0.1): serviti dal nostro origin, mai da un CDN.
+   Prima dei token, così i @font-face esistono già quando i token li nominano. */
+@import "./assets/fonts.css";
+
 /* Design system: token + primitivi (roadmap F0). Unica fonte di verità di colori,
    raggi, ombre e movimento — vedi assets/tokens.css. */
 @import "./assets/tokens.css";

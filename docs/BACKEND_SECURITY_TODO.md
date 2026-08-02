@@ -35,15 +35,22 @@ Body (POST) e risposta (GET → `data`):
 
 ---
 
-## 🔴 2. CRITICO — Verifica vera della firma JWT (`aws-jwt-verify`)
+## ✅ 2. FATTO (verificato il 2026-08-02) — Verifica vera della firma JWT (`aws-jwt-verify`)
 
-**Perché:** oggi il middleware fa `jwt.decode()` **senza verificare la firma** → un token forgiato
-(payload arbitrario) viene accettato su **tutte** le route protette. È il buco di sicurezza più
-grave lato backend (impersonazione totale).
+> **Stato: implementato.** `middleware/auth.js` verifica il token contro le JWKS della User Pool
+> con `CognitoJwtVerifier` e `tokenUse: "access"`; `routes/fileSharing.js` riusa lo stesso verifier.
+> Vedi [BACKEND_API_DOCS §2.1](BACKEND_API_DOCS.md).
+>
+> ⚠️ Questa sezione è rimasta a lungo a dire il contrario mentre il codice era già a posto: se
+> modifichi il middleware, aggiorna **qui**, in [BACKEND_CONSOLIDATION §5](BACKEND_CONSOLIDATION.md)
+> e in [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md) — sono tre punti che parlano della stessa cosa.
+
+**Perché contava:** con `jwt.decode()` la firma non veniva controllata → un token forgiato con
+payload arbitrario sarebbe stato accettato su **tutte** le route protette (impersonazione totale).
 
 **File:** `middleware/auth.js`.
 
-**Cosa fare:** verificare il token contro le JWKS della User Pool Cognito.
+**Com'è fatto:** verifica del token contro le JWKS della User Pool Cognito.
 ```js
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
@@ -127,10 +134,16 @@ maiuscole + minuscole + numeri + simboli.
 
 ## 🟡 6. Security headers / CSP sull'host che serve il frontend
 
+> ⚠️ **La policy qui sotto è OBSOLETA.** La versione autoritativa e motivata è in
+> **[PAGINE_CRITICHE.md](PAGINE_CRITICHE.md)**. Differenze principali: lo storage è **R2**, non S3;
+> serve `frame-src` per l'**origine isolata del captcha**; e soprattutto **NON** va aggiunto
+> `challenges.cloudflare.com` a `script-src` — Turnstile gira in un iframe cross-origin proprio
+> perché la pagina che genera le chiavi possa restare su `script-src 'self'`.
+
 **Perché:** in dev gli header stanno in `vite.config.ts` (solo i "safe"). La **CSP autoritativa** va
 imposta in **produzione** dove viene servito il build (CDN/host/Fly static o reverse proxy).
 
-**Cosa fare (Response Headers sull'host del frontend):**
+**Cosa fare (Response Headers sull'host del frontend) — versione storica, vedi il documento sopra:**
 ```
 Content-Security-Policy:
   default-src 'self';
@@ -167,11 +180,11 @@ Referrer-Policy: strict-origin-when-cross-origin
 ## ✅ Checklist
 
 - [ ] `keypair-backup` salva/restituisce il blob opaco `{ encryptedPrivateKey, iv }` (no salt/iterations).
-- [ ] **(CRITICO)** `middleware/auth.js` verifica la firma con `aws-jwt-verify`, `tokenUse: "access"`.
-- [ ] Route multipart: `authenticateToken` + ownership su `uploads/files/${sub}/` + `userId` dal `sub`.
-- [ ] CORS whitelist (dev + prod) e nessun `error.message` nelle risposte.
-- [ ] Cognito password policy ≥12 con classi di caratteri.
-- [ ] CSP + security headers sull'host del frontend (prod) + HTTPS.
+- [x] **(CRITICO)** `middleware/auth.js` verifica la firma con `aws-jwt-verify`, `tokenUse: "access"`. ✅ 2026-08-02
+- [x] Route multipart: `authenticateToken` + ownership su `uploads/files/${sub}/` + `userId` dal `sub`. ✅ 2026-08-02
+- [x] CORS whitelist (dev + prod) e nessun `error.message` nelle risposte. ✅ 2026-08-02
+- [x] Cognito password policy ≥12 con classi di caratteri. ✅ 2026-08-02
+- [ ] BLOCCATO DAL DOMINIO - CSP + security headers sull'host del frontend (prod) + HTTPS.
 - [ ] **(#6 attivo)** `formatVersion`/`chunkSize`/`originalSize` persistiti in `complete` e restituiti in lista/get/link.
 
 > Note di coordinamento: `email` non è nell'access token → risolverla via Cognito dove serve.

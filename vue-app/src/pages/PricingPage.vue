@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
+import { usePageEnter } from '@/src/composables/useMotion'
 
 /**
  * Prezzi (roadmap F3). I limiti NON sono inventati: vengono dai default del backend
@@ -15,6 +16,7 @@ import PublicShell from '@/src/components/landing/PublicShell.vue'
 const router = useRouter()
 
 const yearly = ref(false)
+const { root: head } = usePageEnter()
 
 interface Plan {
   id: string
@@ -86,12 +88,12 @@ const faq = [
 
 <template>
   <PublicShell>
-    <div class="mx-auto w-full max-w-[1080px] py-[clamp(40px,8vh,96px)]">
-      <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Prezzi</p>
-      <h1 class="mb-6 max-w-[16ch] text-balance text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
+    <div ref="head" class="mx-auto w-full max-w-[1080px] py-[clamp(40px,8vh,96px)]">
+      <p data-enter class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Prezzi</p>
+      <h1 data-enter class="mb-6 max-w-[16ch] text-balance font-display text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
         La crittografia non è un extra.
       </h1>
-      <p class="max-w-[56ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
+      <p data-enter class="max-w-[56ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
         È identica in tutti i piani, compreso quello gratuito. Quello che cambia sono i gigabyte e il tempo.
       </p>
 
@@ -116,7 +118,7 @@ const faq = [
       </div>
 
       <!-- Piani -->
-      <div class="mt-8 grid gap-4 md:grid-cols-3">
+      <div v-reveal="{ stagger: 0.07 }" class="mt-8 grid gap-4 md:grid-cols-3">
         <div
           v-for="plan in plans"
           :key="plan.id"

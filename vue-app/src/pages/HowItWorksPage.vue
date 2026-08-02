@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import { useRouter } from 'vue-router'
+import { usePageEnter } from '@/src/composables/useMotion'
 
 /**
  * "Come funziona" — la spiegazione tecnica come contenuto, non come marketing.
@@ -10,6 +11,7 @@ import { useRouter } from 'vue-router'
  */
 
 const router = useRouter()
+const { root: head } = usePageEnter()
 
 const steps = [
   {
@@ -55,18 +57,19 @@ const serverKnows = [
 
 <template>
   <PublicShell>
-    <div class="mx-auto w-full max-w-[980px] py-[clamp(40px,8vh,96px)]">
-      <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Come funziona</p>
-      <h1 class="mb-6 max-w-[14ch] text-balance text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
+    <div ref="head" class="mx-auto w-full max-w-[980px] py-[clamp(40px,8vh,96px)]">
+      <p data-enter class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Come funziona</p>
+      <h1 data-enter class="mb-6 max-w-[14ch] text-balance font-display text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
         Cinque passi, zero fiducia.
       </h1>
-      <p class="max-w-[58ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
+      <p data-enter class="max-w-[58ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
         "Zero fiducia" non è uno slogan: è la descrizione letterale di quello che succede quando premi
         <em class="not-italic text-[#F2ECFF]">Cifra e crea il link</em>. Ecco ogni passaggio, senza semplificazioni gentili.
       </p>
 
-      <!-- Binario numerato -->
-      <ol class="mt-[clamp(48px,7vh,84px)] border-t border-white/10">
+      <!-- Binario numerato. Il reveal è a scaglioni sui passi: sono una sequenza,
+           e leggerli comparire in ordine è il contenuto stesso. -->
+      <ol v-reveal="{ stagger: 0.06 }" class="mt-[clamp(48px,7vh,84px)] border-t border-white/10">
         <li
           v-for="step in steps"
           :key="step.n"
@@ -87,7 +90,7 @@ const serverKnows = [
       </ol>
 
       <!-- Cosa sa il server: la tabella che nessun concorrente pubblica -->
-      <section class="mt-[clamp(48px,7vh,84px)]">
+      <section v-reveal class="mt-[clamp(48px,7vh,84px)]">
         <h2 class="mb-1.5 text-[clamp(1.5rem,3vw,2.2rem)] font-bold tracking-[-0.03em]">Cosa sa il nostro server</h2>
         <p class="mb-7 max-w-[52ch] leading-relaxed text-[#b9ace2]">
           La domanda giusta da fare a un servizio di trasferimento file. Questa è la nostra risposta completa.
@@ -101,7 +104,7 @@ const serverKnows = [
       </section>
 
       <!-- Il caveat, detto per primo da noi -->
-      <section class="mt-[clamp(40px,6vh,72px)] rounded-[18px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
+      <section v-reveal class="mt-[clamp(40px,6vh,72px)] rounded-[18px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
         <p class="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#e0b34a]">Il rovescio della medaglia</p>
         <h2 class="mb-3 text-[clamp(1.25rem,2.4vw,1.6rem)] font-bold tracking-[-0.02em]">Chi ha il link, ha il file.</h2>
         <p class="max-w-[60ch] leading-relaxed text-[#b9ace2]">

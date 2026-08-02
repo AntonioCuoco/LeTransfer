@@ -123,7 +123,7 @@ defineExpose({ surge, settle, calm, stampSeal })
 
     <!-- Footer del sito: sotto la piega, così l'hero resta esattamente un viewport -->
     <footer class="relative z-[2] border-t border-white/10 bg-[#160934] px-[clamp(20px,5vw,64px)] py-10">
-      <div class="flex flex-wrap items-start justify-between gap-x-12 gap-y-8">
+      <div v-reveal="{ stagger: 0.05 }" class="flex flex-wrap items-start justify-between gap-x-12 gap-y-8">
         <div class="max-w-[300px]">
           <div class="mb-3 flex items-center gap-2.5 text-[1.05rem] font-extrabold tracking-[-0.02em]">
             <BrandSeal :size="24" variant="mark" />

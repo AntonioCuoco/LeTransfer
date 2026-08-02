@@ -21,6 +21,10 @@ import {
  *    è prodotto e cifrato a chunk al volo, senza mai tenerlo in RAM. Un solo link.
  *    (Evoluzione futura "modello a collezione": vedi FRONTEND_WORKORDER_ROADMAP.md §F1.2.)
  *
+ * Il progresso è **per-file** (F1.1) e misurato sui byte accettati dallo storage: anche
+ * quando i file finiscono in un unico zip, `fileProgress` dice quale è già partito e
+ * quale no. Vedi `updateFileProgress` per come si passa dall'uno all'altro.
+ *
  * Contratto backend: BACKEND_API_DOCS.md §4.9.
  */
 
@@ -38,6 +42,33 @@ export interface GuestUploadOptions {
   password?: string
   expiresInHours?: number
   maxDownloads?: number
+}
+
+export type FileTransferStatus = 'pending' | 'active' | 'done'
+
+/** Stato di UN file dentro l'invio (roadmap F1.1: progresso per-file, non uno spinner). */
+export interface FileProgress {
+  name: string
+  /** MIME dichiarato dal browser: serve alla UI per la stessa targhetta della lista d'invio. */
+  type: string
+  size: number
+  /** 0–100, dedotto dai byte di ciphertext davvero caricati. */
+  percent: number
+  status: FileTransferStatus
+}
+
+/**
+ * Dove vive un file dentro il flusso caricato, in byte.
+ * Nel percorso zip i file si susseguono nell'ordine dato, quindi conoscere
+ * l'intervallo [start, end) di ciascuno basta a tradurre "byte caricati" in
+ * "a che punto è questo file".
+ */
+interface FileSlot {
+  name: string
+  type: string
+  size: number
+  start: number
+  end: number
 }
 
 interface InitResponse {
@@ -86,6 +117,7 @@ const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
 export function useGuestUpload() {
   const status = ref<GuestUploadStatus>('idle')
   const progress = ref(0)
+  const fileProgress = ref<FileProgress[]>([])
   const result = ref<GuestUploadResult | null>(null)
   const errorMessage = ref<string | null>(null)
 
@@ -106,13 +138,84 @@ export function useGuestUpload() {
   let pending: Uint8Array[] = []
   let pendingLen = 0
 
+  // Mappa "byte caricati → quale file, e quanto" (vedi FileSlot).
+  let slots: FileSlot[] = []
+
+  function planFileProgress(files: File[]) {
+    let offset = 0
+    slots = files.map((file) => {
+      const withPath = file as File & { webkitRelativePath?: string }
+      const slot: FileSlot = {
+        name: withPath.webkitRelativePath || file.name,
+        type: file.type,
+        size: file.size,
+        start: offset,
+        end: offset + file.size,
+      }
+      offset += file.size
+      return slot
+    })
+    fileProgress.value = slots.map((slot) => ({
+      name: slot.name,
+      type: slot.type,
+      size: slot.size,
+      percent: 0,
+      status: 'pending' as FileTransferStatus,
+    }))
+  }
+
+  /**
+   * Traduce l'avanzamento globale in avanzamento per-file.
+   *
+   * `ratio` è la frazione di trasferimento completata (0–1), misurata sui byte di
+   * ciphertext effettivamente accettati dallo storage: è **il progresso vero**, non
+   * una stima temporale. La riportiamo nello spazio dei byte in chiaro e la
+   * confrontiamo con l'intervallo di ciascun file.
+   *
+   * Approssimazione dichiarata: lo zip intercala ~30 byte di intestazione per file,
+   * che qui non contiamo. Su file da megabyte lo scarto è invisibile; l'ordine di
+   * completamento resta comunque quello reale, perché client-zip scrive i file
+   * nell'ordine in cui glieli diamo.
+   */
+  function updateFileProgress(ratio: number) {
+    if (slots.length === 0) return
+    const plainTotal = slots[slots.length - 1].end
+    const uploaded = ratio * plainTotal
+
+    for (let index = 0; index < slots.length; index += 1) {
+      const slot = slots[index]
+      const entry = fileProgress.value[index]
+      if (!entry) continue
+
+      // Un file vuoto non ha byte da attendere: è finito appena tocca il suo turno.
+      const filled = slot.size === 0
+        ? (uploaded >= slot.start ? 1 : 0)
+        : Math.min(1, Math.max(0, (uploaded - slot.start) / slot.size))
+
+      const percent = Math.round(filled * 100)
+      const nextStatus: FileTransferStatus = filled >= 1 ? 'done' : percent > 0 ? 'active' : 'pending'
+
+      if (entry.percent !== percent) entry.percent = percent
+      if (entry.status !== nextStatus) entry.status = nextStatus
+    }
+  }
+
+  function completeFileProgress() {
+    for (const entry of fileProgress.value) {
+      entry.percent = 100
+      entry.status = 'done'
+    }
+  }
+
   function updateProgress() {
     let inFlight = 0
     for (const bytes of activeBytes.values()) {
       inFlight += bytes
     }
     const uploaded = Math.min(totalBytes, completedBytes + inFlight)
-    progress.value = totalBytes > 0 ? Math.min(100, Math.round((uploaded / totalBytes) * 100)) : 0
+    const ratio = totalBytes > 0 ? uploaded / totalBytes : 0
+    progress.value = Math.min(100, Math.round(ratio * 100))
+    updateFileProgress(ratio)
   }
 
   function messageForError(error: unknown): string {
@@ -135,7 +238,7 @@ export function useGuestUpload() {
     return 'Qualcosa è andato storto durante l’invio. Riprova.'
   }
 
-  async function beginTransfer(): Promise<{ key: CryptoKey; iv: Uint8Array }> {
+  async function beginTransfer(files: File[]): Promise<{ key: CryptoKey; iv: Uint8Array }> {
     status.value = 'preparing'
     progress.value = 0
     result.value = null
@@ -144,6 +247,7 @@ export function useGuestUpload() {
     activeBytes.clear()
     pending = []
     pendingLen = 0
+    planFileProgress(files)
     abortController.value = new AbortController()
     activeUpload.value = null
 
@@ -194,6 +298,7 @@ export function useGuestUpload() {
       expiresAt: data.expiresAt ?? null,
     }
     progress.value = 100
+    completeFileProgress()
     status.value = 'done'
   }
 
@@ -254,7 +359,7 @@ export function useGuestUpload() {
   }
 
   async function uploadSingle(file: File, options: GuestUploadOptions) {
-    const { key, iv } = await beginTransfer()
+    const { key, iv } = await beginTransfer([file])
     try {
       totalBytes = encryptedSizeV2(file.size, CHUNK_SIZE)
       const meta: FileMeta = {
@@ -325,7 +430,7 @@ export function useGuestUpload() {
   }
 
   async function uploadArchive(files: File[], options: GuestUploadOptions) {
-    const { key, iv } = await beginTransfer()
+    const { key, iv } = await beginTransfer(files)
     try {
       // Stima per la progress bar: la dimensione dello zip non è nota in anticipo,
       // ma è ~ la somma dei file (lo zip "store" aggiunge solo piccoli header).
@@ -352,24 +457,37 @@ export function useGuestUpload() {
       const flushPart = async (size: number) => {
         const chunk = takeChunk(size)
         const framed = await encryptChunkFramed(chunk.buffer as ArrayBuffer, key, partNumber - 1)
+        const body = new Blob([framed])
         let attempt = 0
         while (true) {
           try {
             const url = await requestPartUrl(partNumber, ctx)
-            const response = await storageApi.put(url, new Blob([framed]), {
+            const response = await storageApi.put(url, body, {
               headers: { 'Content-Type': 'application/octet-stream' },
               signal: abortController.value?.signal,
+              // Senza questo il progresso avanzerebbe a scatti da 10 MB: con pochi file
+              // piccoli l'intero invio sarebbe una parte sola, e le barre per-file
+              // salterebbero da 0 a 100 senza raccontare niente. Riportiamo i byte di
+              // ciphertext in volo nello spazio dei byte in chiaro, che è quello in cui
+              // ragionano `totalBytes` e gli intervalli dei file.
+              onUploadProgress: (event) => {
+                activeBytes.set(partNumber, (event.loaded / body.size) * size)
+                updateProgress()
+              },
             })
             const eTag = response.headers['etag']
             if (!eTag) throw new Error('ETag mancante nella risposta di storage')
             parts.push({ PartNumber: partNumber, ETag: eTag })
             break
           } catch (error) {
+            activeBytes.delete(partNumber)
+            updateProgress()
             if (abortController.value?.signal.aborted) throw error
             attempt += 1
             if (attempt > MAX_PART_RETRIES) throw error
           }
         }
+        activeBytes.delete(partNumber)
         partNumber += 1
         completedBytes = Math.min(totalBytes, completedBytes + size)
         updateProgress()
@@ -424,6 +542,7 @@ export function useGuestUpload() {
   function reset() {
     status.value = 'idle'
     progress.value = 0
+    fileProgress.value = []
     result.value = null
     errorMessage.value = null
     completedBytes = 0
@@ -431,9 +550,10 @@ export function useGuestUpload() {
     activeBytes.clear()
     pending = []
     pendingLen = 0
+    slots = []
     abortController.value = null
     activeUpload.value = null
   }
 
-  return { status, progress, result, errorMessage, upload, abort, reset }
+  return { status, progress, fileProgress, result, errorMessage, upload, abort, reset }
 }

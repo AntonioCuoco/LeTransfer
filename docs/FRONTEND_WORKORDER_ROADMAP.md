@@ -5,8 +5,9 @@
 > stesso contratto di API. Concept visivo del momento-firma → artifact linkato in fondo.
 >
 > **Stack reale** (verificato): Vue 3.5 + TS, **PrimeVue v4** (preset custom `theme/preset.ts` + PassThrough
-> `theme/pt.ts`), **Tailwind v4**, Pinia, vue-router, @tanstack/vue-query, vee-validate+zod, **GSAP** e
-> **three.js** (installati, oggi inutilizzati → pronti per il wow), sweetalert2.
+> `theme/pt.ts`), **Tailwind v4**, Pinia, vue-router, @tanstack/vue-query, vee-validate+zod, **GSAP**
+> (primitivi di movimento, F0.2), sweetalert2. **three.js** è installato ma tuttora inutilizzato: se
+> l'hero ambient non si fa, va disinstallato invece di restare a pesare nel `package.json`.
 > Dark mode via classe `.dark` (`stores/theme.ts`). Brand: **viola `#724cf9`** su shell `#2c2638`.
 
 ---
@@ -40,12 +41,12 @@ Fatti dal codice, che condizionano tutto:
 
 ---
 
-## 📍 Stato al 2026-07-30
+## 📍 Stato al 2026-08-02
 
 | Fase | Stato | Cosa resta |
 |---|---|---|
-| **F0** Design system | 🟡 in corso | Token unificati ✅ (`assets/tokens.css` + preset PrimeVue allineato + primitivi `.lt-*`). Restano: **font self-hosted**, **primitivi GSAP** (F0.2), ridefinizione `theme/pt.ts` (F0.4) |
-| **F1** Invio senza account | 🟢 quasi chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici ✅. Restano: **progresso per-file**, **QR del link** |
+| **F0** Design system | 🟢 chiusa | Token unificati ✅, **font self-hosted** ✅, **primitivi GSAP** ✅ (F0.2), **pelle PrimeVue** ✅ (F0.4: raggi/focus/motion nel preset, voce tipografica in `pt.ts`) |
+| **F1** Invio senza account | 🟢 quasi chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici ✅, **progresso per-file** ✅, **QR del link** ✅. Resta solo: upload in background (da decidere se serve davvero) |
 | **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
 | **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
 | **F4** AI on-device | ⚪ non iniziata | tutto |
@@ -72,20 +73,45 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 > Obiettivo: un linguaggio visivo unico, premium, calmo come Proton ma con un'**identità propria** (la
 > privacy resa *visibile*: cifra/sigillo, fingerprint, ricevuta). È la fondazione di ogni schermata.
 
+> **Stato F0**: chiusa il 2026-08-02. Cosa c'è ora: token unici applicati a PrimeVue e
+> Tailwind, tre famiglie di font servite dal nostro origin, tre primitivi di movimento
+> con `reduced-motion` rispettato per costruzione.
+
 ### F0.1 Token unificati
 - [x] **Colore.** Scale `brand` (viola), `verified` (menta — solo stati di fiducia), `deep`/`haze` (mondo
   scuro), `lilac`/`ink` (carta chiara), semantici `warn`/`crit`/`info` separati dal brand, `shell` per la
   dashboard legacy. Tutto in [tokens.css](../vue-app/src/assets/tokens.css).
-- [ ] **Tipografia.** Token `--font-display|sans|mono` definiti, ma con **fallback di sistema**: mancano i
-  file dei font veri, da caricare come `@font-face` self-hosted (niente CDN → CSP).
+- [x] **Tipografia.** Tre **variable font self-hosted** in [assets/fonts/](../vue-app/src/assets/fonts/),
+  dichiarate in [fonts.css](../vue-app/src/assets/fonts.css): **Inter Tight** (display), **Inter** (sans),
+  **JetBrains Mono** (la firma: impronte, ciphertext, metadati — scelto perché 0/O e 1/l/I non si
+  confondono quando un'impronta si confronta a voce). Nessun CDN → `font-src 'self'` regge, e il browser
+  di chi riceve un link non racconta a terzi che quel link esiste. Sottoinsiemi latini con `unicode-range`
+  (latin-ext solo per il corpo: i nomi dei file non sono solo italiani), `font-display: swap`,
+  preload dei due sopra la piega. Provenienza, versioni e **SHA-256** in
+  [fonts/NOTICE.md](../vue-app/src/assets/fonts/NOTICE.md) — i font sono byte che finiscono nel bundle,
+  quindi rientrano nel discorso build riproducibili (F2). Licenza OFL 1.1 per tutte e tre.
 - [x] **Spazio/raggi/ombre/motion**: `--radius-*`, `--shadow-*`, `--ease-soft`, `--duration-*`.
 - [x] Esposto tutto come **CSS custom properties** (`@theme` di Tailwind v4 → genera anche le utility) e
   **preset PrimeVue** che referenzia le stesse variabili (`var(--color-brand-500)`): una sola fonte di verità.
   ⚠️ `tailwind.config.js` era **morto** (v4 lo legge solo con `@config`) → neutralizzato con una nota.
 
 ### F0.2 Primitivi di movimento (GSAP)
-- [ ] Wrapper/composables per: **page-load orchestrato**, **scroll-reveal**, **micro-interazioni** hover/press.
-- [ ] Rispettare **`prefers-reduced-motion`** ovunque (fallback statico).
+- [x] Tre gesti soli, in [useMotion.ts](../vue-app/src/composables/useMotion.ts) — di più non sarebbe
+  un linguaggio, sarebbe rumore:
+  - **`usePageEnter()`** — entrata orchestrata: gli elementi marcati `data-enter` salgono in sequenza.
+    Usa `gsap.from`, così lo stato finale è quello del markup: se il codice non gira, la pagina resta giusta.
+    Montata su facciata, `/come-funziona`, `/sicurezza`, `/prezzi`.
+  - **`v-reveal`** — appare allo scroll, una volta sola (con `{ stagger }` tocca ai figli diretti).
+    `IntersectionObserver`, non ScrollTrigger: per un "appari una volta" è la primitiva nativa giusta.
+  - **`v-lift`** — hover *e* **press**. Il press è la ragione d'essere della direttiva: l'hover lo fa già
+    il CSS dei primitivi `.lt-*`, il "cede sotto il dito" no — e sul bottone che avvia una cifratura
+    lunga "ho premuto davvero?" è una domanda vera.
+- [x] **`prefers-reduced-motion`** rispettato **per costruzione**: ogni primitivo interroga la preferenza
+  *prima* di scrivere `opacity: 0`, quindi il caso ridotto non nasconde mai contenuto — non è una
+  variante da ricordarsi, è il ramo di partenza. La preferenza è anche reattiva (`useReducedMotion`):
+  chi la attiva a pagina aperta lo fa perché qualcosa gli dà fastidio *ora*.
+- [x] L'ease JS è la **stessa cubica** di `--ease-soft` (via `CustomEase`): movimento CSS e movimento
+  GSAP sulla stessa pagina non devono sembrare di due mani diverse.
 
 ### F0.3 Motivo "cifra/sigillo" (l'identità)
 - [x] Componente **fingerprint** ([KeyFingerprint.vue](../vue-app/src/components/ui/KeyFingerprint.vue)):
@@ -95,7 +121,17 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 - [x] Componente **`PrivacyReceipt`** riusabile: variante `send` (link pronto) e `receive` (dopo la decifratura).
 
 ### F0.4 Componenti base (su PrimeVue v4 via `pt`/`:pt`)
-- [ ] Bottoni, input, dialog, toast, progress, tabella, card, tooltip — ridefiniti nei token nuovi in `theme/pt.ts`.
+- [x] **Divisione del lavoro**, che è la parte che conta: i **token** stanno in
+  [preset.ts](../vue-app/src/theme/preset.ts), le **classi** in [pt.ts](../vue-app/src/theme/pt.ts).
+  - Nel preset: la scala dei raggi primitiva riscritta sui nostri `--radius-*` (Aura ne fa derivare
+    *ogni* angolo: campi, pannelli, modali, chip — un token invece di una classe per componente, e
+    zero litigi di specificità con le utility Tailwind), `transitionDuration` da `--duration-quick`,
+    e un **focus ring da 2px** nel viola del brand: su un prodotto dove si digitano password e si
+    confrontano impronte, chi naviga da tastiera deve vedere senza sforzo dove si trova.
+  - In `pt.ts`: solo ciò che un token non sa dire — la **voce tipografica**. Peso e spaziatura dei
+    bottoni uguali a `.lt-btn`; **mono** dove il testo è un dato (intestazioni di colonna, paginatore,
+    chip, tooltip, password, numeri); barra di progresso nella rampa **viola → menta**, la stessa
+    della cifratura nel widget: il progresso, qui, significa qualcosa.
 
 ---
 
@@ -112,20 +148,31 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
       Footer sotto la piega, così l'hero resta esattamente un viewport.
 
 ### F1.1 Componente `SendBox` (drop zone)
-- [ ] Drop zone grande con **doppia interazione** (drag-and-drop **+** "Scegli file") e stato hover evidente
+- [x] Drop zone grande con **doppia interazione** (drag-and-drop **+** "Scegli file") e stato hover evidente
   (bordo/colore che reagisce) — pattern standard del settore.
-- [ ] **Coda multi-file** con progresso **per-file** reale (no spinner indeterminato) e upload in background.
-- [ ] Opzioni invio: password (opz.), scadenza (clamp lato UI ai limiti guest), max download.
-- [ ] Riuso di `useFileDragAndDrop` / `useFolderDragAndDrop` esistenti.
+- [x] **Coda multi-file** con progresso **per-file** reale (no spinner indeterminato).
+  `fileProgress` in [useGuestUpload.ts](../vue-app/src/composables/useGuestUpload.ts) è calcolato sui
+  **byte di ciphertext accettati dallo storage**, non sul tempo: i file dello zip occupano intervalli
+  noti del flusso, e i byte caricati dicono a che punto è ciascuno. Aggiunto anche `onUploadProgress`
+  sul percorso zip, che prima avanzava a scatti da 10 MB — con pochi file piccoli l'invio è una parte
+  sola e le barre sarebbero saltate da 0 a 100 senza dire niente.
+  ⚠️ Approssimazione dichiarata: le intestazioni zip (~30 byte per file) non sono contate.
+- [x] Opzioni invio: password (opz.), scadenza (clamp lato UI ai limiti guest), max download.
+- [ ] **Upload in background** (uscire dalla scheda del widget mentre carica): non fatto, l'invio
+  vive dentro la carta. Va deciso se serve prima o dopo il "modello a collezione" (§F1.2).
+- [ ] `useFileDragAndDrop` / `useFolderDragAndDrop` **non** sono riusati: il widget ha i suoi
+  handler inline (poche righe, nessuno stato condiviso). I due composable restano per la dashboard —
+  se resteranno inutilizzati anche lì, vanno tolti, non lasciati a marcire.
 
 ### F1.2 Cifratura client + upload guest
-- [ ] Generare **chiave file casuale** (non la coppia RSA) → cifrare a chunk con `encryptChunkFramed`
+- [x] Generare **chiave file casuale** (non la coppia RSA) → cifrare a chunk con `encryptChunkFramed`
   (formato v2, riuso `crypto.ts`).
-- [ ] **Turnstile**: caricare il widget, ottenere il token, passarlo a `guest/upload/init`.
-- [ ] Flusso `init → urls → PUT ciphertext su S3/R2 → complete` verso `/api/guest/upload/*`
-  (adattare `useS3MultipartUpload` in un `useGuestUpload`).
-- [ ] Costruire il link finale con la **chiave nel fragment** (`createKeyHash`): `…/share/<token>#<chiave>`.
-- [ ] Gestione errori/abuso: `413` (troppo grande), rate limit, Turnstile fallito → messaggi chiari e umani.
+- [x] **Turnstile**: caricare il widget, ottenere il token, passarlo a `guest/upload/init`.
+- [x] Flusso `init → urls → PUT ciphertext su S3/R2 → complete` verso `/api/guest/upload/*`
+  ([useGuestUpload.ts](../vue-app/src/composables/useGuestUpload.ts), con istanze axios dedicate:
+  nessun interceptor globale, così un URL presigned non riceve mai un header `Authorization`).
+- [x] Costruire il link finale con la **chiave nel fragment** (`createKeyHash`): `…/share/<token>#<chiave>`.
+- [x] Gestione errori/abuso: `413` (troppo grande), rate limit, Turnstile fallito → messaggi chiari e umani.
 
 > **Multi-file / cartelle → un solo link.** Il backend guest fa *un oggetto = un link*, quindi più file
 > vanno impacchettati in un archivio. **Scelto: zip in streaming** (`client-zip` in modalità `.body`, un
@@ -140,10 +187,18 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 > come evoluzione quando servirà.
 
 ### F1.3 Il momento wow — "cifratura visibile"
-- [ ] Animazione (Canvas/GSAP) allo start upload: i byte del file **diventano ciphertext**, la **chiave nasce
-  nel browser** e "cade" nel fragment del link, il server mostra di ricevere **solo blocchi cifrati**.
-- [ ] Alla fine → **`PrivacyReceipt`** (F2) + link pronto con **copia** e QR.
-- [ ] CTA soft di conversione: "**Reclama questo invio**" → account (F3), niente muro.
+- [x] Animazione (Canvas) allo start upload: il campo generativo `CipherField` accelera e vira al menta
+  (`surge`/`settle`/`calm`), il sigillo si stampa a fine cifratura.
+- [x] Alla fine → **`PrivacyReceipt`** (F2) + link pronto con **copia** e **QR**.
+  Il QR è generato in locale da [utils/qr.ts](../vue-app/src/utils/qr.ts) — ~250 righe di aritmetica
+  ISO/IEC 18004, modalità byte, correzione M — e **non** da una libreria o da un servizio: quel codice
+  contiene la chiave dell'invio, quindi è codice che tocca materiale crittografico. Un servizio esterno
+  sarebbe l'esatto contrario di ciò che promettiamo; una dipendenza in più sarebbe superficie in più da
+  far fidare a chi ci legge. Correttezza verificata **matrice per matrice contro un'implementazione
+  indipendente** a maschera forzata (versioni 1–37): i fixture di riferimento vivono in
+  [qr.test.ts](../vue-app/src/utils/qr.test.ts), perché un QR sbagliato "sembra funzionare" e il
+  difetto si scopre sul telefono di qualcun altro.
+- [x] CTA soft di conversione: "**Reclama questo invio**" → account (F3), niente muro.
 - [ ] **Concept visivo di riferimento** (direzione approvata): https://claude.ai/code/artifact/19c6b6b2-dc22-40bb-b34b-cb2da34979ec — mondo viola pieno, campo generativo di "ciphertext" alla WeTransfer, widget d'invio umile, firma viola→menta, climax del "sigillo". Ricrearlo con GSAP + Canvas, `reduced-motion` a norma.
 
 ### F1.4 Ricezione (riuso)
@@ -268,9 +323,9 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
 
 ## Criteri di accettazione (per fase)
 
-- [ ] **F0**: token unici applicati a PrimeVue + Tailwind; light/dark curati; `reduced-motion` ok.
-- [ ] **F1**: da sloggato carico un file, vedo la cifratura visibile, ottengo un link `/share/:token#chiave`
-  funzionante; errori/abuso gestiti con messaggi umani.
+- [x] **F0**: token unici applicati a PrimeVue + Tailwind; light/dark curati; `reduced-motion` ok.
+- [x] **F1**: da sloggato carico un file, vedo la cifratura visibile, ottengo un link `/share/:token#chiave`
+  funzionante (con QR); errori/abuso gestiti con messaggi umani.
 - [ ] **F2**: `PrivacyReceipt` in invio e download; fingerprint destinatario verificabile nella condivisione.
 - [ ] **F3**: `/pricing` + claim end-to-end (guest → account) + limiti mostrati.
 - [ ] **F4**: scan on-device + anteprime locali con fallback pulito.

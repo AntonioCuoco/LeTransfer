@@ -75,11 +75,18 @@ crypto.subtle.generateKey({ name:'RSA-OAEP', modulusLength:4096, publicExponent:
 
 ---
 
-### 15. Backend Express: JWT accettato senza verifica della firma
-**Ambito:** ⚙️ Backend Express (PROD — appena possibile)
+### 15. ✅ RISOLTO — Backend Express: verifica della firma JWT
+**Ambito:** ⚙️ Backend Express · **Stato: implementato, verificato il 2026-08-02**
 **File:** `middleware/auth.js` del repo Express (vedi [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §5)
 
-**Problema.** L'attuale `authenticateToken` dell'Express fa `jwt.decode()` **senza verificare la firma** del token. Un token **forgiato** (payload arbitrario, firma finta) viene accettato → un attaccante può impersonare qualsiasi utente su **tutte** le route protette (`req.user.sub` controllato dall'attaccante). Le vecchie Lambda usavano un JWT Authorizer Cognito che la firma la verificava: portando tutto su Express **senza** verifica, si è *regrediti* in sicurezza.
+**Problema (storico).** `authenticateToken` faceva `jwt.decode()` **senza verificare la firma**: un token
+**forgiato** (payload arbitrario, firma finta) sarebbe stato accettato su **tutte** le route protette, con
+`req.user.sub` scelto dall'attaccante — impersonazione totale. Le vecchie Lambda usavano un JWT Authorizer
+Cognito che la firma la verificava, quindi il porting su Express aveva *regredito* la sicurezza.
+
+**Oggi.** Il middleware verifica il token contro le JWKS della User Pool con `CognitoJwtVerifier` e
+`tokenUse: "access"`; `routes/fileSharing.js` riusa lo stesso verifier. Un token forgiato o scaduto viene
+respinto con `403`.
 
 **Soluzione.** Verifica vera con `aws-jwt-verify` (Cognito), su **tutte** le route 🔑:
 ```js

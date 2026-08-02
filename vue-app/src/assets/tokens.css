@@ -85,9 +85,17 @@
   --color-media-500: #e08a2b;
 
   /* ── Tipografia ───────────────────────────────────────────────────────────
-   * Il mono è la firma del prodotto: fingerprint, ciphertext, dati tecnici.
-   * TODO F0.1: sostituire i fallback di sistema con font self-hosted (@font-face),
-   * mai da CDN — la CSP di produzione non lo consentirebbe.
+   * Le tre famiglie sono **self-hosted** (variable font in `assets/fonts/`,
+   * dichiarate in `assets/fonts.css`): nessuna richiesta a terzi, `font-src 'self'`.
+   * I fallback di sistema restano in coda — servono nei ~200 ms di `font-display: swap`
+   * e per i caratteri fuori dai sottoinsiemi latini.
+   *
+   * display → Inter Tight: stretta, per i titoli grandi della facciata.
+   * sans    → Inter: il corpo del testo.
+   * mono    → JetBrains Mono: la firma del prodotto (fingerprint, ciphertext,
+   *           dati tecnici). Qui la scelta è funzionale, non estetica: un'impronta
+   *           si confronta a voce e carattere per carattere, quindi 0/O e 1/l/I
+   *           devono essere inconfondibili.
    */
   --font-display: 'Inter Tight', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -206,8 +214,11 @@
     color: var(--color-verified-400);
   }
 
-  /* Titolo da facciata: la scala tipografica dell'hero, in un posto solo. */
+  /* Titolo da facciata: la scala tipografica dell'hero, in un posto solo.
+     È l'unico posto che monta `--font-display`: Inter Tight esiste per i corpi
+     grandi, dove la sua larghezza ridotta si vede — sotto i 2rem non la distingui. */
   .lt-display {
+    font-family: var(--font-display);
     text-wrap: balance;
     font-size: clamp(2.4rem, 6vw, 4.6rem);
     line-height: 1;

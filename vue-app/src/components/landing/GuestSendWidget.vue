@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandSeal from './BrandSeal.vue'
 import PrivacyReceipt from './PrivacyReceipt.vue'
+import QrCode from '@/src/components/ui/QrCode.vue'
 import { useGuestUpload } from '@/src/composables/useGuestUpload'
 import { useTurnstile } from '@/src/composables/useTurnstile'
 import { savePendingClaim } from '@/src/composables/usePendingClaim'
@@ -23,7 +24,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const { status, progress, result, errorMessage, upload, reset } = useGuestUpload()
+const { status, progress, fileProgress, result, errorMessage, upload, reset } = useGuestUpload()
 const { enabled: turnstileEnabled, mount: mountTurnstile, getToken: getTurnstileToken, refresh: refreshTurnstile } = useTurnstile()
 
 const files = ref<File[]>([])
@@ -34,6 +35,7 @@ const maxDownloads = ref<number | null>(null)
 const optionsOpen = ref(false)
 
 const isDragging = ref(false)
+const qrOpen = ref(false)
 const copyLabel = ref('Copia')
 const claimLabel = ref('Reclama questo invio →')
 const transferSummary = ref('')
@@ -153,6 +155,7 @@ async function startUpload() {
 function resetWidget() {
   reset()
   files.value = []
+  qrOpen.value = false
   emit('reset')
 }
 
@@ -324,7 +327,9 @@ onMounted(() => {
 
       <div v-if="turnstileEnabled" ref="turnstileEl" class="my-2 flex justify-center px-1.5"></div>
 
-      <button type="button" class="lt-btn mt-1" :disabled="files.length === 0" @click="startUpload">
+      <!-- v-lift: il "cede alla pressione" sul bottone che avvia una cifratura
+           potenzialmente lunga — è lì che serve la conferma tattile di aver premuto. -->
+      <button v-lift type="button" class="lt-btn mt-1" :disabled="files.length === 0" @click="startUpload">
         Cifra e crea il link
       </button>
     </div>
@@ -340,6 +345,33 @@ onMounted(() => {
       <div class="flex justify-between font-mono text-[0.7rem] text-[#6a5f8c]">
         <span>{{ progress }}%</span>
         <span>il server riceve solo ciphertext</span>
+      </div>
+
+      <!-- Progresso per-file (F1.1). Con un file solo la barra qui sopra È già il
+           suo progresso: ripeterlo sarebbe rumore. Da due in su serve, perché i file
+           finiscono in un unico zip e senza questo non si saprebbe a che punto è quale. -->
+      <div v-if="fileProgress.length > 1" class="mt-0.5 flex max-h-[168px] flex-col gap-1.5 overflow-y-auto">
+        <div v-for="item in fileProgress" :key="item.name" class="rounded-[11px] border border-[#e9e3f6] bg-white px-2.5 py-2">
+          <div class="flex items-center gap-2.5">
+            <span class="flex-none rounded-md px-1.5 py-1 font-mono text-[0.56rem] font-extrabold tracking-[0.03em] text-white" :style="{ background: fileBadge(item.name, item.type).color }">
+              {{ fileBadge(item.name, item.type).label }}
+            </span>
+            <span class="flex-1 truncate text-[0.82rem] font-semibold">{{ item.name }}</span>
+            <span
+              class="flex-none font-mono text-[0.66rem] tabular-nums"
+              :class="item.status === 'done' ? 'font-bold text-[#12b89a]' : item.status === 'active' ? 'text-[#724cf9]' : 'text-[#a79cc4]'"
+            >
+              {{ item.status === 'done' ? 'cifrato ✓' : item.status === 'pending' ? 'in attesa' : `${item.percent}%` }}
+            </span>
+          </div>
+          <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-[#e4dbf6]">
+            <div
+              class="h-full rounded-full transition-all duration-150"
+              :class="item.status === 'done' ? 'bg-[#12b89a]' : 'bg-[#7c4dff]'"
+              :style="{ width: `${item.percent}%` }"
+            />
+          </div>
+        </div>
       </div>
     </div>
 
@@ -357,7 +389,32 @@ onMounted(() => {
         <div class="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[11px] border border-[#e9e3f6] bg-white px-3 py-2.5 font-mono text-[0.78rem]">
           <span class="text-[#6a5f8c]">{{ linkBase }}</span><span class="font-bold text-[#12b89a]">{{ linkFragmentPreview }}</span>
         </div>
-        <button type="button" class="rounded-[11px] bg-[#1b1140] px-3.5 py-2.5 text-[0.84rem] font-bold text-white transition hover:brightness-125" @click="copyLink">{{ copyLabel }}</button>
+        <!-- Il QR è la scorciatoia per il caso più frequente: passare un file al
+             telefono che hai in mano. Chiuso di default — è un'alternativa al link,
+             non un secondo protagonista. -->
+        <button
+          v-lift
+          type="button"
+          class="flex-none rounded-[11px] border px-2.5 py-2.5 transition-colors"
+          :class="qrOpen ? 'border-[#724cf9] bg-[#f5f1fd] text-[#724cf9]' : 'border-[#e9e3f6] bg-white text-[#6a5f8c] hover:border-[#7c4dff]'"
+          :aria-expanded="qrOpen"
+          aria-label="Mostra il codice QR del link"
+          title="Codice QR"
+          @click="qrOpen = !qrOpen"
+        >
+          <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="1.9">
+            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+            <path d="M14 14h3v3h-3zM18 18h3v3h-3z" />
+          </svg>
+        </button>
+        <button v-lift type="button" class="rounded-[11px] bg-[#1b1140] px-3.5 py-2.5 text-[0.84rem] font-bold text-white transition hover:brightness-125" @click="copyLink">{{ copyLabel }}</button>
+      </div>
+
+      <div v-if="qrOpen && result" class="flex flex-col items-center gap-2 rounded-[14px] border border-[#e9e3f6] bg-white p-3">
+        <QrCode :value="result.shareUrl" :size="164" label="Codice QR del link di download" />
+        <p class="max-w-[30ch] text-center font-mono text-[0.64rem] leading-normal text-[#6a5f8c]">
+          contiene la chiave: chi lo inquadra scarica il file
+        </p>
       </div>
 
       <div class="font-mono text-[0.66rem] leading-normal text-[#6a5f8c]">

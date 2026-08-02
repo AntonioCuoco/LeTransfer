@@ -68,12 +68,12 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 ### Epica E0 — Chiudere il binario PROD/Express + Infra  · **P0** · ⚙️🌐 · **L**
 > Senza questo l'app è hardenata solo "a metà". È il prerequisito di tutto il resto. Fonte: [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md), [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) §binario PROD.
 
-- [ ] **#15** Verifica vera della firma JWT con `aws-jwt-verify` (`CognitoJwtVerifier`, `tokenUse:"access"`) su **tutte** le route protette. ⚙️
-- [ ] **#3** CSP autoritativa + security headers (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `frame-ancestors 'none'`) sull'host/CDN che serve il build. `connect-src` deve includere API Express + bucket. ⚠️ Il `connect-src` deve puntare all'**host storage finale** → cablarlo **dopo E0.5** (R2), una volta sola. 🌐
-- [ ] **#7** CORS whitelist con l'origine di produzione + niente `error.message` nelle risposte 500. ⚙️
-- [ ] **#14** Route multipart: ownership sul prefisso `uploads/files/${sub}/`, usare `req.user.sub` (mai `userId` dal body). ⚙️
-- [ ] **#12** Password policy server-side su Cognito (≥12, complessità). 🌐
-- [ ] **HTTPS ovunque** in prod → accende automaticamente i cookie `Secure`. 🌐
+- [x] **#15** Verifica vera della firma JWT con `aws-jwt-verify` (`CognitoJwtVerifier`, `tokenUse:"access"`) su **tutte** le route protette. ⚙️ ✅ **2026-08-02** — `routes/fileSharing.js` riusa lo stesso verifier.
+- [ ] ⛔️ *bloccato dal dominio* — **#3** CSP autoritativa + security headers (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `frame-ancestors 'none'`) sull'host/CDN che serve il build. `connect-src` deve includere API Express + bucket. ⚠️ Il `connect-src` deve puntare all'**host storage finale** → cablarlo **dopo E0.5** (R2), una volta sola. 🌐
+- [x] **#7** CORS whitelist con l'origine di produzione + niente `error.message` nelle risposte 500. ⚙️ ✅ **2026-08-02**
+- [x] **#14** Route multipart: ownership sul prefisso `uploads/files/${sub}/`, usare `req.user.sub` (mai `userId` dal body). ⚙️ ✅ **2026-08-02**
+- [x] **#12** Password policy server-side su Cognito (≥12, complessità). 🌐 ✅ **2026-08-02**
+- [ ] ⛔️ *bloccato dal dominio* — **HTTPS ovunque** in prod → accende automaticamente i cookie `Secure`. 🌐
 - [ ] **Residenza dati**: fissare regione UE (`eu-central-1`) e documentare il data-flow; valutare AWS European Sovereign Cloud (attivo da gen 2026) come opzione futura. 🌐
 
 **DoD:** un token forgiato/scaduto viene respinto su ogni route; CSP attiva in prod; nessun leak di errori interni; ownership verificata; deploy https con cookie Secure.

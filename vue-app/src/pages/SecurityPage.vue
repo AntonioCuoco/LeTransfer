@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
+import { usePageEnter } from '@/src/composables/useMotion'
 
 /**
  * Sicurezza — la pagina che un prodotto sulla privacy deve avere il coraggio di scrivere.
@@ -47,22 +48,24 @@ const notCovered = [
     body: 'La cifratura avviene nel codice che ti mandiamo noi. Se qualcuno compromettesse la nostra distribuzione, potrebbe servirti codice ostile: è il limite strutturale di ogni E2E via browser. Il client è open-source proprio perché sia verificabile.',
   },
 ]
+
+const { root: head } = usePageEnter()
 </script>
 
 <template>
   <PublicShell>
-    <div class="mx-auto w-full max-w-[980px] py-[clamp(40px,8vh,96px)]">
-      <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Sicurezza</p>
-      <h1 class="mb-6 max-w-[15ch] text-balance text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
+    <div ref="head" class="mx-auto w-full max-w-[980px] py-[clamp(40px,8vh,96px)]">
+      <p data-enter class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">Sicurezza</p>
+      <h1 data-enter class="mb-6 max-w-[15ch] text-balance font-display text-[clamp(2.6rem,7vw,5rem)] leading-[0.98] tracking-[-0.04em] [font-weight:840]">
         Quello che facciamo, e quello che no.
       </h1>
-      <p class="max-w-[58ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
+      <p data-enter class="max-w-[58ch] text-[clamp(1.05rem,1.6vw,1.24rem)] leading-relaxed text-[#b9ace2]">
         Un servizio che promette di proteggerti da tutto ti sta mentendo su qualcosa. Qui trovi le primitive
         che usiamo, e sotto la lista di ciò che la nostra crittografia <em class="not-italic text-[#F2ECFF]">non</em> può fare.
       </p>
 
       <!-- Primitive -->
-      <section class="mt-[clamp(48px,7vh,84px)]">
+      <section v-reveal class="mt-[clamp(48px,7vh,84px)]">
         <h2 class="mb-7 text-[clamp(1.5rem,3vw,2.2rem)] font-bold tracking-[-0.03em]">Le primitive</h2>
         <div class="border-t border-white/10">
           <div
@@ -78,7 +81,7 @@ const notCovered = [
       </section>
 
       <!-- Modello di minaccia -->
-      <section class="mt-[clamp(48px,7vh,84px)] grid gap-8 md:grid-cols-2">
+      <section v-reveal="{ stagger: 0.08 }" class="mt-[clamp(48px,7vh,84px)] grid gap-8 md:grid-cols-2">
         <div>
           <h2 class="mb-1.5 text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tracking-[-0.03em]">Da cosa ti protegge</h2>
           <p class="mb-5 text-[0.92rem] leading-relaxed text-[#8d7fb8]">Scenari coperti dal modo in cui è costruito il prodotto.</p>
@@ -102,7 +105,7 @@ const notCovered = [
       </section>
 
       <!-- Stato attuale: niente vanterie non verificabili -->
-      <section class="mt-[clamp(48px,7vh,84px)]">
+      <section v-reveal class="mt-[clamp(48px,7vh,84px)]">
         <h2 class="mb-7 text-[clamp(1.5rem,3vw,2.2rem)] font-bold tracking-[-0.03em]">A che punto siamo</h2>
         <dl class="grid grid-cols-[1fr_auto] gap-x-6 border-t border-white/10 font-mono text-[0.8rem]">
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Client open-source</dt>
@@ -121,7 +124,7 @@ const notCovered = [
       </section>
 
       <!-- Disclosure -->
-      <section class="mt-[clamp(40px,6vh,72px)] rounded-[18px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
+      <section v-reveal class="mt-[clamp(40px,6vh,72px)] rounded-[18px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
         <p class="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#37e7c4]">Hai trovato un problema?</p>
         <h2 class="mb-3 text-[clamp(1.25rem,2.4vw,1.6rem)] font-bold tracking-[-0.02em]">Scrivicelo prima di pubblicarlo.</h2>
         <p class="mb-5 max-w-[60ch] leading-relaxed text-[#b9ace2]">

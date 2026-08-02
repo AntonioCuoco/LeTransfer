@@ -18,14 +18,14 @@
 
 Da chiarire con chi conosce lo stato attuale del repo Express, perché i doc si contraddicono:
 
-1. **Stato reale di `middleware/auth.js`.** [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2.1 descrive l'auth come
-   *già* verificata crittograficamente (`aws-jwt-verify`, `tokenUse:"access"`), mentre
-   [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) elenca #15 come **ancora da fare**. → **Verificare cosa fa
-   oggi davvero** `authenticateToken`: se fa `jwt.decode()` senza verifica, #15 è il primo task assoluto (§A).
-2. **Incongruenza `tokenUse`.** [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §5 mostra uno snippet con
-   **`tokenUse: "id"`** — **è sbagliato/obsoleto**. Il contratto corretto (frontend + [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md)
-   §2 + [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2.1) è **`tokenUse: "access"`**. Usare **access**. L'email non è
-   nell'access token → risolverla via Cognito dove serve.
+1. ~~**Stato reale di `middleware/auth.js`.**~~ ✅ **RISOLTO il 2026-08-02.** Il codice è stato ispezionato:
+   `authenticateToken` verifica davvero la firma (`CognitoJwtVerifier`, `tokenUse:"access"`) e
+   `routes/fileSharing.js` riusa lo stesso verifier. Aveva ragione [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2.1;
+   gli altri documenti erano rimasti indietro e sono stati allineati. **#15 è fatto.**
+2. ~~**Incongruenza `tokenUse`.**~~ ✅ **RISOLTO il 2026-08-02.** Lo snippet sbagliato in
+   [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §5 diceva **`tokenUse: "id"`** ed è stato corretto in
+   **`"access"`**, che è il contratto reale (il codice fa già così). Promemoria che resta valido: l'email non è
+   nell'access token → va risolta via Cognito dove serve.
 3. **Ordine con R2 (§B).** Le nuove rotte "guest" (§C) toccano lo storage: vanno scritte **puntando a R2**
    (dopo E0.5), non prima, per non rifarle. Ma #15 (§A) è indipendente dallo storage → si fa **subito**.
 
@@ -35,9 +35,10 @@ Da chiarire con chi conosce lo stato attuale del repo Express, perché i doc si 
 
 Specifica completa: **[BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md)**. Da fare in quest'ordine:
 
-1. **[#15 — CRITICO, SUBITO] Verifica firma JWT** con `aws-jwt-verify`, `CognitoJwtVerifier`, **`tokenUse:"access"`**,
-   su **tutte** le route protette (`BACKEND_SECURITY_TODO.md` §2). Indipendente da R2 → non aspetta nulla.
-2. **[#7] CORS whitelist** (dev + prod) + **niente `error.message`** nelle risposte 500 (§4).
+1. ✅ ~~**[#15] Verifica firma JWT**~~ — **FATTO** (verificato il 2026-08-02): `CognitoJwtVerifier`,
+   `tokenUse:"access"`, stesso verifier riusato in `routes/fileSharing.js`.
+   → **Il primo task aperto è ora il #7.**
+2. **[#7 — PRIMO APERTO] CORS whitelist** (dev + prod) + **niente `error.message`** nelle risposte 500 (§4).
 3. **[#5-Cognito] Password policy** ≥12 con classi di caratteri (§5) — è config Cognito, non codice.
 4. **[#3] CSP + security headers** sull'host che serve il build (§6) — **dopo E0.5** (il `connect-src`
    deve puntare all'host storage finale = R2). HTTPS obbligatorio in prod.
@@ -280,12 +281,12 @@ Endpoint per il funnel senza-account → Free/Pro (roadmap §1).
 ## E. Checklist finale consolidata (per il backend)
 
 **Precondizioni**
-- [ ] Confermato lo stato reale di `middleware/auth.js` (§0.1) e risolta l'incongruenza `tokenUse` → **access** (§0.2).
+- [x] Confermato lo stato reale di `middleware/auth.js` (§0.1) e risolta l'incongruenza `tokenUse` → **access** (§0.2). ✅ 2026-08-02
 
 **A — E0 (vedi BACKEND_SECURITY_TODO.md)**
-- [ ] #15 verifica firma JWT (`aws-jwt-verify`, `tokenUse:"access"`) su tutte le route 🔑 — **subito**.
-- [ ] #7 CORS whitelist + niente `error.message`.
-- [ ] Password policy Cognito ≥12.
+- [x] #15 verifica firma JWT (`aws-jwt-verify`, `tokenUse:"access"`) su tutte le route 🔑. ✅ 2026-08-02
+- [x] #7 CORS whitelist + niente `error.message`. (2026-08-02)
+- [x] Password policy Cognito ≥12. (2026-08-02)
 - [ ] #14 multipart auth + ownership + metadati v2 (verificare se già fatto col consolidamento).
 - [ ] #3 CSP/headers + HTTPS — **dopo E0.5**.
 

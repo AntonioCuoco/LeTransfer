@@ -106,9 +106,8 @@ S3 bucket da `S3_BUCKET_NAME`. Riusare dove possibile `services/s3.js` / `servic
 
 ### 3.5 `POST /api/share`  (porting di `dev-createShare`, solo ramo `user`)
 - **Auth**: 🔑. `ownerId = req.user.sub`.
-  > ⚠️ La Lambda usava un **JWT Authorizer Cognito che verificava la firma**. L'Express oggi fa
-  > solo `jwt.decode` (vedi BACKEND_API_DOCS §2.1). Per **non regredire** la sicurezza, qui serve
-  > **verifica vera** del token (`aws-jwt-verify`). Vedi §5.
+  > ✅ Nessuna regressione: l'Express **verifica la firma** con `aws-jwt-verify`, come faceva il
+  > JWT Authorizer Cognito delle Lambda. Vedi §5 e [BACKEND_API_DOCS §2.1](BACKEND_API_DOCS.md).
 - **Body**: `{ s3Key, type: 'user', targetEmail, encryptedAESKey?, encryptionIV? }`.
 - **Logica**:
   1. `HeadObjectCommand` su `s3Key` → metadati (`fileName` = ultimo segmento decodificato,
@@ -174,19 +173,24 @@ Aggiungere i permessi che prima stavano sui ruoli Lambda:
 
 ---
 
-## 5. Fix di sicurezza obbligatorio: verifica vera del JWT
+## 5. ✅ FATTO — verifica vera del JWT
 
-Oggi `middleware/auth.js` fa `jwt.decode` **senza verificare la firma** → un token forgiato passa.
-Le Lambda di sharing invece verificavano davvero (JWT Authorizer Cognito). Portandole sull'Express,
-**non scendere** a quel livello: usare `aws-jwt-verify`.
+> **Stato: implementato** (verificato il 2026-08-02). `middleware/auth.js` non usa più `jwt.decode`:
+> verifica la firma contro le JWKS della User Pool. Le Lambda di sharing verificavano davvero
+> (JWT Authorizer Cognito) e portandole sull'Express **non si è sceso** di livello.
+>
+> ⚠️ **Correzione allo snippet qui sotto:** il valore giusto è **`tokenUse: "access"`**, non `"id"`.
+> Il frontend manda l'AccessToken Cognito e un IdToken viene respinto con `403`
+> ([BACKEND_API_DOCS §2.1](BACKEND_API_DOCS.md)). Lo snippet diceva `"id"` e avrebbe rotto
+> l'autenticazione a chi lo avesse copiato.
 
 ```js
-// middleware/auth.js (sostituzione di jwt.decode)
+// middleware/auth.js
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 const verifier = CognitoJwtVerifier.create({
   userPoolId: process.env.USER_POOL_ID,
-  tokenUse: "id",
+  tokenUse: "access",
   clientId: process.env.COGNITO_CLIENT_ID,
 });
 
@@ -368,7 +372,7 @@ Stato: ✅ completate in `vue-app/`.
 
 ## 9. Checklist migrazione
 
-- [ ] `middleware/auth.js`: verifica vera JWT con `aws-jwt-verify` (§5).
+- [x] `middleware/auth.js`: verifica vera JWT con `aws-jwt-verify` (§5). ✅ 2026-08-02
 - [ ] Router multipart: `init` / `urls` / `complete` / `abort` con auth + ownership (§3.1–3.4).
 - [ ] `complete` scrive metadati con `saveFileToDynamoDB` (§3.3).
 - [ ] `POST /api/share` (ramo `user`) → `SharesTable` (§3.5).

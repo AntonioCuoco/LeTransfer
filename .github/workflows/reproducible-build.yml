@@ -49,6 +49,11 @@ jobs:
       - name: Type-check
         run: npx vue-tsc --noEmit -p tsconfig.app.json
 
+      # I test del nucleo crittografico girano PRIMA della build: un difetto lì non
+      # produce una schermata sbagliata, produce file che non si riaprono.
+      - name: Test del nucleo crittografico
+        run: npm test
+
       # SOURCE_DATE_EPOCH: convenzione per build riproducibili — fissa il "tempo"
       # della build al commit, così eventuali timestamp non cambiano gli artefatti.
       - name: Build

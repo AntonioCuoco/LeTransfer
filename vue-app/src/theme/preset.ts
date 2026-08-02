@@ -13,11 +13,50 @@ import Aura from '@primeuix/themes/aura'
  * - `primary` → viola del brand: bottoni, link, focus ring…
  * - dark `surface` → i grigi-viola della dashboard (token `shell-*`).
  *
- * Le classi di default per componente stanno nel `pt` globale (vedi theme/pt.ts),
- * gli override per istanza usano la prop `:pt` sul componente.
+ * **Divisione del lavoro con [pt.ts](pt.ts)** (roadmap F0.4): qui stanno i *token* —
+ * colore, raggio, motion, focus — perché un token si propaga da solo a tutti gli 80
+ * componenti e non può entrare in conflitto con le classi di un'istanza. In `pt.ts`
+ * sta solo ciò che un token non sa dire: la *voce* tipografica (peso, spaziatura,
+ * mono per i dati tecnici). Gli override per singola istanza usano la prop `:pt`.
  */
 export const LeTransferPreset = definePreset(Aura, {
+  /**
+   * Raggi: Aura fa derivare OGNI raggio (campi, pannelli, modali, chip…) da questa
+   * scala primitiva. Riscriverla qui significa che i componenti PrimeVue prendono la
+   * forma del design system in un colpo solo, senza una classe `rounded-*` per
+   * componente in `pt.ts` — e senza il rischio che una utility Tailwind e un token
+   * PrimeVue litighino sullo stesso angolo.
+   */
+  primitive: {
+    borderRadius: {
+      none: '0',
+      // La nostra scala parte da 7px (`badge`): sotto, il design system non ha raggi.
+      // Aura userebbe 2px e 4px per spunte e chip — troppo squadrati accanto a una
+      // carta da 22px, così `xs` e `sm` collassano entrambi sul raggio più piccolo che abbiamo.
+      xs: 'var(--radius-badge)',
+      sm: 'var(--radius-badge)',
+      md: 'var(--radius-field)',
+      lg: 'var(--radius-control)',
+      xl: 'var(--radius-panel)',
+    },
+  },
   semantic: {
+    // La velocità delle transizioni dei componenti, dallo stesso token del CSS a mano.
+    transitionDuration: 'var(--duration-quick)',
+
+    /**
+     * Anello di focus: 2px pieni nel viola del brand. Aura ne mette 1px — su un
+     * prodotto dove si digitano password e impronte, chi naviga da tastiera deve
+     * vedere *senza sforzo* dove si trova.
+     */
+    focusRing: {
+      width: '2px',
+      style: 'solid',
+      color: 'var(--color-brand-500)',
+      offset: '2px',
+      shadow: 'none',
+    },
+
     primary: {
       50: 'var(--color-brand-50)',
       100: 'var(--color-brand-100)',

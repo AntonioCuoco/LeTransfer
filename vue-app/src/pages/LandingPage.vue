@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import GuestSendWidget from '@/src/components/landing/GuestSendWidget.vue'
+import { usePageEnter } from '@/src/composables/useMotion'
 
 /**
  * Landing pubblica — facciata "invio senza account" (direzione approvata).
@@ -12,6 +13,11 @@ import GuestSendWidget from '@/src/components/landing/GuestSendWidget.vue'
  */
 
 const shell = ref<InstanceType<typeof PublicShell> | null>(null)
+
+// Entrata orchestrata dell'hero (F0.2): occhiello → titolo → sottotitolo → widget.
+// Il widget arriva per ultimo di proposito: prima si legge la promessa, poi appare
+// la cosa da usare.
+const { root: hero } = usePageEnter()
 
 function onEncryptStart() {
   shell.value?.surge()
@@ -30,20 +36,21 @@ function onReset() {
 <template>
   <PublicShell ref="shell">
     <!-- Hero: copy + widget d'invio. Larghezza piena (stessi margini dell'header). -->
-    <div class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1.1fr_minmax(0,440px)] lg:items-center lg:gap-[60px]">
+    <div ref="hero" class="grid w-full flex-1 content-center gap-8 py-[clamp(26px,5vh,70px)] lg:grid-cols-[1.1fr_minmax(0,440px)] lg:items-center lg:gap-[60px]">
       <div class="max-w-[600px]">
-        <p class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
+        <p data-enter class="mb-[22px] font-mono text-[0.74rem] uppercase tracking-[0.32em] text-[#37e7c4]">
           Invio cifrato · senza account
         </p>
-        <h1 class="mb-5 text-balance text-[clamp(2.9rem,8vw,6.2rem)] leading-[0.96] tracking-[-0.04em] [font-weight:840]">
+        <h1 data-enter class="mb-5 text-balance font-display text-[clamp(2.9rem,8vw,6.2rem)] leading-[0.96] tracking-[-0.04em] [font-weight:840]">
           Impossibile<br />da leggere.<br /><em class="not-italic text-[#37e7c4]">Anche per noi.</em>
         </h1>
-        <p class="max-w-[46ch] text-[clamp(1.05rem,1.6vw,1.28rem)] leading-relaxed text-[#b9ace2]">
+        <p data-enter class="max-w-[46ch] text-[clamp(1.05rem,1.6vw,1.28rem)] leading-relaxed text-[#b9ace2]">
           Trascina un file, ottieni un link. Cifrato end-to-end nel tuo browser — la chiave resta nel link e il nostro server vede soltanto ciphertext.
         </p>
       </div>
 
       <GuestSendWidget
+        data-enter
         class="lg:justify-self-end"
         @start="onEncryptStart"
         @done="onEncryptDone"
@@ -54,6 +61,9 @@ function onReset() {
     <!-- Striscia di fiducia -->
     <template #footer>
       <div class="relative z-[2] border-t border-white/10 px-[clamp(20px,5vw,64px)] py-4">
+        <!-- Niente reveal qui: la striscia sta nell'ultima fascia del viewport dell'hero,
+             dove il margine inferiore dell'osservatore non la considererebbe "entrata"
+             finché non si scrolla — resterebbe invisibile pur essendo sullo schermo. -->
         <div class="flex flex-wrap items-center gap-x-10 gap-y-2">
           <span class="font-mono text-[0.66rem] uppercase tracking-[0.18em] text-[#37e7c4]">Perché noi</span>
           <span class="font-mono text-[0.74rem] tracking-[0.04em] text-[#b9ace2]">Zero-knowledge verificabile</span>

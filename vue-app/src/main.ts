@@ -11,6 +11,7 @@ import router from './router'
 import { initializeAxiosInterceptors } from './utils/axiosInterceptor'
 import { LeTransferPreset } from './theme/preset'
 import { globalPt } from './theme/pt'
+import { MotionDirectives } from './composables/useMotion'
 
 initializeAxiosInterceptors()
 
@@ -37,6 +38,9 @@ createApp(App)
     // Global PassThrough preset — like Nuxt UI's app.config.ts
     pt: globalPt,
   })
+  // Primitivi di movimento (roadmap F0.2): v-reveal, v-lift. Rispettano
+  // prefers-reduced-motion da soli, quindi si possono usare senza guardie nei template.
+  .use(MotionDirectives)
   .use(ToastService)
   .use(ConfirmationService)
   .mount('#root')
