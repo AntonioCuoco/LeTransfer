@@ -3,7 +3,7 @@ import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
 import type { SharedLink, CreateSharedLinkRequest, CreateSharedLinkResponse } from '@/src/types'
-import { createKeyHash } from '@/src/utils/crypto'
+import { createKeyHash } from '@/src/crypto/crypto'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin

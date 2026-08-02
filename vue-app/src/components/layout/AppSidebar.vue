@@ -1,97 +1,166 @@
 <script setup lang="ts">
-import { useRouter, RouterLink } from 'vue-router'
-import Swal from 'sweetalert2'
+import { computed } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import axios from 'axios'
-import logo from '@/src/assets/logo.png'
+import BrandSeal from '@/src/components/landing/BrandSeal.vue'
 import { clearAuthCookies } from '@/src/utils/cookieStore'
 import { useEncryptionStore } from '@/src/stores/encryption'
+import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
+import { notify } from '@/src/utils/notify'
+
+/**
+ * Barra laterale dell'area autenticata (roadmap F5).
+ * Stessi token del mondo pubblico — il marchio è il sigillo, non il vecchio logo
+ * bitmap — con in più l'indicatore dello stato del vault: sapere se le chiavi sono
+ * sbloccate è informazione operativa, non decorazione.
+ */
 
 const router = useRouter()
+const route = useRoute()
 const encryptionStore = useEncryptionStore()
+const { canUnlock, requestUnlock } = useSecurityPrompt()
 
-// `exact: true` for the home route — otherwise `/` matches every path as a
-// prefix and the Home item would stay highlighted on every page.
 const navItems = [
   { path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
-  { path: '/app/profile', icon: 'pi pi-user', label: 'Profilo', exact: false },
+  { path: '/app/profile', icon: 'pi pi-folder', label: 'I tuoi file', exact: false },
+  { path: '/app/settings', icon: 'pi pi-cog', label: 'Impostazioni', exact: false },
 ]
+
+const isCurrent = (item: { path: string; exact: boolean }) =>
+  item.exact ? route.path === item.path : route.path.startsWith(item.path)
+
+const vault = computed(() => {
+  if (encryptionStore.isUnlocked) {
+    return { label: 'Chiavi sbloccate', tip: 'Chiavi sbloccate', dot: 'bg-verified-400' }
+  }
+  return {
+    label: 'Chiavi bloccate',
+    // Se c'è una chiave di recupero configurata, questo pulsante è la via di rientro
+    // dopo aver chiuso il dialogo di sblocco.
+    tip: canUnlock.value ? 'Chiavi bloccate — sbloccale' : 'Chiavi bloccate',
+    dot: 'bg-warn-400',
+  }
+})
 
 const handleLogout = async () => {
   try {
     // L'accessToken è iniettato dall'interceptor axios globale (vedi decisione #8).
     await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {})
   } catch {
-    // continue with logout even if API call fails
+    // si esce comunque: la pulizia locale è la parte che conta
   }
 
   clearAuthCookies()
-  encryptionStore.clearMasterKey() // azzera la master key (+ cache) in RAM: niente vault sbloccato dopo il logout
-
-  Swal.fire({ icon: 'success', title: 'Logout effettuato', text: 'A presto!', timer: 1500, showConfirmButton: false })
+  // Azzera la master key (+ cache) in RAM: nessun vault sbloccato dopo il logout.
+  encryptionStore.clearMasterKey()
+  notify.success('Sessione chiusa. A presto!')
   router.push('/login')
 }
 </script>
 
 <template>
-  <aside class="fixed left-0 top-0 h-screen w-[72px] bg-[#3c364c] border-r border-[#4a4554]/50 flex flex-col items-center justify-between py-4 px-2 z-50">
-    <!-- Logo -->
-    <div class="mb-8">
-      <RouterLink to="/app" class="w-14 h-14 flex items-center justify-center rounded-[10px] hover:scale-105 transition-transform">
-        <img :src="logo" alt="Logo" />
+  <aside class="fixed left-0 top-0 z-50 flex h-screen w-[72px] flex-col items-center justify-between border-r border-white/5 bg-deep-900 px-2 py-4">
+    <div class="flex w-full flex-col items-center">
+      <RouterLink to="/app" class="mb-8 grid h-12 w-12 place-items-center transition-transform hover:scale-105" title="LeTransfer">
+        <BrandSeal :size="32" variant="mark" />
       </RouterLink>
-    </div>
 
-    <!-- Navigation -->
-    <nav class="flex flex-col items-center gap-2 w-full">
-      <RouterLink
-        v-for="item in navItems"
-        :key="item.path"
-        :to="item.path"
-        v-slot="{ isActive, isExactActive }"
-        custom
-      >
-        <a
-          :href="item.path"
-          :class="[
-            'relative w-full h-12 flex items-center justify-center rounded-[10px] transition-all duration-150 group',
-            (item.exact ? isExactActive : isActive)
-              ? 'bg-[#724CF9] text-white shadow-[0_0_10px_rgba(114,76,249,0.4)]'
-              : 'text-[#9ca3af] hover:bg-[#724CF9]/15 hover:text-white',
-          ]"
-          :title="item.label"
-          @click.prevent="router.push(item.path)"
+      <nav class="flex w-full flex-col items-center gap-2">
+        <button
+          v-for="item in navItems"
+          :key="item.path"
+          type="button"
+          class="lt-rail group"
+          :class="isCurrent(item) ? 'lt-rail-on' : 'lt-rail-off'"
+          :aria-current="isCurrent(item) ? 'page' : undefined"
+          @click="router.push(item.path)"
         >
           <i :class="item.icon" class="text-xl" />
-          <!-- Tooltip -->
-          <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
-            {{ item.label }}
-          </span>
-        </a>
-      </RouterLink>
-    </nav>
+          <span class="lt-tip">{{ item.label }}</span>
+        </button>
+      </nav>
+    </div>
 
-    <!-- Bottom Actions -->
-    <div class="flex flex-col items-center gap-2 w-full pt-4">
+    <div class="flex w-full flex-col items-center gap-2 pt-4">
+      <!-- Stato del vault: dice se puoi decifrare e, se è chiuso, è la via per riaprirlo -->
       <button
-        class="relative w-full h-12 flex items-center justify-center rounded-[10px] text-[#9ca3af] hover:bg-[#724CF9]/15 hover:text-white transition-all duration-150 group"
-        title="Impostazioni"
-        @click="router.push('/app/settings')"
+        type="button"
+        class="lt-rail lt-rail-off group"
+        :class="canUnlock && !encryptionStore.isUnlocked ? '' : 'cursor-default'"
+        :title="vault.label"
+        @click="requestUnlock"
       >
-        <i class="pi pi-cog text-xl" />
-        <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
-          Impostazioni
-        </span>
+        <span class="h-2.5 w-2.5 rounded-full" :class="vault.dot" />
+        <span class="lt-tip">{{ vault.tip }}</span>
       </button>
-      <button
-        class="relative w-full h-12 flex items-center justify-center rounded-[10px] text-[#9ca3af] hover:bg-red-500/15 hover:text-red-500 transition-all duration-150 group"
-        title="Logout"
-        @click="handleLogout"
-      >
+
+      <button type="button" class="lt-rail lt-rail-off group hover:!text-crit-400" title="Esci" @click="handleLogout">
         <i class="pi pi-sign-out text-xl" />
-        <span class="absolute left-[calc(100%+12px)] bg-[#3c364c] text-white py-2 px-3 rounded-md text-sm font-medium whitespace-nowrap opacity-0 invisible -translate-x-1 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-150 pointer-events-none shadow-md z-[1000] before:content-[''] before:absolute before:right-full before:top-1/2 before:-translate-y-1/2 before:border-[6px] before:border-transparent before:border-r-[#3c364c]">
-          Logout
-        </span>
+        <span class="lt-tip">Esci</span>
       </button>
     </div>
   </aside>
 </template>
+
+<style scoped>
+/* Il pulsante del binario e il suo tooltip: prima erano la stessa stringa di
+   classi ripetuta quattro volte, con il rischio di divergere a ogni modifica. */
+.lt-rail {
+  position: relative;
+  display: flex;
+  height: 3rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-chip);
+  transition: background-color var(--duration-quick), color var(--duration-quick);
+}
+
+.lt-rail-on {
+  background: var(--color-brand-500);
+  color: #fff;
+  box-shadow: 0 0 14px -2px rgb(114 76 249 / 0.55);
+}
+
+.lt-rail-off { color: var(--color-haze-400); }
+.lt-rail-off:hover { background: rgb(114 76 249 / 0.15); color: var(--color-haze-100); }
+
+.lt-tip {
+  position: absolute;
+  left: calc(100% + 12px);
+  z-index: 1000;
+  white-space: nowrap;
+  border-radius: var(--radius-badge);
+  background: var(--color-deep-800);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-haze-100);
+  box-shadow: var(--shadow-header);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-4px);
+  transition: opacity var(--duration-quick), transform var(--duration-quick);
+  pointer-events: none;
+}
+
+.lt-tip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: var(--color-deep-800);
+}
+
+.group:hover .lt-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-rail, .lt-tip { transition: none; }
+}
+</style>

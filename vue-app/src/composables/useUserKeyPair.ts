@@ -6,8 +6,8 @@ import {
   generateRSAKeyPair, exportPublicKeyToJWK, importPublicKeyFromJWK,
   exportPrivateKeyToJWK, importPrivateKeyFromJWK,
   wrapPrivateKeyWithMasterKey, unwrapPrivateKeyWithMasterKey, type KeyPairBackup,
-} from '@/src/utils/crypto'
-import { idbGet, idbSet, idbDel } from '@/src/utils/keyStore'
+} from '@/src/crypto/crypto'
+import { idbGet, idbSet, idbDel } from '@/src/crypto/keyStore'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { useEncryptionStore } from '@/src/stores/encryption'
 

@@ -156,39 +156,39 @@ const handleSend = async () => {
       <div
         ref="dropZoneRef"
         v-bind="dragProps"
-        :class="['border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all', isDragOver ? 'border-[#724CF9] bg-[#2c2638]' : 'border-[#4a4554] hover:border-[#724CF9]']"
+        :class="['border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all', isDragOver ? 'border-brand-500 bg-deep-900' : 'border-white/10 hover:border-brand-500']"
         @click="fileInputRef?.click()"
       >
         <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInput" />
         <i class="pi pi-inbox text-primary text-3xl" />
-        <p class="text-[#DBD4D3] mt-2">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
+        <p class="text-haze-200 mt-2">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
       </div>
     </div>
 
     <!-- File S3 -->
     <div v-if="!isLoadingS3Files && s3Files.length > 0">
-      <h4 class="text-[#DBD4D3] font-medium mb-2">Seleziona dai tuoi file caricati</h4>
+      <h4 class="text-haze-200 font-medium mb-2">Seleziona dai tuoi file caricati</h4>
       <div class="max-h-32 overflow-y-auto space-y-1">
         <div
           v-for="file in s3Files"
           :key="file.s3Key"
-          class="flex items-center justify-between p-2 rounded bg-[#1a1625] hover:bg-[#2c2638] cursor-pointer"
+          class="flex items-center justify-between p-2 rounded bg-black/25 hover:bg-deep-900 cursor-pointer"
           @click="addS3File(file)"
         >
           <span class="text-white text-sm truncate">{{ file.fileName || file.originalName }}</span>
-          <span class="text-[#9ca3af] text-xs ml-2 flex-shrink-0">{{ file.formattedSize || file.fileSize }}</span>
+          <span class="text-haze-400 text-xs ml-2 flex-shrink-0">{{ file.formattedSize || file.fileSize }}</span>
         </div>
       </div>
     </div>
 
     <!-- File selezionati -->
     <div v-if="selectedFiles.length > 0">
-      <h4 class="text-[#DBD4D3] font-medium mb-2">File selezionati</h4>
+      <h4 class="text-haze-200 font-medium mb-2">File selezionati</h4>
       <div class="space-y-1">
-        <div v-for="file in selectedFiles" :key="file.id" class="flex items-center gap-2 p-2 rounded bg-[#1a1625]">
+        <div v-for="file in selectedFiles" :key="file.id" class="flex items-center gap-2 p-2 rounded bg-black/25">
           <i class="pi pi-file text-primary flex-shrink-0" />
           <span class="text-white text-sm truncate flex-1">{{ file.name }}</span>
-          <span class="text-[#9ca3af] text-xs">{{ file.size }}</span>
+          <span class="text-haze-400 text-xs">{{ file.size }}</span>
           <Button icon="pi pi-trash" text severity="danger" size="small" @click="removeFile(file.id)" />
         </div>
       </div>
@@ -196,7 +196,7 @@ const handleSend = async () => {
 
     <!-- Messaggio -->
     <div>
-      <label class="block text-[#DBD4D3] font-medium text-sm mb-1">Messaggio (opzionale)</label>
+      <label class="block text-haze-200 font-medium text-sm mb-1">Messaggio (opzionale)</label>
       <Textarea v-model="customMessage" :rows="2" placeholder="Scrivi un messaggio per i destinatari..." fluid />
     </div>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { fingerprintGroups } from '@/src/utils/fingerprint'
+import { fingerprintGroups } from '@/src/crypto/fingerprint'
 
 /**
  * L'impronta di una chiave, resa leggibile (roadmap F0.3).

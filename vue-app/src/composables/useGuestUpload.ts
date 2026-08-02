@@ -9,7 +9,7 @@ import {
   createShareableKeyData,
   createKeyHash,
   FILE_FORMAT_VERSION,
-} from '@/src/utils/crypto'
+} from '@/src/crypto/crypto'
 
 /**
  * Invio SENZA account (guest). La chiave nasce nel browser e finisce SOLO nel

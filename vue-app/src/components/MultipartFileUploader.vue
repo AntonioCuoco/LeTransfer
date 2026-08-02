@@ -32,7 +32,7 @@ const handleDrop = (e: DragEvent) => {
 <template>
   <div class="space-y-4">
     <div
-      :class="['border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all', isDragOver ? 'border-[#724CF9] bg-[#2c2638] scale-[1.02]' : 'border-[#4a4554] hover:border-[#724CF9]']"
+      :class="['border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all', isDragOver ? 'border-brand-500 bg-deep-900 scale-[1.02]' : 'border-white/10 hover:border-brand-500']"
       @click="fileInputRef?.click()"
       @dragover.prevent="isDragOver = true"
       @dragleave="isDragOver = false"
@@ -42,8 +42,8 @@ const handleDrop = (e: DragEvent) => {
       <div class="flex flex-col items-center space-y-3">
         <i class="pi pi-inbox text-primary text-4xl" />
         <div>
-          <p class="text-[#DBD4D3] font-medium">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
-          <p class="text-[#9ca3af] text-sm mt-1">Consigliato per file grandi (>100MB) • Upload multipart automatico</p>
+          <p class="text-haze-200 font-medium">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
+          <p class="text-haze-400 text-sm mt-1">Consigliato per file grandi (>100MB) • Upload multipart automatico</p>
         </div>
         <Button label="Seleziona File" icon="pi pi-cloud-upload" @click.stop="fileInputRef?.click()" />
       </div>

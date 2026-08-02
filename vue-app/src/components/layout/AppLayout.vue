@@ -15,9 +15,9 @@ onMounted(() => { void redeemPendingClaim() })
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-[#2c2638]">
+  <div class="flex min-h-screen bg-deep-900">
     <AppSidebar />
-    <main class="flex-1 ml-[72px] min-h-screen bg-[#2c2638] overflow-x-hidden">
+    <main class="ml-[72px] min-h-screen flex-1 overflow-x-hidden bg-deep-900 text-haze-100">
       <RouterView />
     </main>
     <UploadQueueManager />

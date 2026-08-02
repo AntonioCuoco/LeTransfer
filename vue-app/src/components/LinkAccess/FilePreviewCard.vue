@@ -17,8 +17,12 @@ const props = defineProps<{
   isDecrypting?: boolean
   decryptProgress?: number
   isDone?: boolean
+  /** Il file è cifrato e abbastanza piccolo da poter essere decifrato in memoria. */
+  canBuildPreview?: boolean
+  isBuildingPreview?: boolean
   onDownload?: () => void
   onPreview?: () => void
+  onBuildPreview?: () => void
 }>()
 
 const supportsInlinePreview = (type: string) =>
@@ -62,6 +66,20 @@ const actionLabel = computed(() => {
       </div>
     </div>
 
+    <!-- Anteprima di un file cifrato: la può produrre solo questo browser -->
+    <button
+      v-if="canBuildPreview && !canPreview && onBuildPreview"
+      type="button"
+      class="lt-btn-ghost w-full"
+      :disabled="busy || isBuildingPreview"
+      @click="onBuildPreview"
+    >
+      {{ isBuildingPreview ? 'Decifro per l’anteprima…' : 'Guardalo prima di scaricarlo' }}
+    </button>
+    <p v-if="canBuildPreview && !canPreview" class="m-0 text-center font-mono text-[0.7rem] text-ink-400">
+      l’anteprima la costruisce il tuo browser · il nostro server non può vederlo
+    </p>
+
     <div class="flex gap-2">
       <button
         v-if="canPreview && onPreview"
@@ -70,7 +88,7 @@ const actionLabel = computed(() => {
         :disabled="busy"
         @click="onPreview"
       >
-        Anteprima
+        Apri anteprima
       </button>
       <button type="button" class="lt-btn flex-1" :disabled="busy" @click="onDownload">
         {{ actionLabel }}

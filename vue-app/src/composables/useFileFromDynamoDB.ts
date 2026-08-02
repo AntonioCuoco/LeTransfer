@@ -4,8 +4,8 @@ import Cookies from 'js-cookie'
 import Swal from 'sweetalert2'
 import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
-import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/utils/crypto'
-import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
+import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
+import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
 
 export const useFileFromDynamoDB = () => {
   const files = ref<DynamoDBFile[]>([])

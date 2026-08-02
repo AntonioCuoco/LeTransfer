@@ -8,7 +8,7 @@ useThemeStore()
 </script>
 
 <template>
-  <div class="w-[100dvw] h-[100dvh] bg-[#2c2638]">
+  <div class="w-[100dvw] h-[100dvh] bg-deep-900">
     <RouterView />
   </div>
   <!-- Global PrimeVue overlays -->

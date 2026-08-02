@@ -6,7 +6,7 @@ import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVerifiedKeys'
-import { keyThumbprint } from '@/src/utils/fingerprint'
+import { keyThumbprint } from '@/src/crypto/fingerprint'
 import RecipientFingerprintDialog from '@/src/components/RecipientFingerprintDialog.vue'
 import type { DynamoDBFile } from '@/src/types'
 
@@ -166,28 +166,28 @@ const handleCopyLink = () => {
   >
     <template #header>
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#724CF9] to-[#9d7bfa] flex items-center justify-center">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-brand-300 flex items-center justify-center">
           <i class="pi pi-share-alt text-white text-lg" />
         </div>
         <div>
           <h3 class="text-white text-lg font-semibold m-0">Condividi File</h3>
-          <p class="text-[#9ca3af] text-xs m-0">Invia o genera un link condivisibile</p>
+          <p class="text-haze-400 text-xs m-0">Invia o genera un link condivisibile</p>
         </div>
       </div>
     </template>
 
     <div v-if="file" class="space-y-6">
       <!-- File preview -->
-      <div class="bg-gradient-to-r from-[#1a1625] to-[#2c2638] border border-[#4a4554] rounded-xl p-4">
+      <div class="bg-gradient-to-r from-black/25 to-transparent border border-white/10 rounded-xl p-4">
         <div class="flex items-start gap-4">
-          <div class="w-12 h-12 rounded-lg bg-[#724CF9] flex items-center justify-center flex-shrink-0">
+          <div class="w-12 h-12 rounded-lg bg-brand-500 flex items-center justify-center flex-shrink-0">
             <i class="pi pi-file text-white text-xl" />
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-white font-medium truncate mb-1">{{ decodeURIComponent(file.fileName || file.originalName) }}</p>
-            <div class="flex items-center gap-3 text-sm text-[#9ca3af]">
+            <div class="flex items-center gap-3 text-sm text-haze-400">
               <span>{{ formatFileSize(file.fileSize || file.formattedSize) }}</span>
-              <span class="w-1 h-1 rounded-full bg-[#4a4554]" />
+              <span class="w-1 h-1 rounded-full bg-white/15" />
               <span class="truncate">{{ file.fileType }}</span>
             </div>
           </div>
@@ -197,7 +197,7 @@ const handleCopyLink = () => {
       <!-- Email form -->
       <div class="space-y-4">
         <div>
-          <label class="text-[#DBD4D3] font-medium text-sm mb-2 block">Email del destinatario</label>
+          <label class="text-haze-200 font-medium text-sm mb-2 block">Email del destinatario</label>
           <div class="relative">
             <i class="pi pi-envelope absolute left-3 top-1/2 -translate-y-1/2 text-primary z-10" />
             <InputText
@@ -213,9 +213,9 @@ const handleCopyLink = () => {
           </div>
           <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
         </div>
-        <div class="bg-[#1a1625] border border-[#4a4554] rounded-xl p-4">
-          <p class="text-[#9ca3af] text-sm m-0">
-            <span class="text-[#724CF9] font-medium">ℹ️ Nota:</span> Il destinatario deve essere un utente registrato sulla piattaforma.
+        <div class="bg-black/25 border border-white/10 rounded-xl p-4">
+          <p class="text-haze-400 text-sm m-0">
+            <span class="text-brand-400 font-medium">ℹ️ Nota:</span> Il destinatario deve essere un utente registrato sulla piattaforma.
           </p>
         </div>
         <div class="flex justify-end">
@@ -232,18 +232,18 @@ const handleCopyLink = () => {
 
       <!-- Divider -->
       <div class="flex items-center gap-2">
-        <div class="h-px bg-[#4a4554] flex-1" />
-        <span class="text-[#9ca3af] text-xs uppercase tracking-wider">Oppure genera un link</span>
-        <div class="h-px bg-[#4a4554] flex-1" />
+        <div class="h-px bg-white/15 flex-1" />
+        <span class="text-haze-400 text-xs uppercase tracking-wider">Oppure genera un link</span>
+        <div class="h-px bg-white/15 flex-1" />
       </div>
 
       <!-- Link generation -->
       <div class="space-y-4">
-        <div class="bg-[#1a1625] border border-[#4a4554] rounded-xl p-4 space-y-4">
+        <div class="bg-black/25 border border-white/10 rounded-xl p-4 space-y-4">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i class="pi pi-lock text-primary" />
-              <span class="text-[#DBD4D3] text-sm">Proteggi con password</span>
+              <span class="text-haze-200 text-sm">Proteggi con password</span>
             </div>
             <ToggleSwitch v-model="usePassword" />
           </div>
@@ -252,15 +252,15 @@ const handleCopyLink = () => {
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <i class="pi pi-clock text-primary" />
-              <span class="text-[#DBD4D3] text-sm">Scadenza (ore)</span>
+              <span class="text-haze-200 text-sm">Scadenza (ore)</span>
             </div>
             <InputNumber v-model="expiresInHours" :min="1" :max="720" :input-class="'w-20 text-center'" />
           </div>
 
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="text-[#724CF9]">📥</span>
-              <span class="text-[#DBD4D3] text-sm">Limite download</span>
+              <span class="text-brand-400">📥</span>
+              <span class="text-haze-200 text-sm">Limite download</span>
             </div>
             <ToggleSwitch v-model="useMaxDownloads" />
           </div>

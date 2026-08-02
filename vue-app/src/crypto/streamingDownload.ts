@@ -79,6 +79,57 @@ const saveBlob = (parts: BlobPart[], fileName: string) => {
   URL.revokeObjectURL(objectUrl)
 }
 
+/**
+ * Motore comune: scarica, decifra chunk per chunk e consegna il chiaro al chiamante.
+ * Sta qui una volta sola perché download-su-disco e anteprima-in-memoria devono
+ * decifrare **esattamente** allo stesso modo: duplicare questo ciclo significherebbe
+ * prima o poi avere due interpretazioni diverse dello stesso formato.
+ */
+async function streamDecrypt(
+  url: string,
+  key: CryptoKey,
+  chunkSize: number,
+  originalSize: number,
+  onPlainChunk: (plain: ArrayBuffer) => Promise<void> | void,
+  onProgress?: (decryptedBytes: number, totalBytes: number) => void,
+): Promise<void> {
+  const response = await fetch(url)
+  if (!response.ok || !response.body) throw new Error('Download non riuscito')
+  const reader = response.body.getReader()
+
+  const totalChunks = Math.max(1, Math.ceil(originalSize / chunkSize))
+  let buffer = new Uint8Array(0)
+  let index = 0
+  let decrypted = 0
+
+  // Decifra tutti i chunk completi presenti nel buffer.
+  const drain = async () => {
+    while (index < totalChunks) {
+      const size = encryptedChunkSizeV2(index, originalSize, chunkSize)
+      if (buffer.length < size) break
+      const plain = await decryptChunkFramed(buffer.subarray(0, size), key, index)
+      await onPlainChunk(plain)
+      decrypted += plain.byteLength
+      onProgress?.(decrypted, originalSize)
+      buffer = buffer.slice(size) // scarta il chunk consumato: il buffer resta ≈ 1 chunk
+      index++
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) {
+      buffer = concat(buffer, value)
+      await drain()
+    }
+    if (done) break
+  }
+  await drain()
+
+  // Se mancano chunk o avanzano byte, il file è troncato/corrotto (o il tag GCM non tornerebbe).
+  if (index !== totalChunks) throw new Error('File incompleto o corrotto')
+}
+
 export async function downloadAndDecryptV2(options: DownloadV2Options): Promise<void> {
   const { url, key, chunkSize, originalSize, fileName, onProgress } = options
 
@@ -94,49 +145,57 @@ export async function downloadAndDecryptV2(options: DownloadV2Options): Promise<
     }
   }
 
-  const response = await fetch(url)
-  if (!response.ok || !response.body) throw new Error('Download non riuscito')
-  const reader = response.body.getReader()
-
-  const totalChunks = Math.max(1, Math.ceil(originalSize / chunkSize))
   const blobParts: BlobPart[] = []
-  let buffer = new Uint8Array(0)
-  let index = 0
-  let decrypted = 0
-
-  // Decifra tutti i chunk completi presenti nel buffer.
-  const drain = async () => {
-    while (index < totalChunks) {
-      const size = encryptedChunkSizeV2(index, originalSize, chunkSize)
-      if (buffer.length < size) break
-      const plain = await decryptChunkFramed(buffer.subarray(0, size), key, index)
-      if (writable) await writable.write(plain)
-      else blobParts.push(plain)
-      decrypted += plain.byteLength
-      onProgress?.(decrypted, originalSize)
-      buffer = buffer.slice(size) // scarta il chunk consumato: il buffer resta ≈ 1 chunk
-      index++
-    }
-  }
 
   try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (value) {
-        buffer = concat(buffer, value)
-        await drain()
-      }
-      if (done) break
-    }
-    await drain()
-
-    // Se mancano chunk o avanzano byte, il file è troncato/corrotto (o il tag GCM non tornerebbe).
-    if (index !== totalChunks) throw new Error('File incompleto o corrotto')
-
+    await streamDecrypt(
+      url,
+      key,
+      chunkSize,
+      originalSize,
+      async (plain) => {
+        if (writable) await writable.write(plain)
+        else blobParts.push(plain)
+      },
+      onProgress,
+    )
     if (writable) await writable.close()
     else saveBlob(blobParts, fileName)
   } catch (err) {
     try { await writable?.abort?.() } catch { /* ignore */ }
     throw err
   }
+}
+
+/** Oltre questa soglia un'anteprima in memoria non si tenta nemmeno. */
+export const PREVIEW_SIZE_LIMIT = 25 * 1024 * 1024 // 25 MB
+
+export interface PreviewOptions {
+  url: string
+  key: CryptoKey
+  chunkSize: number
+  originalSize: number
+  mimeType?: string
+  onProgress?: (decryptedBytes: number, totalBytes: number) => void
+}
+
+/**
+ * Decifra **in memoria** e restituisce un Blob, senza toccare il disco né avviare un
+ * download. Serve alle anteprime locali: per un file cifrato il server non può
+ * generare nessuna miniatura — non ha modo di guardarci dentro — quindi l'anteprima
+ * o la fa il browser di chi riceve, o non esiste.
+ *
+ * ⚠️ A differenza del download, qui il file **sta tutto in RAM**: da usare solo sotto
+ * `PREVIEW_SIZE_LIMIT`. Chi chiama deve revocare l'object URL quando ha finito.
+ */
+export async function decryptToBlob(options: PreviewOptions): Promise<Blob> {
+  const { url, key, chunkSize, originalSize, mimeType, onProgress } = options
+
+  if (originalSize > PREVIEW_SIZE_LIMIT) {
+    throw new Error('File troppo grande per l’anteprima in memoria')
+  }
+
+  const parts: BlobPart[] = []
+  await streamDecrypt(url, key, chunkSize, originalSize, (plain) => { parts.push(plain) }, onProgress)
+  return new Blob(parts, mimeType ? { type: mimeType } : undefined)
 }

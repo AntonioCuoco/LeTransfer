@@ -3,13 +3,27 @@ import { ref, onMounted } from 'vue'
 import { notify } from '@/src/utils/notify'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
-import { deriveMasterKeyFromMnemonic } from '@/src/utils/recovery-key'
-import { base64ToArrayBuffer } from '@/src/utils/crypto'
+import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
+import { deriveMasterKeyFromMnemonic } from '@/src/crypto/recovery-key'
+import { base64ToArrayBuffer } from '@/src/crypto/crypto'
+import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+
+/**
+ * Sblocco del vault con la chiave di recupero (roadmap F5).
+ *
+ * ⚠️ Qui le 24 parole SONO materiale crittografico: si inseriscono tutte e da esse
+ * si deriva la master key. Incollarle è legittimo e previsto — l'utente le sta
+ * prendendo dal suo gestore password o dal file che ha conservato. È il caso opposto
+ * a RecoveryKeySetup, dove la digitazione a campione serve a verificare l'umano.
+ *
+ * Il dialogo si può chiudere (l'app resta utilizzabile, ma i file cifrati no) e si
+ * riapre dalla barra laterale — vedi useSecurityPrompt.
+ */
 
 const encryptionStore = useEncryptionStore()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
+const { isPromptOpen, setUnlockAvailable, close, open } = useSecurityPrompt()
 
-const visible = ref(false)
 const mnemonic = ref('')
 const verifying = ref(false)
 const saltBase64 = ref('')
@@ -21,7 +35,8 @@ onMounted(async () => {
   if (status?.hasRecoveryKey && status.salt && status.verificationHash) {
     saltBase64.value = status.salt
     verificationHash.value = status.verificationHash
-    visible.value = true
+    setUnlockAvailable(true)
+    open()
   }
 })
 
@@ -43,13 +58,14 @@ const handleVerify = async () => {
     if (decoded !== 'VERIFY') throw new Error('invalid')
 
     encryptionStore.setMasterKey(masterKey)
-    notify.success('Recovery Key verificata! File sbloccati.')
-    visible.value = false
+    setUnlockAvailable(false)
+    notify.success('File sbloccati.')
+    close()
     mnemonic.value = ''
   } catch (err: unknown) {
     const e = err as { name?: string; message?: string }
     if (e?.name === 'OperationError' || e?.message?.includes('operation')) {
-      notify.error('Recovery Key errata. Controlla le 24 parole e riprova.')
+      notify.error('Le parole non corrispondono. Controlla di averle copiate tutte e 24, in ordine.')
     } else {
       notify.error('Errore durante la verifica. Riprova.')
     }
@@ -58,57 +74,66 @@ const handleVerify = async () => {
   }
 }
 
+// Si può chiudere: l'app resta usabile, ma i file cifrati restano illeggibili.
+// Il rientro è dall'indicatore del vault nella barra laterale.
 const handleCancel = () => {
-  // Allow close — app remains locked, encrypted files will be inaccessible
-  visible.value = false
+  mnemonic.value = ''
+  close()
 }
 </script>
 
 <template>
   <Dialog
-    v-model:visible="visible"
+    :visible="isPromptOpen"
     modal
     :dismissable-mask="false"
-    :style="{ width: '560px' }"
+    :style="{ width: 'min(560px, 94vw)' }"
     :pt="{ content: '!p-8' }"
-    @hide="handleCancel"
+    @update:visible="!$event && handleCancel()"
   >
     <template #header>
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-full bg-[#724CF9]/20 flex items-center justify-center flex-shrink-0">
-          <i class="pi pi-lock text-primary text-lg" />
-        </div>
+        <BrandSeal :size="28" variant="plain" />
         <div>
-          <h3 class="text-white text-lg font-semibold m-0">Richiesta Chiave di Sicurezza</h3>
-          <p class="text-[#9ca3af] text-sm m-0">Nuovo dispositivo o sessione scaduta</p>
+          <h3 class="m-0 text-lg font-semibold text-haze-100">I tuoi file sono chiusi a chiave</h3>
+          <p class="m-0 text-sm text-haze-400">Nuovo dispositivo, o sessione ripartita da zero</p>
         </div>
       </div>
     </template>
 
     <div class="flex flex-col gap-5">
-      <div class="p-4 rounded-lg bg-[#724CF9]/15 border border-[#724CF9]/30">
-        <p class="text-[#c4b5fd] text-sm m-0">
-          Per accedere ai tuoi file cifrati E2E inserisci la Recovery Key (24 parole) generata durante la configurazione.
-        </p>
-      </div>
+      <p class="m-0 leading-relaxed text-haze-300">
+        La chiave che apre i tuoi file non è mai uscita dal browser in cui l'hai creata, quindi qui non
+        c'è. Inserisci le <b class="text-haze-100">24 parole</b> della chiave di recupero: da quelle la
+        ricostruiamo, in locale.
+      </p>
 
       <div class="flex flex-col gap-2">
-        <label class="text-white font-medium text-sm">Recovery Key</label>
+        <label class="lt-label !text-haze-400">Chiave di recupero</label>
         <Textarea
           v-model="mnemonic"
           :rows="4"
-          placeholder="parola1 parola2 parola3 ..."
+          placeholder="parola1 parola2 parola3 …"
           class="font-mono"
           fluid
+          autocapitalize="off"
+          spellcheck="false"
           @keydown.enter.ctrl="handleVerify"
         />
-        <p class="text-[#9ca3af] text-xs m-0">Le parole separate da spazio — esattamente come le hai salvate.</p>
+        <p class="m-0 font-mono text-[0.72rem] text-haze-400">
+          tutte e 24, separate da spazio · incollarle dal gestore password va benissimo
+        </p>
       </div>
 
-      <div class="flex justify-end gap-3 pt-1">
-        <Button label="Annulla" severity="secondary" outlined @click="handleCancel" />
-        <Button label="Sblocca File" :loading="verifying" :disabled="!mnemonic.trim()" @click="handleVerify" />
+      <div class="flex flex-wrap justify-end gap-3 pt-1">
+        <Button label="Più tardi" severity="secondary" outlined @click="handleCancel" />
+        <Button label="Sblocca i file" :loading="verifying" :disabled="!mnemonic.trim()" @click="handleVerify" />
       </div>
+
+      <p class="m-0 border-t border-white/10 pt-4 text-[0.82rem] leading-relaxed text-haze-400">
+        Se chiudi, l'app resta utilizzabile ma i file cifrati non si apriranno. Puoi riprovare quando
+        vuoi dall'indicatore delle chiavi, in basso nella barra laterale.
+      </p>
     </div>
   </Dialog>
 </template>

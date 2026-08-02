@@ -1,0 +1,103 @@
+# Build riproducibile del client (roadmap F2 — "come lo verifichi").
+#
+# PERCHÉ ESISTE
+# La cifratura di LeTransfer avviene nel codice che serviamo noi. È il limite
+# strutturale di ogni E2E dentro un browser: se la nostra distribuzione venisse
+# manomessa, l'utente non avrebbe modo di accorgersene. Non possiamo eliminare quel
+# limite, ma possiamo renderlo VERIFICABILE DA TERZI: chiunque ricostruisce dal tag
+# e confronta gli hash con quelli pubblicati qui.
+#
+# ⚠️ Onestà su cosa NON risolve: il browser non sa confrontare l'hash del bundle che
+# sta eseguendo. Questo rende una manomissione *rilevabile da un ricercatore*, non
+# *impedita al singolo utente*. È comunque la cosa più forte disponibile oggi.
+
+name: Build riproducibile
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths: ['vue-app/**', '.github/workflows/reproducible-build.yml']
+
+permissions:
+  contents: read
+  id-token: write      # attestazione di provenienza
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: vue-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Toolchain fissata: la versione di Node fa parte dell'input della build.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: vue-app/.nvmrc
+          cache: npm
+          cache-dependency-path: vue-app/package-lock.json
+
+      # `npm ci` (mai `npm install`): installa ESATTAMENTE il lockfile.
+      - name: Installa le dipendenze dal lockfile
+        run: npm ci
+
+      - name: Type-check
+        run: npx vue-tsc --noEmit -p tsconfig.app.json
+
+      # SOURCE_DATE_EPOCH: convenzione per build riproducibili — fissa il "tempo"
+      # della build al commit, così eventuali timestamp non cambiano gli artefatti.
+      - name: Build
+        run: npm run build
+        env:
+          SOURCE_DATE_EPOCH: ${{ github.event.repository.pushed_at }}
+          NODE_ENV: production
+
+      # Doppia build dallo stesso sorgente: se gli hash divergono, la build NON è
+      # riproducibile e va sistemata prima di pubblicare la promessa agli utenti.
+      - name: Verifica determinismo (ricostruisce e confronta)
+        run: |
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/build-1.txt
+          rm -rf dist
+          npm run build
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/build-2.txt
+          if ! diff -u /tmp/build-1.txt /tmp/build-2.txt; then
+            echo "::error::Build NON deterministica: due build dallo stesso sorgente producono file diversi."
+            exit 1
+          fi
+          echo "Build deterministica ✓"
+
+      - name: Genera il manifesto degli hash
+        run: |
+          {
+            echo "# LeTransfer — manifesto della build"
+            echo ""
+            echo "commit:   ${{ github.sha }}"
+            echo "ref:      ${{ github.ref_name }}"
+            echo "node:     $(node -v)"
+            echo "npm:      $(npm -v)"
+            echo "runner:   ubuntu-24.04"
+            echo ""
+            echo "## SHA-256 degli asset"
+            echo ""
+            cd dist && find . -type f -print0 | sort -z | xargs -0 sha256sum
+          } > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # Attestazione firmata da GitHub: lega gli artefatti al commit e al workflow.
+      - name: Attesta la provenienza
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: vue-app/dist/**
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ github.sha }}
+          path: |
+            vue-app/dist
+            vue-app/SHA256SUMS.txt

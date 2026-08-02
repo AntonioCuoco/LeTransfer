@@ -40,7 +40,7 @@ const handleReset = () => {
           <i class="pi pi-cog text-primary text-2xl" />
           Impostazioni
         </h1>
-        <p class="mt-1 mb-0 text-base text-[#9ca3af]">Personalizza la tua esperienza LeTransfer</p>
+        <p class="mt-1 mb-0 text-base text-haze-400">Personalizza la tua esperienza LeTransfer</p>
       </div>
       <div class="flex items-center gap-3">
         <Button icon="pi pi-undo" label="Ripristina" severity="secondary" outlined :disabled="isSaving" @click="handleReset" />
@@ -48,16 +48,18 @@ const handleReset = () => {
       </div>
     </header>
 
-    <div v-if="hasUnsavedChanges" class="mb-4 px-4 py-2 bg-[#724CF9]/10 border border-[#724CF9]/30 rounded-lg">
-      <p class="text-[#724CF9] text-sm m-0">⚠️ Hai modifiche non salvate</p>
+    <div v-if="hasUnsavedChanges" class="mb-4 px-4 py-2 bg-brand-500/10 border border-brand-500/30 rounded-lg">
+      <p class="text-brand-400 text-sm m-0">⚠️ Hai modifiche non salvate</p>
     </div>
 
     <Tabs value="1">
+      <!-- C'era una quarta tab "Organizzazione" che renderizzava lo stesso componente
+           di "Integrazioni": due etichette diverse, contenuto identico. Rimossa finché
+           non esiste una schermata sua. -->
       <TabList>
         <Tab value="1">Generali &amp; Sicurezza</Tab>
         <Tab value="2">Notifiche</Tab>
         <Tab value="3">Integrazioni</Tab>
-        <Tab value="4">Organizzazione</Tab>
       </TabList>
       <TabPanels>
         <TabPanel value="1">
@@ -66,7 +68,6 @@ const handleReset = () => {
         </TabPanel>
         <TabPanel value="2"><NotificationSection /></TabPanel>
         <TabPanel value="3"><IntegrationSettings /></TabPanel>
-        <TabPanel value="4"><IntegrationSettings /></TabPanel>
       </TabPanels>
     </Tabs>
   </div>

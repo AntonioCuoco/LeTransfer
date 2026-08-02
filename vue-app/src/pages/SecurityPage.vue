@@ -107,6 +107,8 @@ const notCovered = [
         <dl class="grid grid-cols-[1fr_auto] gap-x-6 border-t border-white/10 font-mono text-[0.8rem]">
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Client open-source</dt>
           <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì</dd>
+          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Nucleo crittografico isolato e specificato</dt>
+          <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì · <span class="font-mono">src/crypto</span></dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Dati e storage in Unione Europea</dt>
           <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Audit crittografico indipendente</dt>

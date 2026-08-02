@@ -12,8 +12,8 @@ defineEmits<{ 'update:modelValue': [v: string] }>()
 
 <template>
   <div class="space-y-1 py-2">
-    <label class="block text-sm font-medium text-white">{{ label }}</label>
-    <p v-if="description" class="text-xs text-[#9ca3af]">{{ description }}</p>
+    <label class="block text-sm font-medium text-haze-100">{{ label }}</label>
+    <p v-if="description" class="m-0 text-xs text-haze-400">{{ description }}</p>
     <Select
       :model-value="modelValue"
       :options="options"

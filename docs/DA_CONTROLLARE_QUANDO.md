@@ -25,12 +25,21 @@ Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio.
 - [ ] **CORS del bucket R2** — aggiungi l'origin di produzione del frontend alla CORS policy del bucket
   (oggi ci sono solo gli origin di dev). Metodi `GET/PUT/HEAD`, expose `ETag`.
 
-- [ ] **CSP sull'host del frontend** (§A #3, repo frontend) — `connect-src` deve includere:
-  - l'host storage R2 (`<account>.r2.cloudflarestorage.com`, o il dominio custom/CDN) → le presigned URL puntano lì
-  - `https://challenges.cloudflare.com` (Turnstile), anche in `script-src`
+- [ ] **CSP sull'host del frontend** → policy completa e motivata in **[PAGINE_CRITICHE.md](PAGINE_CRITICHE.md)**.
+  In sintesi: `connect-src` deve includere l'host storage R2 (`<account>.r2.cloudflarestorage.com`, o il
+  dominio custom/CDN) **e** l'endpoint Cognito (l'auth avviene nel browser); `frame-src` l'origine del captcha.
+  - ⚠️ **NON aggiungere `challenges.cloudflare.com` a `script-src`.** Dal 2026-07-30 Turnstile è isolato in
+    un iframe cross-origin ([public/captcha.html](../vue-app/public/captcha.html)): la pagina che genera le
+    chiavi resta su `script-src 'self'`. Riammettere quel dominio annullerebbe l'isolamento.
 
-- [ ] **Turnstile — hostnames del widget** — nel dashboard Cloudflare aggiungi il **dominio di produzione**
-  alla lista Hostnames del widget (solo hostname, **senza porta né schema**: `letransfer.app`, non `https://…:443`).
+- [ ] **Origine dedicata per il captcha** — pubblica `captcha.html` su un sottodominio (es. `captcha.letransfer.app`)
+  e imposta `VITE_CAPTCHA_ORIGIN` di produzione. Deve essere un'**origine diversa** da quella dell'app,
+  altrimenti l'isolamento non esiste. Aggiorna anche `ALLOWED_PARENTS` dentro `captcha.html` con il dominio reale.
+
+- [ ] **Turnstile — hostnames del widget** — nel dashboard Cloudflare aggiungi alla lista Hostnames
+  l'**origine del captcha** (`captcha.letransfer.app`), non quella dell'app: è lì che il widget viene
+  renderizzato. Solo hostname, **senza porta né schema**.
+  - 💡 In sviluppo aggiungi anche `localhost` **e** `127.0.0.1`: senza, il widget riceve `401` da Cloudflare.
 
 - [ ] *(opzionale)* **Dominio custom + CDN davanti a R2** — solo se vuoi download pubblici serviti da un tuo
   dominio invece che dall'endpoint R2. Se lo fai, aggiorna anche la CSP `connect-src` di conseguenza.

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
 import { notify } from '@/src/utils/notify'
-import { wrapFileKey, unwrapFileKey, arrayBufferToBase64, base64ToArrayBuffer } from '@/src/utils/crypto'
+import { wrapFileKey, unwrapFileKey, arrayBufferToBase64, base64ToArrayBuffer } from '@/src/crypto/crypto'
 import { useFileKeysAPI } from '@/src/composables/useFileKeysAPI'
 import type { EncryptionKeyData } from '@/src/types'
 

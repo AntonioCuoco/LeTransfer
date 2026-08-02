@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { notify } from '@/src/utils/notify'
 import ProfileHeader from '@/src/components/ProfileHeader.vue'
-import FileStatsGrid from '@/src/components/FileStatsGrid.vue'
+import FileStatsGrid, { type StatTile } from '@/src/components/FileStatsGrid.vue'
 import FilesTable from '@/src/components/FilesTable.vue'
 import SharedLinksTable from '@/src/components/SharedLinksTable.vue'
 import ShareFileModal from '@/src/components/ShareFileModal.vue'
@@ -11,7 +11,7 @@ import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
 import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
-import type { DynamoDBFile, TableFile, SharedFile, FileStats } from '@/src/types'
+import type { DynamoDBFile, TableFile, SharedFile } from '@/src/types'
 
 const fileTypeOptions = [
   { value: '', label: 'Tutti i tipi' },
@@ -38,7 +38,32 @@ const activeTab = ref('all')
 const shareModalVisible = ref(false)
 const fileToShare = ref<DynamoDBFile | null>(null)
 const allFiles = ref<TableFile[]>([])
-const stats = ref<FileStats>({ uploaded: 0, downloaded: 0, sent: 0, received: 0, archived: 0, deleted: 0 })
+
+// Tessere del riepilogo: solo grandezze che sappiamo davvero calcolare dai record
+// che il backend restituisce. Le vecchie "archiviati"/"eliminati"/"scaricati" erano
+// zeri costanti nel codice — non sono misure, quindi non si mostrano.
+const statTiles = computed<StatTile[]>(() => {
+  const sent = dynamoFiles.value.filter((f) => f.sharedWith?.length).length
+  const active = sharedLinks.value.filter(
+    (link) => !link.revokedAt && new Date(link.expiresAt).getTime() > Date.now(),
+  )
+  const downloads = sharedLinks.value.reduce((sum, link) => sum + (link.downloadCount || 0), 0)
+
+  return [
+    { label: 'File caricati', value: dynamoFiles.value.length, icon: 'pi pi-folder', tone: 'brand' },
+    { label: 'Inviati a persone', value: sent, icon: 'pi pi-send' },
+    { label: 'Ricevuti da altri', value: sharedFiles.value.length, icon: 'pi pi-inbox' },
+    {
+      label: 'Link attivi',
+      value: active.length,
+      icon: 'pi pi-link',
+      hint: sharedLinks.value.length > active.length
+        ? `${sharedLinks.value.length - active.length} scaduti o revocati`
+        : undefined,
+    },
+    { label: 'Download ricevuti', value: downloads, icon: 'pi pi-download', tone: 'verified', hint: 'su tutti i tuoi link' },
+  ]
+})
 
 const isLoading = computed(() => hookLoading.value || isLoadingShared.value || isLinksLoading.value)
 
@@ -89,24 +114,18 @@ const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] =>
     }
   })
 
-const updateStats = (uploadedCount: number, receivedCount: number) => {
-  const sentCount = dynamoFiles.value.filter(f => f.sharedWith?.length).length
-  stats.value = { uploaded: uploadedCount, downloaded: 0, sent: sentCount, received: receivedCount, archived: 0, deleted: 0 }
-}
-
 const loadFiles = async (page = 1) => {
   try {
     const options: { limit: number; fileType?: string } = { limit: pageSize * page }
     if (selectedFileType.value) options.fileType = selectedFileType.value
     const result = await loadFilesFromDynamo(options)
-    if (result) { totalFiles.value = result.count; updateStats(result.count, sharedFiles.value.length) }
+    if (result) totalFiles.value = result.count
   } catch { notify.error('Errore durante il caricamento dei file') }
 }
 
 const loadSharedFiles = async () => {
   try {
-    const files = await getSharedWithMe()
-    updateStats(dynamoFiles.value.length, files.length)
+    await getSharedWithMe()
   } catch { notify.error('Errore durante il caricamento dei file condivisi') }
 }
 
@@ -157,31 +176,39 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-fit bg-[#2c2638]">
+  <div class="h-fit bg-deep-900">
     <ProfileHeader />
 
-    <div v-if="isSetupRequired" class="mx-8 mt-6">
-      <div class="bg-[#fff1f0] border border-[#ffa39e] p-4 rounded-lg flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <i class="pi pi-shield text-[#cf1322] text-xl" />
+    <!-- Recovery key mancante: è il punto in cui gli utenti E2E perdono i file per sempre,
+         quindi il tono è serio ma spiegato, non un rettangolo rosso da errore di sistema. -->
+    <div v-if="isSetupRequired" class="mx-8 mt-6 rounded-panel border border-warn-400/30 bg-warn-400/[0.07] p-5">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <i class="pi pi-shield mt-0.5 text-xl text-warn-400" />
           <div>
-            <h4 class="text-[#cf1322] font-semibold m-0">Sicurezza End-to-End non configurata</h4>
-            <p class="text-[#cf1322] text-sm m-0">Per proteggere i tuoi file e accedervi da altri dispositivi, configura la Recovery Key.</p>
+            <h4 class="m-0 font-semibold text-haze-100">Non hai ancora una chiave di recupero</h4>
+            <p class="m-0 mt-1 max-w-[70ch] text-sm leading-relaxed text-haze-300">
+              I tuoi file si aprono solo con la chiave che vive in questo browser. Se perdi il dispositivo
+              e non hai una chiave di recupero, <b class="text-haze-100">nessuno può recuperarli — nemmeno noi</b>.
+              Sono 24 parole da conservare fuori dal computer.
+            </p>
           </div>
         </div>
-        <Button label="Configura Ora" severity="danger" @click="securitySetupVisible = true" />
+        <Button label="Creala ora" @click="securitySetupVisible = true" />
       </div>
     </div>
 
-    <FileStatsGrid :stats="stats" />
+    <div class="px-8 pt-8">
+      <FileStatsGrid :tiles="statTiles" />
+    </div>
 
     <div class="p-8">
-      <div class="bg-[#3c364c] rounded-lg">
+      <div class="rounded-panel border border-white/10 bg-white/[0.03]">
         <div class="p-6">
           <div class="flex justify-between items-center mb-4">
             <div>
-              <h2 class="text-2xl font-bold text-white">Tutti i File</h2>
-              <p v-if="totalFiles > 0" class="text-[#DBD4D3] text-sm mt-1">{{ totalFiles }} file totali</p>
+              <h2 class="m-0 text-2xl font-bold tracking-[-0.02em] text-haze-100">I tuoi file</h2>
+              <p v-if="totalFiles > 0" class="m-0 mt-1 font-mono text-[0.78rem] text-haze-400">{{ totalFiles }} in totale</p>
             </div>
             <div class="flex items-center gap-3">
               <Select v-model="selectedFileType" class="w-48" placeholder="Filtra per tipo" :options="fileTypeOptions" option-label="label" option-value="value" @change="() => { currentPage = 1; loadFiles(1) }" />
@@ -200,13 +227,16 @@ onMounted(async () => {
           <div v-if="isLoading" class="flex justify-center items-center py-8">
             <ProgressSpinner />
           </div>
-          <div v-else-if="allFiles.length === 0" class="text-center py-8">
-            <p class="text-[#DBD4D3] text-lg">
-              {{ activeTab === 'received' ? 'Nessun file ricevuto' : activeTab === 'uploaded' ? 'Nessun file caricato' : 'Nessun file' }}
+          <div v-else-if="allFiles.length === 0" class="py-10 text-center">
+            <p class="m-0 text-lg text-haze-200">
+              {{ activeTab === 'received' ? 'Nessun file ricevuto' : activeTab === 'uploaded' ? 'Non hai ancora caricato niente' : 'Qui non c’è ancora niente' }}
             </p>
-            <p class="text-[#DBD4D3] text-sm mt-2">
-              {{ activeTab === 'received' ? 'I file che riceverai dagli altri utenti appariranno qui' : 'I file che carichi appariranno qui' }}
+            <p class="m-0 mt-2 text-sm text-haze-400">
+              {{ activeTab === 'received' ? 'I file che ti mandano gli altri utenti compaiono qui.' : 'Trascina il primo file dalla home.' }}
             </p>
+            <button v-if="activeTab !== 'received'" type="button" class="lt-btn-dark mt-5" @click="$router.push('/app')">
+              Vai a caricare →
+            </button>
           </div>
           <template v-else>
             <FilesTable
@@ -228,11 +258,13 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="bg-[#3c364c] rounded-lg mt-8">
+      <div class="mt-8 rounded-panel border border-white/10 bg-white/[0.03]">
         <div class="p-6">
           <div class="mb-4">
-            <h2 class="text-2xl font-bold text-white">Link Generati</h2>
-            <p class="text-[#DBD4D3] text-sm mt-1">{{ sharedLinks.length }} link attivi</p>
+            <h2 class="m-0 text-2xl font-bold tracking-[-0.02em] text-haze-100">Link generati</h2>
+            <p class="m-0 mt-1 font-mono text-[0.78rem] text-haze-400">
+              {{ sharedLinks.length }} in totale · la chiave di ognuno vive solo nel link
+            </p>
           </div>
           <div v-if="isLinksLoading" class="flex justify-center items-center py-8"><ProgressSpinner /></div>
           <SharedLinksTable

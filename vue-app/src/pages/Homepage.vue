@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { notify } from '@/src/utils/notify'
-import Swal from 'sweetalert2'
-import BentoCard from '@/src/components/ui/BentoCard.vue'
 import StatCard from '@/src/components/ui/StatCard.vue'
 import TransferStatusPanel from '@/src/components/TransferStatusPanel.vue'
 import FileSender from '@/src/components/FileSender/FileSender.vue'
@@ -11,10 +10,28 @@ import ShareFileModal from '@/src/components/ShareFileModal.vue'
 import { useTransferStore } from '@/src/stores/transfer'
 import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
 import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
+import { useSharedLinks } from '@/src/composables/useSharedLinks'
+import { fileBadge } from '@/src/utils/fileBadge'
 import type { DynamoDBFile, ShareLinkData } from '@/src/types'
 
+/**
+ * Dashboard = **da dove parte un file** (roadmap F5). La gestione di ciò che è già
+ * stato caricato vive in /app/profile: qui si sceglie soltanto un modo per mandare.
+ *
+ * I due modi sono separati perché sono due cose diverse, non due bottoni:
+ *  • "nel tuo spazio" → il file resta tuo, poi ci generi i link quando vuoi
+ *  • "a una persona"  → cifratura verso la chiave pubblica del destinatario
+ *
+ * ⚠️ Tutti i numeri di questa pagina sono calcolati da dati reali. La versione
+ * precedente mostrava "+12%" e "di 10 GB disponibili" scritti nel template: il primo
+ * non esisteva, e il secondo nemmeno come concetto (il backend impone un tetto per
+ * FILE, non una quota di spazio — vedi PLAN_*_MAX_FILE_GB in BACKEND_API_DOCS §5).
+ */
+
+const router = useRouter()
 const store = useTransferStore()
 const { isUploading, loadFiles } = useFileFromDynamoDB()
+const { links, fetchLinks } = useSharedLinks()
 
 const shareModalVisible = ref(false)
 const shareData = ref<ShareLinkData | null>(null)
@@ -22,8 +39,9 @@ const shareUserModalVisible = ref(false)
 const fileToShare = ref<DynamoDBFile | null>(null)
 const previewFiles = ref<File[]>([])
 const previewModalVisible = ref(false)
-const stats = ref({ totalFiles: 0, sharedFiles: 0, totalSize: '0 B' })
-const filesLoaded = ref(false)
+const recentFiles = ref<DynamoDBFile[]>([])
+const totalFiles = ref(0)
+const totalBytes = ref(0)
 const apiMultipartUrl = import.meta.env.VITE_API_URL as string
 
 const formatSize = (bytes: number) => {
@@ -31,8 +49,31 @@ const formatSize = (bytes: number) => {
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
+
+// ── Numeri reali, tutti derivati dai record che il backend restituisce davvero ──
+const activeLinks = computed(() =>
+  links.value.filter((link) => !link.revokedAt && new Date(link.expiresAt).getTime() > Date.now()),
+)
+
+const totalDownloads = computed(() =>
+  links.value.reduce((sum, link) => sum + (link.downloadCount || 0), 0),
+)
+
+// Avvisi: solo situazioni vere e azionabili, niente riempitivi.
+const expiringSoon = computed(() =>
+  activeLinks.value.filter((link) => {
+    const hoursLeft = (new Date(link.expiresAt).getTime() - Date.now()) / 3_600_000
+    return hoursLeft <= 48
+  }),
+)
+
+const exhausted = computed(() =>
+  activeLinks.value.filter((link) => link.maxDownloads != null && link.downloadCount >= link.maxDownloads),
+)
+
+const hasAlerts = computed(() => expiringSoon.value.length > 0 || exhausted.value.length > 0)
 
 const { isDragOver, dragProps, dropZoneRef } = useFolderDragAndDrop({
   onFilesDropped: (files: File[]) => {
@@ -44,8 +85,8 @@ const { isDragOver, dragProps, dropZoneRef } = useFolderDragAndDrop({
 
 const handleFilesConfirm = (files: File[]) => {
   previewModalVisible.value = false
-  files.forEach(f => store.addUpload(f))
-  Swal.fire({ title: 'Aggiunti alla Coda', text: `${files.length} file aggiunti alla coda di upload.`, icon: 'success', timer: 2000, showConfirmButton: false })
+  files.forEach((f) => store.addUpload(f))
+  notify.success(`${files.length} file aggiunti alla coda di caricamento.`, 'In coda')
   previewFiles.value = []
 }
 
@@ -58,52 +99,111 @@ const openFolderInput = () => {
   if (!isUploading.value) document.getElementById('folder-input')?.click()
 }
 
-const handleLoadFiles = async () => {
-  const result = await loadFiles({ limit: 100 })
-  if (result) filesLoaded.value = true
-}
-
-onMounted(async () => {
+const refreshAll = async () => {
   const result = await loadFiles({ limit: 100 })
   if (result?.files) {
-    filesLoaded.value = true
-    const totalSize = result.files.reduce((acc: number, f: DynamoDBFile) => {
-      const s = parseInt(String(f.fileSize) || '0')
-      return acc + (isNaN(s) ? 0 : s)
+    totalFiles.value = result.count ?? result.files.length
+    totalBytes.value = result.files.reduce((acc: number, f: DynamoDBFile) => {
+      const size = parseInt(String(f.fileSize) || '0')
+      return acc + (isNaN(size) ? 0 : size)
     }, 0)
-    stats.value = {
-      totalFiles: result.files.length,
-      sharedFiles: result.files.filter((f: DynamoDBFile) => f.isShared).length,
-      totalSize: formatSize(totalSize),
-    }
+    recentFiles.value = [...result.files]
+      .sort((a, b) => new Date(b.uploadedAt || 0).getTime() - new Date(a.uploadedAt || 0).getTime())
+      .slice(0, 5)
   }
-})
+  await fetchLinks()
+}
+
+const relativeDate = (iso?: string | null) => {
+  if (!iso) return '—'
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+  if (days <= 0) return 'oggi'
+  if (days === 1) return 'ieri'
+  if (days < 30) return `${days} giorni fa`
+  return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+onMounted(refreshAll)
 </script>
 
 <template>
-  <div class="p-6 max-w-[1400px] mx-auto">
-    <header class="mb-6">
-      <h1 class="m-0 text-3xl font-bold text-white">Dashboard</h1>
-      <p class="mt-1 mb-0 text-base text-[#9ca3af]">Gestisci e condividi i tuoi file</p>
+  <div class="mx-auto max-w-[1400px] p-6">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="lt-label mb-2 !text-verified-400">Invia</p>
+        <h1 class="m-0 text-3xl font-bold tracking-[-0.03em] text-haze-100">Da qui parte un file.</h1>
+        <p class="mb-0 mt-1.5 text-haze-300">
+          Caricalo nel tuo spazio, oppure mandalo direttamente a una persona. In entrambi i casi si cifra qui.
+        </p>
+      </div>
+      <button type="button" class="lt-btn-dark" @click="router.push('/app/profile')">
+        Gestisci i tuoi file →
+      </button>
     </header>
 
-    <!-- Stats Row -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <StatCard :value="stats.totalFiles" label="File Totali" icon="pi pi-folder-open" trend="up" change="+12%" />
-      <StatCard :value="stats.sharedFiles" label="File Condivisi" icon="pi pi-share-alt" variant="primary" />
-      <StatCard :value="stats.totalSize" label="Spazio Utilizzato" icon="pi pi-cloud-upload" subtext="di 10 GB disponibili" />
+    <!-- Numeri reali -->
+    <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <StatCard :value="totalFiles" label="File nel tuo spazio" icon="pi pi-folder" tone="brand" />
+      <StatCard :value="formatSize(totalBytes)" label="Spazio occupato" icon="pi pi-database" />
+      <StatCard
+        :value="activeLinks.length"
+        label="Link attivi"
+        icon="pi pi-link"
+        :hint="links.length > activeLinks.length ? `${links.length - activeLinks.length} scaduti o revocati` : undefined"
+      />
+      <StatCard
+        :value="totalDownloads"
+        label="Download ricevuti"
+        icon="pi pi-download"
+        tone="verified"
+        hint="su tutti i tuoi link"
+      />
     </div>
 
-    <!-- Bento Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-      <!-- Folder Upload Card -->
-      <BentoCard size="2x1" title="Carica Cartella" subtitle="Trascina una cartella o clicca per selezionare" icon="pi pi-folder-open">
+    <!-- Avvisi: compaiono solo se c'è davvero qualcosa da fare -->
+    <div v-if="hasAlerts" class="mb-6 rounded-panel border border-warn-400/25 bg-warn-400/[0.06] p-5">
+      <p class="lt-label mb-3 !text-warn-400">Richiede attenzione</p>
+      <ul class="m-0 flex list-none flex-col gap-2 p-0 text-[0.92rem] text-haze-200">
+        <li v-if="expiringSoon.length" class="flex items-baseline gap-2.5">
+          <span class="text-warn-400">•</span>
+          <span>
+            <b>{{ expiringSoon.length }}</b>
+            {{ expiringSoon.length === 1 ? 'link scade' : 'link scadono' }} entro 48 ore
+          </span>
+        </li>
+        <li v-if="exhausted.length" class="flex items-baseline gap-2.5">
+          <span class="text-warn-400">•</span>
+          <span>
+            <b>{{ exhausted.length }}</b>
+            {{ exhausted.length === 1 ? 'link ha' : 'link hanno' }} esaurito i download consentiti
+          </span>
+        </li>
+      </ul>
+      <button type="button" class="mt-3 text-[0.86rem] font-semibold text-warn-400 hover:underline" @click="router.push('/app/profile')">
+        Vai alla gestione dei link →
+      </button>
+    </div>
+
+    <!-- I due modi di mandare -->
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <!-- 1. Nel tuo spazio -->
+      <section class="rounded-panel border border-white/10 bg-white/[0.03] p-6">
+        <div class="mb-1 flex items-baseline gap-2.5">
+          <span class="font-mono text-[0.8rem] text-verified-400">01</span>
+          <h2 class="m-0 text-lg font-semibold text-haze-100">Carica nel tuo spazio</h2>
+        </div>
+        <p class="mb-5 mt-0 text-[0.9rem] leading-relaxed text-haze-300">
+          Il file resta tuo. Ci generi link quando vuoi, con scadenza, password e limite di download.
+        </p>
+
         <div
           ref="dropZoneRef"
           v-bind="dragProps"
-          :class="['border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all duration-200 bg-[#4a4554]/20',
-            isDragOver ? 'border-[#724CF9] bg-[#2c2638] scale-[1.02]' : 'border-[#4a4554] hover:border-[#724CF9] hover:bg-[#2c2638]',
-            isUploading ? 'opacity-50 cursor-not-allowed' : '']"
+          class="cursor-pointer rounded-well border-2 border-dashed p-6 text-center transition-colors"
+          :class="[
+            isDragOver ? 'border-brand-400 bg-brand-500/10' : 'border-white/15 hover:border-brand-400 hover:bg-white/[0.04]',
+            isUploading ? 'cursor-not-allowed opacity-50' : '',
+          ]"
           @click="openFolderInput"
         >
           <input
@@ -115,69 +215,111 @@ onMounted(async () => {
             class="hidden"
             @change="(e) => { const files = (e.target as HTMLInputElement).files; if (files?.length) { previewFiles = Array.from(files); previewModalVisible = true; (e.target as HTMLInputElement).value = '' } }"
           />
-          <div class="flex flex-col items-center space-y-3">
-            <i class="pi pi-folder-open text-primary text-4xl" />
-            <div>
-              <p :class="['text-base font-medium', isDragOver ? 'text-[#724CF9]' : 'text-[#DBD4D3]']">
-                {{ isDragOver ? 'Rilascia la cartella qui' : 'Trascina una cartella o clicca per selezionare' }}
-              </p>
-              <p class="text-sm text-[#9ca3af] mt-1">Caricamento ricorsivo • Coda automatica</p>
-            </div>
-            <Button label="Sfoglia Cartella" icon="pi pi-folder-open" :disabled="isUploading" @click.stop="openFolderInput" />
-          </div>
+          <i class="pi pi-folder-open mb-3 block text-3xl text-brand-400" />
+          <p class="m-0 text-[0.95rem] font-semibold" :class="isDragOver ? 'text-brand-300' : 'text-haze-100'">
+            {{ isDragOver ? 'Rilascia qui' : 'Trascina file o cartelle' }}
+          </p>
+          <p class="m-0 mt-1 font-mono text-[0.72rem] text-haze-400">ricorsivo · coda automatica</p>
         </div>
-      </BentoCard>
 
-      <!-- Transfer Status Card -->
-      <BentoCard size="1x2" title="Trasferimenti" subtitle="Stato upload/download" icon="pi pi-cloud-upload" class="overflow-y-auto max-h-[400px]">
-        <TransferStatusPanel />
-      </BentoCard>
+        <details class="mt-4 rounded-well border border-white/10 bg-white/[0.02]">
+          <summary class="cursor-pointer list-none px-4 py-3 text-[0.88rem] font-semibold text-haze-200 hover:text-haze-100">
+            File molto grande (oltre 100 MB) →
+          </summary>
+          <div class="border-t border-white/10 p-4">
+            <MultipartFileUploader :api-base-url="apiMultipartUrl" :on-upload-complete="refreshAll" />
+          </div>
+        </details>
+      </section>
 
-      <!-- Multipart Upload Card -->
-      <BentoCard size="2x1" title="File Grandi" subtitle="Per file superiori a 100MB" icon="pi pi-cloud-upload">
-        <MultipartFileUploader :api-base-url="apiMultipartUrl" :on-upload-complete="handleLoadFiles" />
-      </BentoCard>
+      <!-- 2. A una persona -->
+      <section class="rounded-panel border border-white/10 bg-white/[0.03] p-6">
+        <div class="mb-1 flex items-baseline gap-2.5">
+          <span class="font-mono text-[0.8rem] text-verified-400">02</span>
+          <h2 class="m-0 text-lg font-semibold text-haze-100">Manda a una persona</h2>
+        </div>
+        <p class="mb-5 mt-0 text-[0.9rem] leading-relaxed text-haze-300">
+          Cifrato verso la sua chiave pubblica: nemmeno noi possiamo aprirlo. Prima di consegnare
+          la chiave ti mostriamo l'impronta del destinatario, così puoi verificarla.
+        </p>
+        <FileSender
+          @file-sent="refreshAll"
+          @link-generated="(data: ShareLinkData) => { shareData = data; shareModalVisible = true }"
+        />
+      </section>
     </div>
 
-    <!-- File Sender -->
-    <section class="mt-4">
-      <BentoCard size="full" title="Invia File" subtitle="Condividi file via email" icon="pi pi-share-alt" padding="lg">
-        <FileSender @file-sent="handleLoadFiles" @link-generated="(data: ShareLinkData) => { shareData = data; shareModalVisible = true }" />
-      </BentoCard>
-    </section>
+    <!-- Trasferimenti in corso e ultimi caricati -->
+    <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section class="rounded-panel border border-white/10 bg-white/[0.03] p-6">
+        <h2 class="m-0 mb-4 text-lg font-semibold text-haze-100">Trasferimenti in corso</h2>
+        <div class="max-h-[320px] overflow-y-auto">
+          <TransferStatusPanel />
+        </div>
+      </section>
 
-    <!-- Share Link Modal (legacy FileSender result) -->
-    <Dialog v-model:visible="shareModalVisible" modal :style="{ width: '600px' }">
+      <section class="rounded-panel border border-white/10 bg-white/[0.03] p-6">
+        <div class="mb-4 flex items-baseline justify-between">
+          <h2 class="m-0 text-lg font-semibold text-haze-100">Ultimi caricati</h2>
+          <button type="button" class="text-[0.84rem] font-semibold text-verified-400 hover:underline" @click="router.push('/app/profile')">
+            vedi tutti
+          </button>
+        </div>
+
+        <p v-if="recentFiles.length === 0" class="m-0 text-[0.9rem] text-haze-400">
+          Non hai ancora caricato niente. Il primo file lo trascini qui accanto.
+        </p>
+        <ul v-else class="m-0 flex list-none flex-col gap-1.5 p-0">
+          <li
+            v-for="file in recentFiles"
+            :key="file.fileId || file.s3Key"
+            class="flex items-center gap-2.5 rounded-chip border border-white/5 bg-white/[0.02] px-3 py-2.5"
+          >
+            <span
+              class="flex-none rounded-badge px-1.5 py-1 font-mono text-[0.58rem] font-extrabold tracking-[0.03em] text-white"
+              :style="{ background: fileBadge(file.fileName || '', file.fileType).color }"
+            >
+              {{ fileBadge(file.fileName || '', file.fileType).label }}
+            </span>
+            <span class="flex-1 truncate text-[0.88rem] text-haze-100" :title="file.fileName">{{ file.fileName }}</span>
+            <span class="flex-none font-mono text-[0.72rem] text-haze-400">{{ relativeDate(file.uploadedAt) }}</span>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <!-- Link generato dal FileSender -->
+    <Dialog v-model:visible="shareModalVisible" modal :style="{ width: 'min(600px, 94vw)' }">
       <template #header>
         <div class="flex items-center gap-2">
           <i class="pi pi-link text-primary" />
-          <span class="text-white">Link di Condivisione Creato</span>
+          <span class="text-white">Link di condivisione creato</span>
         </div>
       </template>
       <div v-if="shareData" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-[#DBD4D3] mb-2">🔗 Link per Download:</label>
+          <label class="lt-label mb-2 block !text-haze-400">Link per il download</label>
           <div class="flex gap-2">
             <InputText :model-value="shareData.url || ''" readonly fluid class="flex-1" />
             <Button label="Copia" icon="pi pi-copy" @click="copyToClipboard(shareData.url)" />
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-[#2c2638] p-4 rounded-lg">
-            <h4 class="text-white font-medium mb-3 flex items-center gap-2"><i class="pi pi-file text-primary" /> Informazioni File</h4>
-            <div class="space-y-2 text-sm">
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="rounded-well bg-white/[0.04] p-4">
+            <h4 class="mb-3 flex items-center gap-2 font-medium text-white"><i class="pi pi-file text-primary" /> File</h4>
+            <div class="space-y-2 font-mono text-[0.78rem]">
               <div class="flex justify-between gap-2">
-                <span class="text-[#DBD4D3]">Nome:</span>
-                <span v-tooltip="shareData.fileName" class="text-white font-medium truncate cursor-help">{{ shareData.fileName }}</span>
+                <span class="text-haze-400">nome</span>
+                <span v-tooltip="shareData.fileName" class="cursor-help truncate text-haze-100">{{ shareData.fileName }}</span>
               </div>
-              <div class="flex gap-2"><span class="text-[#DBD4D3]">Dimensione:</span><span class="text-white">{{ shareData.fileSize }}</span></div>
+              <div class="flex justify-between gap-2"><span class="text-haze-400">peso</span><span class="text-haze-100">{{ shareData.fileSize }}</span></div>
             </div>
           </div>
-          <div class="bg-[#2c2638] p-4 rounded-lg">
-            <h4 class="text-white font-medium mb-3 flex items-center gap-2"><i class="pi pi-clock text-primary" /> Informazioni Link</h4>
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between"><span class="text-[#DBD4D3]">Scadenza:</span><span class="text-white">{{ shareData.expiresIn }}</span></div>
-              <div class="flex justify-between"><span class="text-[#DBD4D3]">Stato:</span><span class="text-green-400">✓ Attivo</span></div>
+          <div class="rounded-well bg-white/[0.04] p-4">
+            <h4 class="mb-3 flex items-center gap-2 font-medium text-white"><i class="pi pi-clock text-primary" /> Link</h4>
+            <div class="space-y-2 font-mono text-[0.78rem]">
+              <div class="flex justify-between"><span class="text-haze-400">scadenza</span><span class="text-haze-100">{{ shareData.expiresIn }}</span></div>
+              <div class="flex justify-between"><span class="text-haze-400">stato</span><span class="text-verified-400">attivo ✓</span></div>
             </div>
           </div>
         </div>
@@ -187,24 +329,29 @@ onMounted(async () => {
       </template>
     </Dialog>
 
-    <!-- File Preview Modal (folder upload) -->
+    <!-- Anteprima della cartella trascinata -->
     <Dialog
       v-model:visible="previewModalVisible"
       modal
-      header="Anteprima File da Caricare"
-      :style="{ width: '600px' }"
+      header="File da caricare"
+      :style="{ width: 'min(600px, 94vw)' }"
       @hide="previewFiles = []"
     >
-      <div class="max-h-64 overflow-y-auto space-y-2 py-2">
-        <div v-for="(f, i) in previewFiles" :key="i" class="flex items-center gap-2 p-2 rounded bg-[#2c2638]">
-          <i class="pi pi-file text-primary flex-shrink-0" />
-          <span class="text-white text-sm truncate flex-1">{{ f.name }}</span>
-          <span class="text-[#9ca3af] text-xs flex-shrink-0">{{ (f.size / 1024 / 1024).toFixed(2) }} MB</span>
+      <div class="max-h-64 space-y-1.5 overflow-y-auto py-2">
+        <div v-for="(f, i) in previewFiles" :key="i" class="flex items-center gap-2.5 rounded-chip bg-white/[0.04] p-2">
+          <span
+            class="flex-none rounded-badge px-1.5 py-1 font-mono text-[0.58rem] font-extrabold text-white"
+            :style="{ background: fileBadge(f.name, f.type).color }"
+          >
+            {{ fileBadge(f.name, f.type).label }}
+          </span>
+          <span class="flex-1 truncate text-sm text-white">{{ f.name }}</span>
+          <span class="flex-none font-mono text-xs text-haze-400">{{ formatSize(f.size) }}</span>
         </div>
       </div>
       <template #footer>
         <Button label="Annulla" severity="secondary" outlined @click="() => { previewModalVisible = false; previewFiles = [] }" />
-        <Button label="Carica tutti" @click="handleFilesConfirm(previewFiles)" />
+        <Button :label="`Carica ${previewFiles.length} file`" @click="handleFilesConfirm(previewFiles)" />
       </template>
     </Dialog>
 
@@ -212,7 +359,7 @@ onMounted(async () => {
       :visible="shareUserModalVisible"
       :file="fileToShare"
       :on-close="() => { shareUserModalVisible = false; fileToShare = null }"
-      :on-success="handleLoadFiles"
+      :on-success="refreshAll"
     />
   </div>
 </template>

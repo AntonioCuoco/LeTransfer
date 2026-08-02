@@ -33,37 +33,37 @@ const statusLabel = (status: string) => {
   <div class="flex flex-col w-full gap-4 transition-all duration-300">
     <div class="flex justify-between items-center">
       <div>
-        <p class="font-semibold text-[#DBD4D3]">Stato Trasferimenti</p>
-        <p v-if="downloadsCount > 0" class="text-xs text-[#724CF9]">{{ downloadsCount }} Download in corso</p>
+        <p class="font-semibold text-haze-200">Stato Trasferimenti</p>
+        <p v-if="downloadsCount > 0" class="text-xs text-brand-400">{{ downloadsCount }} Download in corso</p>
       </div>
-      <button v-if="hasFinished" class="text-xs text-[#9ca3af] hover:text-white flex items-center gap-1" @click="clearCompleted">
+      <button v-if="hasFinished" class="text-xs text-haze-400 hover:text-white flex items-center gap-1" @click="clearCompleted">
         <i class="pi pi-trash" /> Pulisci
       </button>
     </div>
 
     <div class="flex flex-col gap-3 overflow-y-auto pr-2 flex-1 min-h-0">
-      <div v-if="transfers.length === 0" class="flex flex-col items-center justify-center h-32 text-[#4a4554] border border-dashed border-[#4a4554] rounded-lg">
+      <div v-if="transfers.length === 0" class="flex flex-col items-center justify-center h-32 text-haze-400 border border-dashed border-white/10 rounded-lg">
         <p>Nessun trasferimento attivo</p>
       </div>
-      <div v-for="t in transfers" :key="t.id" class="bg-[#2c2638] p-3 rounded border border-[#4a4554] flex flex-col gap-2">
+      <div v-for="t in transfers" :key="t.id" class="bg-deep-900 p-3 rounded border border-white/10 flex flex-col gap-2">
         <div class="flex justify-between items-start">
           <div class="flex items-center gap-2 overflow-hidden">
             <i v-if="t.type === 'upload'" class="pi pi-cloud-upload text-green-400" />
             <i v-else class="pi pi-cloud-download text-green-400" />
             <div class="flex flex-col min-w-0">
-              <span class="text-[#DBD4D3] font-medium text-sm truncate" :title="t.name">{{ t.name }}</span>
-              <span class="text-xs text-[#9ca3af]">{{ formatBytes(t.progress.loadedBytes) }} / {{ formatBytes(t.progress.totalBytes) }}</span>
+              <span class="text-haze-200 font-medium text-sm truncate" :title="t.name">{{ t.name }}</span>
+              <span class="text-xs text-haze-400">{{ formatBytes(t.progress.loadedBytes) }} / {{ formatBytes(t.progress.totalBytes) }}</span>
             </div>
           </div>
           <div class="text-xs font-mono text-white">{{ t.status === 'completed' ? '100%' : `${t.progress.percentage.toFixed(1)}%` }}</div>
         </div>
 
-        <div class="h-1.5 w-full bg-[#1a1625] rounded-full overflow-hidden">
+        <div class="h-1.5 w-full bg-black/25 rounded-full overflow-hidden">
           <div
             :class="['h-full transition-all duration-300 rounded-full',
               t.status === 'error' || t.status === 'cancelled' ? 'bg-red-500' :
               t.status === 'completed' ? 'bg-green-500' :
-              t.type === 'download' ? 'bg-green-400' : 'bg-[#724CF9]',
+              t.type === 'download' ? 'bg-green-400' : 'bg-brand-500',
               (t.status === 'uploading' || t.status === 'downloading') ? 'animate-pulse' : '']"
             :style="{ width: `${t.progress.percentage}%` }"
           />
@@ -71,12 +71,12 @@ const statusLabel = (status: string) => {
 
         <div class="flex justify-between items-center text-xs">
           <div class="flex items-center gap-2">
-            <span v-if="t.status === 'uploading' || t.status === 'downloading'" class="text-[#9ca3af]">
+            <span v-if="t.status === 'uploading' || t.status === 'downloading'" class="text-haze-400">
               {{ t.progress.speed ? `${formatBytes(t.progress.speed)}/s` : 'Calcolo...' }}
             </span>
             <span
               v-else
-              :class="t.status === 'error' ? 'text-red-400' : t.status === 'completed' ? 'text-green-400' : 'text-[#9ca3af]'"
+              :class="t.status === 'error' ? 'text-red-400' : t.status === 'completed' ? 'text-green-400' : 'text-haze-400'"
             >
               {{ statusLabel(t.status) }}
             </span>

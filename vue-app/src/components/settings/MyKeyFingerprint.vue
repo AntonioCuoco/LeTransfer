@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import KeyFingerprint from '@/src/components/ui/KeyFingerprint.vue'
 import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
-import { jwkThumbprint } from '@/src/utils/fingerprint'
+import { jwkThumbprint } from '@/src/crypto/fingerprint'
 
 /**
  * La MIA impronta (roadmap F2).

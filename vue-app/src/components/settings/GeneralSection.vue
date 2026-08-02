@@ -51,46 +51,45 @@ const onRecoveryComplete = () => {
       />
     </SettingsSection>
 
-    <SettingsSection title="Sicurezza" description="Gestisci la crittografia end-to-end con la recovery key e il 2FA" icon="pi pi-shield">
-      <div class="py-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h4 class="text-white font-medium m-0">Recovery Key</h4>
-            <p class="text-[#9ca3af] text-xs mt-1">
-              {{ isSetupRequired ? 'Non configurata - necessaria per crittografia E2E' : 'Configurata - i tuoi file sono protetti' }}
-            </p>
-          </div>
-          <Button
-            :label="isSetupRequired ? 'Configura Ora' : 'Gestisci'"
-            :severity="isSetupRequired ? 'danger' : 'secondary'"
-            :outlined="!isSetupRequired"
-            :disabled="!isSetupRequired"
-            @click="securityModalVisible = true"
-          />
+    <SettingsSection title="Sicurezza" description="Chiave di recupero e accesso all'account" icon="pi pi-shield">
+      <div class="flex flex-wrap items-center justify-between gap-4 py-4">
+        <div class="min-w-0">
+          <h4 class="m-0 font-medium text-haze-100">Chiave di recupero</h4>
+          <p class="m-0 mt-1 max-w-[64ch] text-xs leading-relaxed text-haze-400">
+            {{ isSetupRequired
+              ? 'Non ancora creata: senza, se perdi questo dispositivo i tuoi file non li riapre più nessuno.'
+              : 'Attiva. Sono le 24 parole con cui puoi riaprire i tuoi file da un altro dispositivo.' }}
+          </p>
         </div>
-        <div v-if="isSetupRequired" class="mt-4 p-3 bg-[#cf1322]/10 border border-[#cf1322]/30 rounded-lg">
-          <p class="text-[#cf1322] text-sm m-0">⚠️ La crittografia end-to-end non è configurata. I tuoi file non sono completamente protetti.</p>
-        </div>
+        <Button
+          v-if="isSetupRequired"
+          label="Creala ora"
+          @click="securityModalVisible = true"
+        />
+        <span v-else class="font-mono text-[0.74rem] text-verified-400">attiva ✓</span>
       </div>
 
-      <div class="py-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h4 class="text-white font-medium m-0">2FA</h4>
-            <p class="text-[#9ca3af] text-xs mt-1">Attiva la 2FA per usare il tuo telefono come ulteriore misura di sicurezza</p>
-          </div>
-          <Button label="Configura Ora" severity="secondary" outlined />
-        </div>
+      <div v-if="isSetupRequired" class="mb-2 rounded-field border border-warn-400/30 bg-warn-400/[0.07] p-3">
+        <p class="m-0 text-sm leading-relaxed text-haze-200">
+          Finché non la crei, la protezione end-to-end funziona solo su questo browser.
+        </p>
       </div>
 
-      <div class="py-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h4 class="text-white font-medium m-0">Elimina il tuo account</h4>
-            <p class="text-[#9ca3af] text-xs mt-1">Elimina il tuo account definitivamente</p>
-          </div>
-          <Button label="Elimina Definitivamente" severity="danger" />
+      <!-- Non implementate: segnate come tali, invece di offrire bottoni che non fanno nulla -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
+        <div>
+          <h4 class="m-0 font-medium text-haze-100">Verifica in due passaggi</h4>
+          <p class="m-0 mt-1 text-xs text-haze-400">Un secondo fattore per l'accesso all'account.</p>
         </div>
+        <span class="font-mono text-[0.74rem] text-haze-400">non ancora disponibile</span>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
+        <div>
+          <h4 class="m-0 font-medium text-haze-100">Elimina l'account</h4>
+          <p class="m-0 mt-1 text-xs text-haze-400">Cancellazione definitiva dell'account e dei file.</p>
+        </div>
+        <span class="font-mono text-[0.74rem] text-haze-400">non ancora disponibile</span>
       </div>
     </SettingsSection>
 

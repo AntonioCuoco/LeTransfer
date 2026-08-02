@@ -5,9 +5,9 @@ import Swal from 'sweetalert2'
 import type { ShareFileRequest, ShareFileResponse, SharedFile, ShareFileOptions } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
-import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/utils/crypto'
+import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { notify } from '@/src/utils/notify'
-import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
+import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { notify } from '@/src/utils/notify'
 import { usePublicLink } from '@/src/composables/usePublicLink'
@@ -10,8 +10,8 @@ import LinkAccessForm from '@/src/components/LinkAccess/LinkAccessForm.vue'
 import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
 import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
 import { fileBadge } from '@/src/utils/fileBadge'
-import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/utils/crypto'
-import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/utils/streamingDownload'
+import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
+import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT } from '@/src/crypto/streamingDownload'
 
 /**
  * Ricezione di un link pubblico (roadmap F1.4) — l'altra metà della facciata.
@@ -186,6 +186,52 @@ function markDecrypted() {
   shell.value?.stampSeal()
 }
 
+// ── Anteprima locale (roadmap F4, scorporata dall'AI on-device) ────────────────
+// Per un file cifrato il server non può generare nessuna miniatura: non ha modo di
+// guardarci dentro. Quindi o l'anteprima la produce il browser di chi riceve, o non
+// esiste. Qui il file viene decifrato IN MEMORIA e mostrato, senza mai toccare il disco.
+const PREVIEWABLE = ['image/', 'application/pdf', 'video/', 'audio/']
+
+const canPreviewLocally = computed(() => {
+  const info = linkInfo.value
+  if (!info || !encryptionInfo.value || isDone.value) return false
+  if (info.formatVersion !== 2 || !info.chunkSize || info.originalSize == null) return false
+  if (info.originalSize > PREVIEW_SIZE_LIMIT) return false
+  return PREVIEWABLE.some((prefix) => info.fileType?.startsWith(prefix))
+})
+
+const isPreviewing = ref(false)
+
+const buildLocalPreview = async () => {
+  if (!publicToken.value || !encryptionInfo.value || isPreviewing.value) return
+  const info = linkInfo.value
+  if (!info?.chunkSize || info.originalSize == null) return
+
+  isPreviewing.value = true
+  try {
+    const url = await downloadFile(publicToken.value, 'preview')
+    if (!url) return
+    const blob = await decryptToBlob({
+      url,
+      key: encryptionInfo.value.key,
+      chunkSize: info.chunkSize,
+      originalSize: info.originalSize,
+      mimeType: info.fileType,
+    })
+    // Sostituisce l'eventuale anteprima precedente senza lasciare object URL appesi.
+    if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = URL.createObjectURL(blob)
+  } catch {
+    notify.error('Non è stato possibile generare l’anteprima. Il download resta disponibile.')
+  } finally {
+    isPreviewing.value = false
+  }
+}
+
+onBeforeUnmount(() => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
+
 const handlePreview = () => {
   if (previewUrl.value) window.open(previewUrl.value, '_blank')
 }
@@ -281,8 +327,11 @@ const handlePreview = () => {
               :is-decrypting="isDecrypting"
               :decrypt-progress="decryptProgress"
               :is-done="isDone"
+              :can-build-preview="canPreviewLocally"
+              :is-building-preview="isPreviewing"
               :on-download="handleDownload"
               :on-preview="handlePreview"
+              :on-build-preview="buildLocalPreview"
             />
 
             <!-- La ricevuta: dopo la decifratura è un fatto, prima è una promessa -->

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex" />
+<title>Verifica anti-bot · LeTransfer</title>
+<!--
+  Stanza isolata per Cloudflare Turnstile.
+
+  PERCHÉ ESISTE QUESTO FILE
+  Lo script di Turnstile gira nella pagina che lo ospita, con pieno accesso a DOM e
+  memoria. Caricarlo nella pagina dell'invio significherebbe farlo convivere con la
+  generazione della chiave AES: un codice di terze parti nella stanza dove nasce il
+  segreto. Qui invece vive su un'ORIGINE DIVERSA (vedi VITE_CAPTCHA_ORIGIN): il
+  cross-origin gli nega l'accesso al documento genitore, e la pagina che cifra può
+  restare su una CSP `script-src 'self'`.
+
+  ⚠️ Nessun attributo `sandbox` sull'iframe genitore: l'isolamento lo dà già
+  l'origine diversa, mentre `sandbox` renderebbe l'origine opaca rompendo l'accesso
+  allo storage di cui Turnstile ha bisogno.
+
+  ⚠️ Deve restare MINIMA: nessuna dipendenza, nessun dato, nessun segreto.
+  L'unica cosa che esce da qui è un token monouso, verso un'origine in lista bianca.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; }
+  #widget { display: flex; justify-content: center; }
+  #fallback {
+    font: 12px/1.4 ui-monospace, Menlo, monospace;
+    color: #b3352f;
+    text-align: center;
+    padding: 8px;
+  }
+</style>
+</head>
+<body>
+<div id="widget"></div>
+<div id="fallback" hidden>Verifica anti-bot non disponibile.</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Origini autorizzate a incorporare questa pagina e a ricevere il token.
+  // In produzione va lasciato SOLO l'origine reale del frontend.
+  var ALLOWED_PARENTS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://letransfer.app',
+    'https://www.letransfer.app'
+  ];
+
+  var params = new URLSearchParams(location.search);
+  var sitekey = params.get('sitekey') || '';
+  var parentOrigin = params.get('parent') || '';
+
+  // Il token esce solo verso un'origine nota: mai postMessage con '*'.
+  if (ALLOWED_PARENTS.indexOf(parentOrigin) === -1) {
+    document.getElementById('fallback').hidden = false;
+    document.getElementById('fallback').textContent = 'Origine non autorizzata.';
+    return;
+  }
+
+  function send(type, token) {
+    parent.postMessage({ source: 'letransfer-captcha', type: type, token: token || null }, parentOrigin);
+  }
+
+  function showFallback() {
+    document.getElementById('fallback').hidden = false;
+    send('error');
+  }
+
+  if (!sitekey) { showFallback(); return; }
+
+  window.onTurnstileReady = function () {
+    if (!window.turnstile) { showFallback(); return; }
+    var id = window.turnstile.render('#widget', {
+      sitekey: sitekey,
+      callback: function (token) { send('token', token); },
+      'error-callback': function () { send('error'); },
+      'expired-callback': function () { send('expired'); },
+      'timeout-callback': function () { send('error'); }
+    });
+
+    // Il token è monouso: il genitore chiede un widget fresco dopo ogni invio.
+    window.addEventListener('message', function (event) {
+      if (event.origin !== parentOrigin) return;
+      if (event.data && event.data.type === 'reset') {
+        try { window.turnstile.reset(id); } catch (e) { /* il widget si rigenera al reload */ }
+      }
+    });
+  };
+
+  var script = document.createElement('script');
+  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileReady';
+  script.async = true;
+  script.defer = true;
+  script.onerror = showFallback;
+  document.head.appendChild(script);
+})();
+</script>
+</body>
+</html>

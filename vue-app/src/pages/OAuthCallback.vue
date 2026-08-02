@@ -34,7 +34,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#2c2638] flex items-center justify-center">
+  <div class="min-h-screen bg-deep-900 flex items-center justify-center">
     <ProgressSpinner />
   </div>
 </template>

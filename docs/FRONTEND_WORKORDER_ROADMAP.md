@@ -49,7 +49,7 @@ Fatti dal codice, che condizionano tutto:
 | **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
 | **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
 | **F4** AI on-device | ⚪ non iniziata | tutto |
-| **F5** Redesign schermate | 🟡 in corso | Auth ✅. Restano: dashboard, tabelle, layout app, profilo, onboarding chiavi |
+| **F5** Redesign schermate | 🟢 chiusa | Auth, dashboard, tabelle, layout app, profilo, impostazioni, onboarding chiavi ✅. Palette legacy azzerata, 5 componenti orfani rimossi |
 
 > ⚠️ **Da decidere prima del pubblico**: i prezzi in `/prezzi` sono segnaposto (i *limiti* sono reali,
 > presi dai default del backend); `security@letransfer.app` deve esistere prima di pubblicare `/sicurezza`.
@@ -170,7 +170,13 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 - [x] **Badge di fiducia** calmi (striscia landing, riga "si decifra nel tuo browser", stati mono).
 - [x] Link **"Come lo verifichi"** → pagina [/sicurezza](../vue-app/src/pages/SecurityPage.vue), con la
   sezione "da cosa **non** ti protegge" e lo stato dichiarato (audit: non ancora).
-- [ ] Hash del bundle / **build riproducibili** — l'unico pezzo di F2 ancora aperto.
+- [x] **Nucleo crittografico isolato e specificato**: i sei file che toccano chiavi o ciphertext
+  vivono in [src/crypto/](../vue-app/src/crypto/) — fuori da `utils/`, senza dipendenze da Vue,
+  store, rete o DOM — con [README.md](../vue-app/src/crypto/README.md) che specifica primitive,
+  formato byte per byte, ciclo di vita delle chiavi, cosa vede il server e **dove la promessa si
+  ferma**. Chi vuole verificare le nostre affermazioni legge una cartella, non tutta l'app.
+- [ ] Hash del bundle / **build riproducibili** — il workflow esiste ([reproducible-build.yml](../.github/workflows/reproducible-build.yml))
+  ma non è mai girato: finché non è verde, `/sicurezza` dichiara onestamente "in lavorazione".
 
 ---
 
@@ -192,7 +198,13 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 
 - [ ] **Scansione pre-invio** (malware/NSFW) via **WebGPU/WASM**, *prima* della cifratura, con UI di stato
   fluida (non tecnica): "controllo il file sul tuo dispositivo…". Blocco con messaggio chiaro se sospetto.
-- [ ] **Anteprime locali** (immagini/PDF) generate client-side, mai server.
+- [x] **Anteprime locali** (immagini/PDF/audio/video) generate client-side, mai server.
+  `decryptToBlob()` in [streamingDownload.ts](../vue-app/src/crypto/streamingDownload.ts) decifra
+  **in memoria** (tetto: 25 MB) e la pagina di ricezione offre "guardalo prima di scaricarlo".
+  Copre il buco vero: per un file cifrato il server **non può** generare miniature — non ha modo
+  di guardarci dentro — quindi prima i file E2E non avevano anteprima affatto.
+  Il motore di decifratura è condiviso col download (`streamDecrypt`): due percorsi, una sola
+  interpretazione del formato.
 - [ ] **Fallback grazioso** dove WebGPU non c'è (Firefox/Safari) — coerente con l'avviso già presente nello
   streaming download.
 
@@ -209,7 +221,27 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
   conferma del codice come **vista della carta** invece che dialog. Logica Cognito invariata.
   → `AppSlider.vue` e `PasswordInput.vue` sono rimasti **orfani**.
 - [ ] **Impostazioni/profilo** ([SettingsPage.vue](../vue-app/src/pages/SettingsPage.vue), [Profile.vue](../vue-app/src/pages/Profile.vue)).
-- [ ] **Onboarding chiavi/recovery** ([RecoveryKeySetup.vue](../vue-app/src/components/RecoveryKeySetup.vue), [AppSecurityPrompt.vue](../vue-app/src/components/AppSecurityPrompt.vue)) — spiegato in modo umano (dove si perdono gli utenti E2E).
+- [x] **Onboarding chiavi/recovery** ([RecoveryKeySetup.vue](../vue-app/src/components/RecoveryKeySetup.vue), [AppSecurityPrompt.vue](../vue-app/src/components/AppSecurityPrompt.vue)).
+  Oltre al vestito, tre difetti sostanziali corretti:
+  - la **verifica non verificava**: chiedeva di incollare le 24 parole subito dopo aver offerto "copia
+    tutto", e un `Ctrl+V` la superava. Ora chiede **tre parole a caso per posizione, digitate**
+    (schema dei portafogli hardware). Nel prompt di sblocco l'incolla resta: lì sono materiale crittografico.
+  - **nessun rientro dopo la chiusura** del dialogo di sblocco: si restava con i file illeggibili fino al
+    refresh. Ora il rientro è l'indicatore del vault nella barra laterale ([useSecurityPrompt.ts](../vue-app/src/composables/useSecurityPrompt.ts)).
+  - parole **coperte all'apertura**, download del file come azione principale e appunti come ripiego avvisato.
+
+### Difetti trovati e corretti durante F5
+- **"Copia link" consegnava link rotti** ([SharedLinksTable.vue](../vue-app/src/components/SharedLinksTable.vue)):
+  il frammento `#key=…` esiste solo alla creazione, il record del server no — dopo un refresh si copiava
+  un URL senza chiave e il destinatario scaricava ciphertext inservibile. Ora il frammento viene
+  ricostruito dal vault locale, e se il vault è chiuso si rifiuta di copiare invece di sbagliare in silenzio.
+- **Numeri inventati** in dashboard (`+12%`, "di 10 GB disponibili") e tre statistiche sempre a zero
+  (`downloaded`/`archived`/`deleted`): rimosse insieme alle prop che le rendevano possibili.
+- **"Membro dal"** era calcolato da `auth_time` = ultimo accesso, quindi mostrava sempre oggi. Rimosso:
+  nel token non esiste la data di iscrizione.
+- **Tab "Organizzazione"** renderizzava lo stesso componente di "Integrazioni". Rimossa.
+- **Bottoni finti** (2FA, elimina account) senza alcun handler: ora dichiarati "non ancora disponibile".
+- **`isEncrypted` non era mai mostrato**: la proprietà centrale del prodotto ora ha una colonna sua.
 
 ---
 

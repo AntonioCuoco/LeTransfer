@@ -7,18 +7,18 @@ defineProps<{
 </script>
 
 <template>
-  <div class="bg-[#3c364c] border border-[#4a4554]/30 rounded-xl overflow-hidden">
-    <div class="flex items-center gap-3 px-6 py-4 border-b border-[#4a4554]/30">
-      <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-[#724CF9]/20">
-        <i :class="icon" class="text-primary" />
+  <section class="overflow-hidden rounded-panel border border-white/10 bg-white/[0.03]">
+    <div class="flex items-center gap-3 border-b border-white/10 px-6 py-4">
+      <div class="grid h-8 w-8 place-items-center rounded-chip bg-brand-500/15">
+        <i :class="icon" class="text-brand-400" />
       </div>
       <div>
-        <h3 class="font-semibold text-white">{{ title }}</h3>
-        <p v-if="description" class="text-xs text-[#9ca3af]">{{ description }}</p>
+        <h3 class="m-0 font-semibold text-haze-100">{{ title }}</h3>
+        <p v-if="description" class="m-0 text-xs text-haze-400">{{ description }}</p>
       </div>
     </div>
     <div class="p-6">
       <slot />
     </div>
-  </div>
+  </section>
 </template>
