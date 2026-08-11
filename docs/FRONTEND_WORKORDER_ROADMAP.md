@@ -6,8 +6,9 @@
 >
 > **Stack reale** (verificato): Vue 3.5 + TS, **PrimeVue v4** (preset custom `theme/preset.ts` + PassThrough
 > `theme/pt.ts`), **Tailwind v4**, Pinia, vue-router, @tanstack/vue-query, vee-validate+zod, **GSAP**
-> (primitivi di movimento, F0.2), sweetalert2. **three.js** è installato ma tuttora inutilizzato: se
-> l'hero ambient non si fa, va disinstallato invece di restare a pesare nel `package.json`.
+> (primitivi di movimento, F0.2), sweetalert2. **three.js rimosso** il 2026-08-02: installato e mai usato,
+> l'ambient dell'hero lo fa già `CipherField` in canvas 2D. Una dipendenza inerte non pesa nel bundle ma
+> pesa nel lockfile, negli audit e nella superficie della build riproducibile — che qui è un claim pubblico.
 > Dark mode via classe `.dark` (`stores/theme.ts`). Brand: **viola `#724cf9`** su shell `#2c2638`.
 
 ---
@@ -46,7 +47,7 @@ Fatti dal codice, che condizionano tutto:
 | Fase | Stato | Cosa resta |
 |---|---|---|
 | **F0** Design system | 🟢 chiusa | Token unificati ✅, **font self-hosted** ✅, **primitivi GSAP** ✅ (F0.2), **pelle PrimeVue** ✅ (F0.4: raggi/focus/motion nel preset, voce tipografica in `pt.ts`) |
-| **F1** Invio senza account | 🟢 quasi chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici ✅, **progresso per-file** ✅, **QR del link** ✅. Resta solo: upload in background (da decidere se serve davvero) |
+| **F1** Invio senza account | 🟢 chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici, **progresso per-file**, **QR del link**, **upload in background**, drop delle cartelle ✅ |
 | **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
 | **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
 | **F4** AI on-device | ⚪ non iniziata | tutto |
@@ -151,25 +152,44 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 - [x] Drop zone grande con **doppia interazione** (drag-and-drop **+** "Scegli file") e stato hover evidente
   (bordo/colore che reagisce) — pattern standard del settore.
 - [x] **Coda multi-file** con progresso **per-file** reale (no spinner indeterminato).
-  `fileProgress` in [useGuestUpload.ts](../vue-app/src/composables/useGuestUpload.ts) è calcolato sui
-  **byte di ciphertext accettati dallo storage**, non sul tempo: i file dello zip occupano intervalli
-  noti del flusso, e i byte caricati dicono a che punto è ciascuno. Aggiunto anche `onUploadProgress`
-  sul percorso zip, che prima avanzava a scatti da 10 MB — con pochi file piccoli l'invio è una parte
-  sola e le barre sarebbero saltate da 0 a 100 senza dire niente.
+  La matematica sta in [transferProgress.ts](../vue-app/src/utils/transferProgress.ts) — modulo puro,
+  quindi **testato** ([transferProgress.test.ts](../vue-app/src/utils/transferProgress.test.ts)) — ed è
+  calcolata sui **byte di ciphertext accettati dallo storage**, non sul tempo: i file dello zip occupano
+  intervalli noti del flusso, e i byte caricati dicono a che punto è ciascuno. Aggiunto anche
+  `onUploadProgress` sul percorso zip, che prima avanzava a scatti da 10 MB — con pochi file piccoli
+  l'invio è una parte sola e le barre sarebbero saltate da 0 a 100 senza dire niente.
+  I test hanno trovato un difetto vero: si mostrava **100% su un file ancora in volo** (arrotondamento
+  per eccesso). Ora la percentuale è troncata: il 100% è una promessa e non si fa prima che sia vera.
   ⚠️ Approssimazione dichiarata: le intestazioni zip (~30 byte per file) non sono contate.
 - [x] Opzioni invio: password (opz.), scadenza (clamp lato UI ai limiti guest), max download.
-- [ ] **Upload in background** (uscire dalla scheda del widget mentre carica): non fatto, l'invio
-  vive dentro la carta. Va deciso se serve prima o dopo il "modello a collezione" (§F1.2).
-- [ ] `useFileDragAndDrop` / `useFolderDragAndDrop` **non** sono riusati: il widget ha i suoi
-  handler inline (poche righe, nessuno stato condiviso). I due composable restano per la dashboard —
-  se resteranno inutilizzati anche lì, vanno tolti, non lasciati a marcire.
+- [x] **Upload in background.** Lo stato dell'invio è passato da composable a **store Pinia**
+  ([stores/guestUpload.ts](../vue-app/src/stores/guestUpload.ts)): prima viveva quanto il componente,
+  quindi cambiare pagina durante la cifratura smontava il widget e **il link finiva nel vuoto** — il
+  trasferimento riusciva davvero, ma non lo sapeva più nessuno. Ora si può navigare mentre si cifra;
+  al ritorno la carta ritrova il suo stato (per questo `summary` e `claimName` stanno nello store: i
+  `File` originali a quel punto non esistono più). Una **pillola**
+  ([GuestTransferPill.vue](../vue-app/src/components/landing/GuestTransferPill.vue)) segue l'invio
+  sulle altre pagine pubbliche e annuncia il link pronto — senza, "in background" vorrebbe dire solo
+  "invisibile". Non compare sulla facciata: lì la carta racconta già tutto.
+  Resta la guardia `beforeunload`: navigare ora è sicuro, **chiudere la scheda no** e su quello
+  possiamo solo chiedere conferma.
+  ⚠️ La pillola vive in `PublicShell`: se l'utente entra nell'area autenticata (`/app`) durante un
+  invio, l'upload continua ma l'indicatore sparisce. Da coprire quando si unificherà con
+  [stores/transfer.ts](../vue-app/src/stores/transfer.ts), che per l'area autenticata fa già code e concorrenza.
+- [x] **Riuso di `useFolderDragAndDrop`** — non per eleganza: il widget leggeva `dataTransfer.files`,
+  che su una **cartella trascinata non restituisce il contenuto**. Si offrivano le cartelle col bottone
+  e le si rifiutava col trascinamento, sotto la scritta "trascina qui". Ora il drop passa dal composable
+  condiviso, l'unico che entra nelle cartelle (`webkitGetAsEntry` ricorsivo). Aggiunta l'opzione
+  `preserveRelativePath`: senza, l'albero si appiattirebbe e due `foto.jpg` in sottocartelle diverse si
+  sovrascriverebbero dentro lo zip. Tolto anche il vicolo cieco "browser non supportato", che rifiutava
+  pure il trascinamento di un singolo file: ora ripiega sui file semplici.
 
 ### F1.2 Cifratura client + upload guest
 - [x] Generare **chiave file casuale** (non la coppia RSA) → cifrare a chunk con `encryptChunkFramed`
   (formato v2, riuso `crypto.ts`).
 - [x] **Turnstile**: caricare il widget, ottenere il token, passarlo a `guest/upload/init`.
 - [x] Flusso `init → urls → PUT ciphertext su S3/R2 → complete` verso `/api/guest/upload/*`
-  ([useGuestUpload.ts](../vue-app/src/composables/useGuestUpload.ts), con istanze axios dedicate:
+  ([stores/guestUpload.ts](../vue-app/src/stores/guestUpload.ts), con istanze axios dedicate:
   nessun interceptor globale, così un URL presigned non riceve mai un header `Authorization`).
 - [x] Costruire il link finale con la **chiave nel fragment** (`createKeyHash`): `…/share/<token>#<chiave>`.
 - [x] Gestione errori/abuso: `413` (troppo grande), rate limit, Turnstile fallito → messaggi chiari e umani.
@@ -270,6 +290,14 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 Applicare il design system (F0) a tutto il resto, schermata per schermata:
 - [ ] **Dashboard** ([Homepage.vue](../vue-app/src/pages/Homepage.vue), [FilesTable.vue](../vue-app/src/components/FilesTable.vue), [FileStatsGrid.vue](../vue-app/src/components/FileStatsGrid.vue)).
 - [ ] **Gestione link** ([SharedLinksTable.vue](../vue-app/src/components/SharedLinksTable.vue)) + modale condivisione ([ShareFileModal.vue](../vue-app/src/components/ShareFileModal.vue)).
+  Vestito ancora da fare; nel merito è arrivato il **QR** anche qui (2026-08-02), con un prerequisito
+  che valeva più della feature: la ricostruzione del link con la chiave dal vault è stata estratta in
+  [useShareLink.ts](../vue-app/src/composables/useShareLink.ts). Prima quella regola viveva dentro
+  l'handler di "copia"; ogni nuovo modo di consegnare un link avrebbe dovuto reimpararla, e bastava
+  dimenticarne un pezzo per rimettere in giro link senza chiave. Ora c'è **un posto solo** che sa
+  costruire un link completo — o rifiutarsi, spiegando perché — ed è
+  [testato](../vue-app/src/composables/useShareLink.test.ts) proprio sul caso negativo.
+  Nella modale di condivisione il QR non passa dal vault: lì il link è appena nato e ha già il frammento.
 - [ ] **Layout app** ([AppHeader.vue](../vue-app/src/components/layout/AppHeader.vue), [AppSidebar.vue](../vue-app/src/components/layout/AppSidebar.vue), [AppFooter.vue](../vue-app/src/components/layout/AppFooter.vue)).
 - [x] **Auth** ([LoginPage.vue](../vue-app/src/pages/LoginPage.vue), [RegisterPage.vue](../vue-app/src/pages/RegisterPage.vue)):
   dentro `PublicShell` e la carta chiara condivisa; campi numerati, avviso BLOC MAIUSC, criteri password live,
@@ -304,7 +332,7 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
 
 | Nuovi (da creare) | Riuso/refactor |
 |---|---|
-| `SendBox`, `EncryptingViz`, `PrivacyReceipt`, `RecipientFingerprintDialog`, `PricingTable`, `ClaimTransferDialog`, `OnDeviceScanStatus`, `TrustBadges`, header/footer pubblici | `crypto.ts`, `streamingDownload.ts`, `keyStore.ts`, `useFileDragAndDrop`, `useS3MultipartUpload`→`useGuestUpload`, `ShareAccessPage`, `SharedLinksTable`, `ShareFileModal`, `RecoveryKeySetup` |
+| `SendBox`, `EncryptingViz`, `PrivacyReceipt`, `RecipientFingerprintDialog`, `PricingTable`, `ClaimTransferDialog`, `OnDeviceScanStatus`, `TrustBadges`, header/footer pubblici, `QrCode`, `GuestTransferPill` | `crypto.ts`, `streamingDownload.ts`, `keyStore.ts`, `useFolderDragAndDrop` (anche nel widget guest), `useS3MultipartUpload`→`stores/guestUpload`, `ShareAccessPage`, `SharedLinksTable`, `ShareFileModal`, `RecoveryKeySetup` |
 
 ---
 

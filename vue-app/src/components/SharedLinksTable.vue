@@ -4,8 +4,8 @@ import { useConfirm } from 'primevue/useconfirm'
 import { notify } from '@/src/utils/notify'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
-import { useEncryptionStore } from '@/src/stores/encryption'
-import { createKeyHash } from '@/src/crypto/crypto'
+import { useShareLink } from '@/src/composables/useShareLink'
+import QrCode from '@/src/components/ui/QrCode.vue'
 import type { SharedLink } from '@/src/types'
 
 /**
@@ -20,9 +20,11 @@ import type { SharedLink } from '@/src/types'
  * il vecchio `handleCopyLink(data.url)` copiava l'URL monco: il destinatario apriva
  * il link, non vedeva nessun badge E2E e si scaricava ciphertext inservibile.
  *
- * Il frammento va quindi RICOSTRUITO qui, prendendo la chiave del file dal vault
- * locale. Se il vault è chiuso o la chiave non è su questo dispositivo, si rifiuta
- * di copiare e si spiega perché — meglio un errore chiaro che un link rotto in giro.
+ * Il frammento va quindi RICOSTRUITO, prendendo la chiave del file dal vault locale.
+ * Se il vault è chiuso o la chiave non è su questo dispositivo, ci si rifiuta di
+ * consegnare il link e si spiega perché — meglio un errore chiaro che un link rotto
+ * in giro. Quella regola vive ora in [useShareLink.ts](../composables/useShareLink.ts),
+ * perché qui i modi di consegnare un link sono due: copia e **QR**.
  */
 
 dayjs.extend(relativeTime)
@@ -36,15 +38,18 @@ const props = defineProps<{
 }>()
 
 const confirm = useConfirm()
-const encryptionStore = useEncryptionStore()
-
-const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
+const { resolveShareUrl } = useShareLink()
 
 const settingsModalVisible = ref(false)
 const currentLink = ref<SharedLink | null>(null)
 const newPassword = ref('')
 const newExpiry = ref<Date | null>(null)
 const updating = ref(false)
+
+const qrModalVisible = ref(false)
+const qrUrl = ref('')
+const qrFileName = ref('')
+const qrIsEncrypted = ref(false)
 
 const isLinkActive = (link: SharedLink) => !link.revokedAt && !dayjs(link.expiresAt).isBefore(dayjs())
 
@@ -69,27 +74,37 @@ const openSettings = (link: SharedLink) => {
 
 /** Ricostruisce il link completo di chiave. Vedi la nota in testa al file. */
 const handleCopyLink = async (link: SharedLink) => {
-  let url = link.url
-
-  if (link.isEncrypted) {
-    if (!encryptionStore.isUnlocked) {
-      notify.warning('Sblocca prima le chiavi: senza, il link verrebbe copiato senza la chiave e sarebbe inservibile.')
-      return
-    }
-    const keyData = await encryptionStore.getKey(link.s3Key)
-    if (!keyData) {
-      notify.error('La chiave di questo file non è su questo dispositivo: il link non si può ricostruire. Rigeneralo da dove hai caricato il file.')
-      return
-    }
-    url = `${FRONTEND_URL}/share/${link.publicToken}${createKeyHash(keyData)}`
+  const resolved = await resolveShareUrl(link)
+  if (!resolved.ok) {
+    if (resolved.reason === 'locked') notify.warning(resolved.message)
+    else notify.error(resolved.message)
+    return
   }
 
   try {
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(resolved.url)
     notify.success(link.isEncrypted ? 'Link copiato — chiave inclusa nel frammento #' : 'Link copiato negli appunti')
   } catch {
     notify.error('Impossibile copiare negli appunti')
   }
+}
+
+/**
+ * QR dello stesso link, dalla stessa fonte: se la chiave non è ricostruibile il
+ * codice non si apre proprio, invece di mostrare un quadrato che porta a un file
+ * illeggibile.
+ */
+const handleShowQr = async (link: SharedLink) => {
+  const resolved = await resolveShareUrl(link)
+  if (!resolved.ok) {
+    if (resolved.reason === 'locked') notify.warning(resolved.message)
+    else notify.error(resolved.message)
+    return
+  }
+  qrUrl.value = resolved.url
+  qrFileName.value = link.fileName
+  qrIsEncrypted.value = link.isEncrypted
+  qrModalVisible.value = true
 }
 
 const handleSaveSettings = async () => {
@@ -201,6 +216,7 @@ const askConfirm = (event: Event, message: string, danger: boolean, accept: () =
         <div class="flex items-center justify-end gap-1">
           <template v-if="isLinkActive(data)">
             <Button v-tooltip.top="'Copia link'" icon="pi pi-copy" text @click="handleCopyLink(data)" />
+            <Button v-tooltip.top="'Codice QR'" icon="pi pi-qrcode" text @click="handleShowQr(data)" />
             <Button v-tooltip.top="'Impostazioni'" icon="pi pi-cog" text @click="openSettings(data)" />
             <Button
               v-tooltip.top="'Rigenera'"
@@ -251,6 +267,23 @@ const askConfirm = (event: Event, message: string, danger: boolean, accept: () =
     <template #footer>
       <Button label="Annulla" severity="secondary" outlined @click="settingsModalVisible = false" />
       <Button label="Salva" :loading="updating" @click="handleSaveSettings" />
+    </template>
+  </Dialog>
+
+  <!-- QR del link: il modo diretto per aprire un file sul telefono che hai in mano.
+       Sfondo bianco sempre, anche in tema scuro: un QR si legge per contrasto. -->
+  <Dialog v-model:visible="qrModalVisible" modal header="Codice QR del link" :style="{ width: 'min(360px, 94vw)' }">
+    <div class="flex flex-col items-center gap-3 py-1">
+      <div class="rounded-well bg-white p-3">
+        <QrCode :value="qrUrl" :size="200" label="Codice QR del link di condivisione" />
+      </div>
+      <p class="max-w-[30ch] text-center text-[0.84rem] font-semibold text-haze-100">{{ qrFileName }}</p>
+      <p v-if="qrIsEncrypted" class="max-w-[32ch] text-center font-mono text-[0.68rem] leading-normal text-haze-400">
+        contiene la chiave: chi lo inquadra scarica il file
+      </p>
+    </div>
+    <template #footer>
+      <Button label="Chiudi" severity="secondary" outlined @click="qrModalVisible = false" />
     </template>
   </Dialog>
 </template>

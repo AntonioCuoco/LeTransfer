@@ -1,4 +1,5 @@
-import { ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { defineStore } from 'pinia'
 import axios from 'axios'
 import { downloadZip } from 'client-zip'
 import {
@@ -10,6 +11,14 @@ import {
   createKeyHash,
   FILE_FORMAT_VERSION,
 } from '@/src/crypto/crypto'
+import {
+  planFileSlots,
+  initialFileProgress,
+  applyTransferRatio,
+  completeFileProgress,
+  type FileProgress,
+  type FileSlot,
+} from '@/src/utils/transferProgress'
 
 /**
  * Invio SENZA account (guest). La chiave nasce nel browser e finisce SOLO nel
@@ -23,7 +32,14 @@ import {
  *
  * Il progresso è **per-file** (F1.1) e misurato sui byte accettati dallo storage: anche
  * quando i file finiscono in un unico zip, `fileProgress` dice quale è già partito e
- * quale no. Vedi `updateFileProgress` per come si passa dall'uno all'altro.
+ * quale no. La matematica sta in [utils/transferProgress.ts](../utils/transferProgress.ts).
+ *
+ * **Perché uno store e non un composable.** Un composable vive quanto il componente
+ * che lo chiama: cambiare pagina durante l'invio smontava il widget e il link
+ * finiva nel vuoto — il trasferimento era già riuscito, ma nessuno te lo diceva più.
+ * Qui lo stato sta fuori dai componenti, così si può navigare mentre si cifra e la
+ * carta ritrova il suo stato al ritorno. È anche il motivo della guardia
+ * `beforeunload`: la navigazione ora è sicura, chiudere la scheda no.
  *
  * Contratto backend: BACKEND_API_DOCS.md §4.9.
  */
@@ -42,33 +58,6 @@ export interface GuestUploadOptions {
   password?: string
   expiresInHours?: number
   maxDownloads?: number
-}
-
-export type FileTransferStatus = 'pending' | 'active' | 'done'
-
-/** Stato di UN file dentro l'invio (roadmap F1.1: progresso per-file, non uno spinner). */
-export interface FileProgress {
-  name: string
-  /** MIME dichiarato dal browser: serve alla UI per la stessa targhetta della lista d'invio. */
-  type: string
-  size: number
-  /** 0–100, dedotto dai byte di ciphertext davvero caricati. */
-  percent: number
-  status: FileTransferStatus
-}
-
-/**
- * Dove vive un file dentro il flusso caricato, in byte.
- * Nel percorso zip i file si susseguono nell'ordine dato, quindi conoscere
- * l'intervallo [start, end) di ciascuno basta a tradurre "byte caricati" in
- * "a che punto è questo file".
- */
-interface FileSlot {
-  name: string
-  type: string
-  size: number
-  start: number
-  end: number
 }
 
 interface InitResponse {
@@ -114,12 +103,39 @@ const MAX_PART_RETRIES = 3
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
 
-export function useGuestUpload() {
+/**
+ * `webkitRelativePath` è valorizzato dal selettore di cartelle; per i file trascinati
+ * il percorso arriva invece nel nome (vedi `preserveRelativePath` in
+ * useFolderDragAndDrop). Entrambi finiscono nello stesso posto: il percorso dentro lo zip.
+ */
+function toTransferInput(file: File): { name: string; type: string; size: number; path?: string } {
+  const withPath = file as File & { webkitRelativePath?: string }
+  return {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    path: withPath.webkitRelativePath || undefined,
+  }
+}
+
+export const useGuestUploadStore = defineStore('guestUpload', () => {
   const status = ref<GuestUploadStatus>('idle')
   const progress = ref(0)
   const fileProgress = ref<FileProgress[]>([])
   const result = ref<GuestUploadResult | null>(null)
   const errorMessage = ref<string | null>(null)
+
+  /**
+   * Descrizione umana del trasferimento ("3 file · cifrato · scade tra 7 giorni") e
+   * nome da usare nel claim. Stanno qui e non nel widget perché devono sopravvivere
+   * a un cambio di pagina: al ritorno la carta deve poter ricostruire cosa hai mandato.
+   */
+  const summary = ref('')
+  const claimName = ref('')
+
+  const isBusy = computed(
+    () => status.value === 'preparing' || status.value === 'uploading' || status.value === 'finalizing',
+  )
 
   // Istanze axios dedicate: NESSUN interceptor globale. Il canale guest è no-auth e
   // gli URL S3/R2 presigned non devono mai ricevere l'header Authorization.
@@ -138,74 +154,8 @@ export function useGuestUpload() {
   let pending: Uint8Array[] = []
   let pendingLen = 0
 
-  // Mappa "byte caricati → quale file, e quanto" (vedi FileSlot).
+  // Mappa "byte caricati → quale file, e quanto" (vedi utils/transferProgress.ts).
   let slots: FileSlot[] = []
-
-  function planFileProgress(files: File[]) {
-    let offset = 0
-    slots = files.map((file) => {
-      const withPath = file as File & { webkitRelativePath?: string }
-      const slot: FileSlot = {
-        name: withPath.webkitRelativePath || file.name,
-        type: file.type,
-        size: file.size,
-        start: offset,
-        end: offset + file.size,
-      }
-      offset += file.size
-      return slot
-    })
-    fileProgress.value = slots.map((slot) => ({
-      name: slot.name,
-      type: slot.type,
-      size: slot.size,
-      percent: 0,
-      status: 'pending' as FileTransferStatus,
-    }))
-  }
-
-  /**
-   * Traduce l'avanzamento globale in avanzamento per-file.
-   *
-   * `ratio` è la frazione di trasferimento completata (0–1), misurata sui byte di
-   * ciphertext effettivamente accettati dallo storage: è **il progresso vero**, non
-   * una stima temporale. La riportiamo nello spazio dei byte in chiaro e la
-   * confrontiamo con l'intervallo di ciascun file.
-   *
-   * Approssimazione dichiarata: lo zip intercala ~30 byte di intestazione per file,
-   * che qui non contiamo. Su file da megabyte lo scarto è invisibile; l'ordine di
-   * completamento resta comunque quello reale, perché client-zip scrive i file
-   * nell'ordine in cui glieli diamo.
-   */
-  function updateFileProgress(ratio: number) {
-    if (slots.length === 0) return
-    const plainTotal = slots[slots.length - 1].end
-    const uploaded = ratio * plainTotal
-
-    for (let index = 0; index < slots.length; index += 1) {
-      const slot = slots[index]
-      const entry = fileProgress.value[index]
-      if (!entry) continue
-
-      // Un file vuoto non ha byte da attendere: è finito appena tocca il suo turno.
-      const filled = slot.size === 0
-        ? (uploaded >= slot.start ? 1 : 0)
-        : Math.min(1, Math.max(0, (uploaded - slot.start) / slot.size))
-
-      const percent = Math.round(filled * 100)
-      const nextStatus: FileTransferStatus = filled >= 1 ? 'done' : percent > 0 ? 'active' : 'pending'
-
-      if (entry.percent !== percent) entry.percent = percent
-      if (entry.status !== nextStatus) entry.status = nextStatus
-    }
-  }
-
-  function completeFileProgress() {
-    for (const entry of fileProgress.value) {
-      entry.percent = 100
-      entry.status = 'done'
-    }
-  }
 
   function updateProgress() {
     let inFlight = 0
@@ -215,7 +165,7 @@ export function useGuestUpload() {
     const uploaded = Math.min(totalBytes, completedBytes + inFlight)
     const ratio = totalBytes > 0 ? uploaded / totalBytes : 0
     progress.value = Math.min(100, Math.round(ratio * 100))
-    updateFileProgress(ratio)
+    applyTransferRatio(slots, fileProgress.value, ratio)
   }
 
   function messageForError(error: unknown): string {
@@ -247,7 +197,8 @@ export function useGuestUpload() {
     activeBytes.clear()
     pending = []
     pendingLen = 0
-    planFileProgress(files)
+    slots = planFileSlots(files.map(toTransferInput))
+    fileProgress.value = initialFileProgress(slots)
     abortController.value = new AbortController()
     activeUpload.value = null
 
@@ -298,7 +249,7 @@ export function useGuestUpload() {
       expiresAt: data.expiresAt ?? null,
     }
     progress.value = 100
-    completeFileProgress()
+    completeFileProgress(fileProgress.value)
     status.value = 'done'
   }
 
@@ -420,10 +371,16 @@ export function useGuestUpload() {
     return out
   }
 
+  /**
+   * Se i file vengono da una cartella, l'archivio prende il nome della cartella.
+   * Il percorso può stare in `webkitRelativePath` (selettore) o nel nome (trascinamento,
+   * vedi `preserveRelativePath`): qui interessa solo il primo segmento, da qualunque
+   * dei due arrivi.
+   */
   function deriveArchiveName(files: File[]): string {
     const first = files[0] as File & { webkitRelativePath?: string }
-    const relativePath = first.webkitRelativePath
-    if (relativePath && relativePath.includes('/')) {
+    const relativePath = first.webkitRelativePath || first.name
+    if (relativePath.includes('/')) {
       return `${relativePath.split('/')[0]}.zip`
     }
     return 'trasferimento.zip'
@@ -516,9 +473,20 @@ export function useGuestUpload() {
   }
 
   // ── API pubblica ─────────────────────────────────────────────────────────────
-  async function upload(files: File[], options: GuestUploadOptions = {}) {
-    const busy = status.value === 'preparing' || status.value === 'uploading' || status.value === 'finalizing'
-    if (busy || files.length === 0) return
+
+  /**
+   * `label` è ciò che la carta mostrerà a fine invio ("3 file · cifrato · scade
+   * tra 7 giorni"): la riceviamo qui perché dopo l'avvio il widget può essere
+   * smontato, e a quel punto i `File` originali non esistono più.
+   */
+  async function upload(
+    files: File[],
+    options: GuestUploadOptions = {},
+    label: { summary: string; claimName: string } = { summary: '', claimName: '' },
+  ) {
+    if (isBusy.value || files.length === 0) return
+    summary.value = label.summary
+    claimName.value = label.claimName
     if (files.length === 1) {
       await uploadSingle(files[0], options)
     } else {
@@ -545,6 +513,8 @@ export function useGuestUpload() {
     fileProgress.value = []
     result.value = null
     errorMessage.value = null
+    summary.value = ''
+    claimName.value = ''
     completedBytes = 0
     totalBytes = 0
     activeBytes.clear()
@@ -555,5 +525,32 @@ export function useGuestUpload() {
     activeUpload.value = null
   }
 
-  return { status, progress, fileProgress, result, errorMessage, upload, abort, reset }
-}
+  /**
+   * Cambiare pagina durante l'invio ora è sicuro (lo stato vive qui), **chiudere la
+   * scheda no**: il browser interrompe le richieste e il trasferimento muore a metà.
+   * Questa è l'unica cosa che possiamo fare — chiedere conferma. Il listener sta solo
+   * mentre serve: un `beforeunload` sempre attivo è il modo classico per rendere
+   * un sito fastidioso.
+   */
+  if (typeof window !== 'undefined') {
+    const warnOnClose = (event: BeforeUnloadEvent) => event.preventDefault()
+    watch(isBusy, (busy) => {
+      if (busy) window.addEventListener('beforeunload', warnOnClose)
+      else window.removeEventListener('beforeunload', warnOnClose)
+    })
+  }
+
+  return {
+    status,
+    progress,
+    fileProgress,
+    result,
+    errorMessage,
+    summary,
+    claimName,
+    isBusy,
+    upload,
+    abort,
+    reset,
+  }
+})

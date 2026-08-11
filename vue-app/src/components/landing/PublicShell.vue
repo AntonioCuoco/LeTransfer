@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import '@/src/assets/landing.css'
 import BrandSeal from './BrandSeal.vue'
 import CipherField from './CipherField.vue'
+import GuestTransferPill from './GuestTransferPill.vue'
 import { useRoute, useRouter } from 'vue-router'
 
 /**
@@ -59,6 +60,9 @@ defineExpose({ surge, settle, calm, stampSeal })
 
 <template>
   <div class="ltx-root bg-[#1f0d49] text-[#F2ECFF] antialiased">
+    <!-- Sta nel guscio, non nella facciata: l'invio continua mentre leggi
+         "come funziona" o ti registri, e deve poterlo dire su qualsiasi pagina pubblica. -->
+    <GuestTransferPill />
     <section class="ltx-hero relative isolate flex min-h-dvh flex-col">
       <CipherField ref="cipherField" />
       <div class="ltx-grain" aria-hidden="true" />

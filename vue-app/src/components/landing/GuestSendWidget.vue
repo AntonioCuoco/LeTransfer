@@ -4,15 +4,17 @@ import { useRouter } from 'vue-router'
 import BrandSeal from './BrandSeal.vue'
 import PrivacyReceipt from './PrivacyReceipt.vue'
 import QrCode from '@/src/components/ui/QrCode.vue'
-import { useGuestUpload } from '@/src/composables/useGuestUpload'
+import { storeToRefs } from 'pinia'
+import { useGuestUploadStore } from '@/src/stores/guestUpload'
 import { useTurnstile } from '@/src/composables/useTurnstile'
+import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
 import { savePendingClaim } from '@/src/composables/usePendingClaim'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
 
 /**
  * Widget d'invio "senza account": aggiungi → configura → invia.
- * 1 file → upload diretto; più file / cartella → zip in streaming (useGuestUpload).
+ * 1 file → upload diretto; più file / cartella → zip in streaming (stores/guestUpload).
  * La chiave resta nel fragment del link; il server vede solo ciphertext.
  * Emette start/done/reset così che la pagina faccia reagire il campo generativo.
  */
@@ -24,7 +26,12 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
-const { status, progress, fileProgress, result, errorMessage, upload, reset } = useGuestUpload()
+
+// Lo stato dell'invio vive nello store, non qui: così cifrare e navigare non si
+// escludono a vicenda, e tornando sulla facciata la carta ritrova il suo stato.
+const guestUpload = useGuestUploadStore()
+const { status, progress, fileProgress, result, errorMessage, summary: transferSummary } = storeToRefs(guestUpload)
+const { upload, reset } = guestUpload
 const { enabled: turnstileEnabled, mount: mountTurnstile, getToken: getTurnstileToken, refresh: refreshTurnstile } = useTurnstile()
 
 const files = ref<File[]>([])
@@ -34,11 +41,9 @@ const password = ref('')
 const maxDownloads = ref<number | null>(null)
 const optionsOpen = ref(false)
 
-const isDragging = ref(false)
 const qrOpen = ref(false)
 const copyLabel = ref('Copia')
 const claimLabel = ref('Reclama questo invio →')
-const transferSummary = ref('')
 
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const folderInputEl = ref<HTMLInputElement | null>(null)
@@ -100,9 +105,23 @@ function formatSize(bytes: number): string {
   return `${bytes} B`
 }
 
-function addFiles(list: FileList | null | undefined) {
+function addFiles(list: FileList | File[] | null | undefined) {
   if (list && list.length) files.value.push(...Array.from(list))
 }
+
+/**
+ * Il drop passa dal composable condiviso, non da un handler a mano: è l'unico che
+ * sa **entrare nelle cartelle** (`webkitGetAsEntry` ricorsivo). Prima il widget
+ * leggeva `dataTransfer.files`, che su una cartella trascinata non restituisce il
+ * contenuto — e la drop zone invitava a trascinare proprio accanto al bottone
+ * "Cartelle". `preserveRelativePath` tiene l'albero dentro lo zip.
+ */
+const { isDragOver, dragProps } = useFolderDragAndDrop({
+  onFilesDropped: (dropped) => {
+    if (view.value === 'compose') addFiles(dropped)
+  },
+  preserveRelativePath: true,
+})
 function openFilePicker() {
   if (view.value === 'compose') fileInputEl.value?.click()
 }
@@ -119,17 +138,16 @@ function onFolderInput(event: Event) {
   addFiles(input.files)
   input.value = ''
 }
-function onDrop(event: DragEvent) {
-  isDragging.value = false
-  if (view.value !== 'compose') return
-  addFiles(event.dataTransfer?.files)
-}
 function removeFile(index: number) {
   files.value.splice(index, 1)
 }
 
+function claimNameOf(): string {
+  return files.value.length === 1 ? files.value[0].name : `${files.value.length} file`
+}
+
 function summarize(): string {
-  const filePart = files.value.length === 1 ? files.value[0].name : `${files.value.length} file`
+  const filePart = claimNameOf()
   const expiryLabel = expiryDays.value === 1 ? '24 ore' : `${expiryDays.value} giorni`
   const extras: string[] = []
   if (passwordEnabled.value && password.value) extras.push('protetto')
@@ -141,14 +159,19 @@ async function startUpload() {
   if (files.value.length === 0) return
   // Se TURNSTILE_SECRET è impostata sul backend, init richiede un token valido.
   const turnstileToken = await getTurnstileToken()
-  transferSummary.value = summarize()
   emit('start')
-  await upload(files.value, {
-    turnstileToken,
-    expiresInHours: expiryDays.value * 24,
-    password: passwordEnabled.value && password.value ? password.value : undefined,
-    maxDownloads: maxDownloads.value ?? undefined,
-  })
+  await upload(
+    files.value,
+    {
+      turnstileToken,
+      expiresInHours: expiryDays.value * 24,
+      password: passwordEnabled.value && password.value ? password.value : undefined,
+      maxDownloads: maxDownloads.value ?? undefined,
+    },
+    // Le etichette vanno consegnate ora: da qui in poi il widget può essere smontato
+    // (si può navigare durante l'invio) e i `File` non ci sarebbero più.
+    { summary: summarize(), claimName: claimNameOf() },
+  )
   refreshTurnstile()
 }
 
@@ -176,7 +199,8 @@ function claimTransfer() {
     savePendingClaim({
       publicToken: result.value.publicToken,
       manageToken: result.value.manageToken,
-      fileName: files.value.length === 1 ? files.value[0].name : `${files.value.length} file`,
+      // Dallo store, non dai `File`: al ritorno da un'altra pagina la coda è vuota.
+      fileName: guestUpload.claimName,
     })
   }
   claimLabel.value = 'Ti portiamo alla registrazione…'
@@ -218,11 +242,8 @@ onMounted(() => {
       <!-- Aggiungi -->
       <div
         class="rounded-[14px] border-[1.5px] border-dashed p-3.5 transition-colors"
-        :class="isDragging ? 'border-[#7c4dff] bg-[#efe9fb]' : 'border-[#cdbff0] bg-[#f5f1fd]'"
-        @dragenter.prevent="isDragging = true"
-        @dragover.prevent="isDragging = true"
-        @dragleave.prevent="isDragging = false"
-        @drop.prevent="onDrop"
+        :class="isDragOver ? 'border-[#7c4dff] bg-[#efe9fb]' : 'border-[#cdbff0] bg-[#f5f1fd]'"
+        v-bind="dragProps"
       >
         <div class="grid grid-cols-2 gap-2.5">
           <button type="button" class="flex items-center justify-center gap-2 rounded-[11px] border border-[#e9e3f6] bg-white p-2.5 text-[0.9rem] font-semibold transition hover:-translate-y-px hover:border-[#7c4dff]" @click="openFilePicker">
@@ -238,7 +259,7 @@ onMounted(() => {
             Cartelle
           </button>
         </div>
-        <div class="mt-2.5 text-center text-[0.8rem] text-[#9086ad]">oppure trascina i file qui</div>
+        <div class="mt-2.5 text-center text-[0.8rem] text-[#9086ad]">oppure trascina qui file o cartelle</div>
       </div>
 
       <!-- Lista file (scrolla oltre l'altezza massima) -->

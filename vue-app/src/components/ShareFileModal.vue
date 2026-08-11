@@ -8,6 +8,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVerifiedKeys'
 import { keyThumbprint } from '@/src/crypto/fingerprint'
 import RecipientFingerprintDialog from '@/src/components/RecipientFingerprintDialog.vue'
+import QrCode from '@/src/components/ui/QrCode.vue'
 import type { DynamoDBFile } from '@/src/types'
 
 const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL || window.location.origin
@@ -30,6 +31,8 @@ const email = ref('')
 const emailError = ref('')
 const generatedLink = ref('')
 const linkCopied = ref(false)
+// Qui il QR non ha bisogno del vault: il link è appena nato e ha già il frammento.
+const qrOpen = ref(false)
 const usePassword = ref(false)
 const password = ref('')
 const expiresInHours = ref<number>(168)
@@ -280,11 +283,29 @@ const handleCopyLink = () => {
             />
           </div>
           <Button
+            v-tooltip.top="'Codice QR'"
+            icon="pi pi-qrcode"
+            :severity="qrOpen ? undefined : 'secondary'"
+            :outlined="!qrOpen"
+            aria-label="Mostra il codice QR del link"
+            :aria-expanded="qrOpen"
+            @click="qrOpen = !qrOpen"
+          />
+          <Button
             :label="linkCopied ? 'Copiato!' : 'Copia'"
             :icon="linkCopied ? 'pi pi-check' : 'pi pi-copy'"
             :severity="linkCopied ? 'success' : undefined"
             @click="handleCopyLink"
           />
+        </div>
+
+        <div v-if="generatedLink && qrOpen" class="flex flex-col items-center gap-2">
+          <div class="rounded-well bg-white p-3">
+            <QrCode :value="generatedLink" :size="188" label="Codice QR del link di condivisione" />
+          </div>
+          <p class="max-w-[32ch] text-center font-mono text-[0.68rem] leading-normal text-haze-400">
+            contiene la chiave: chi lo inquadra scarica il file
+          </p>
         </div>
 
         <Button

@@ -111,11 +111,12 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 - [ ] **Endpoint di segnalazione abuso** (`POST /report`) + meccanismo di **revoca rapida** e quarantena dei link segnalati.
 - [ ] Metadati streaming (`formatVersion`/`chunkSize`/`originalSize`) gestiti anche per il flusso senza account.
 
-**Frontend 🖥️**
-- [ ] Generazione **chiave file casuale** lato client (non la coppia RSA utente) → cifra il file → chiave nel **fragment `#`** del link (riusa `createKeyHash`/pattern esistente).
-- [ ] UI di invio "alla WeTransfer": drag-and-drop, progress, copia link — senza login. Riusa `useS3MultipartUpload` adattato al percorso senza account.
-- [ ] Riuso della pagina di ricezione ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue) + `usePublicLink`) per il download.
-- [ ] Scansione anti-abuso **on-device pre-upload** (versione minima; la piena è E5): blocco tipi/pattern pericolosi prima della cifratura.
+**Frontend 🖥️** — chiuso il 2026-08-02 tranne l'anti-abuso. Dettaglio in [FRONTEND_WORKORDER_ROADMAP.md](FRONTEND_WORKORDER_ROADMAP.md) §F1.
+- [x] Generazione **chiave file casuale** lato client (non la coppia RSA utente) → cifra il file → chiave nel **fragment `#`** del link (riusa `createKeyHash`/pattern esistente).
+- [x] UI di invio "alla WeTransfer": drag-and-drop (file **e cartelle**), **progresso per-file reale**, copia link e **QR** — senza login. Multi-file impacchettato in **zip streaming**, un solo link.
+- [x] **Upload in background**: lo stato vive in uno store, si può navigare mentre si cifra e una pillola annuncia il link pronto.
+- [x] Riuso della pagina di ricezione ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue) + `usePublicLink`) per il download.
+- [ ] Scansione anti-abuso **on-device pre-upload** (versione minima; la piena è E5): blocco tipi/pattern pericolosi prima della cifratura. ← **unico item aperto di E1**, ed è quello del rischio §7 (Firefox Send).
 
 **DoD:** un utente non registrato manda un file cifrato e condivide un link funzionante; il server vede solo ciphertext; scadenza e cancellazione automatiche attive; rate limit e segnalazione/revoca funzionanti.
 
@@ -204,8 +205,15 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 
 > Da fare **dopo** che le feature portanti sono in piedi: prima la sostanza (E0–E6), poi la forma coerente su tutto. Proton è il riferimento perché comunica privacy con **calma, chiarezza e fiducia**, non con allarmismo tecnico.
 
+> **Nota di stato (2026-08-02).** Questa fase è molto più avanti di come la descrive il
+> paragrafo: il design system esiste ed è applicato (F0 chiusa), e le schermate pubbliche,
+> di autenticazione e di onboarding chiavi sono già rifatte (F5). Restano dashboard,
+> gestione link e impostazioni. Il tracciamento fine sta in
+> [FRONTEND_WORKORDER_ROADMAP.md](FRONTEND_WORKORDER_ROADMAP.md).
+
 ### Principi da adottare (lezione Proton)
-- [ ] **Design system unico**: token di colore/tipografia/spaziatura, componenti coerenti (oggi PrimeVue v4 — consolidare preset + `pt`).
+- [x] **Design system unico**: token di colore/tipografia/spaziatura in `assets/tokens.css`, font
+  self-hosted, primitivi di movimento GSAP, preset PrimeVue + `pt` allineati agli stessi token.
 - [ ] **Calma e chiarezza**: gerarchia forte, molto respiro, azioni primarie evidenti, zero rumore.
 - [ ] **La privacy è visibile ma serena**: badge "cifrato in questo browser", ricevuta di privacy (E2), fingerprint — presentati come rassicurazione, non come muro tecnico.
 - [ ] **Identità coerente col dossier**: linguaggio visivo "sigillo/cifra" (mono per dati e fingerprint, accento singolo, neutri scelti) — vedi identità del dossier strategico.

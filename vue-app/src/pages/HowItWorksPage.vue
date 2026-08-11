@@ -7,7 +7,7 @@ import { usePageEnter } from '@/src/composables/useMotion'
  * "Come funziona" — la spiegazione tecnica come contenuto, non come marketing.
  * Struttura a binario numerato (Stripe docs): a sinistra il passo in parole umane,
  * a destra il fatto tecnico in mono. Ogni numero corrisponde a codice che esiste
- * davvero in utils/crypto.ts e composables/useGuestUpload.ts.
+ * davvero in crypto/crypto.ts e stores/guestUpload.ts.
  */
 
 const router = useRouter()

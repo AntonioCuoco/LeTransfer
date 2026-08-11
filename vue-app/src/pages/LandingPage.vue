@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import GuestSendWidget from '@/src/components/landing/GuestSendWidget.vue'
 import { usePageEnter } from '@/src/composables/useMotion'
+import { useGuestUploadStore } from '@/src/stores/guestUpload'
 
 /**
  * Landing pubblica — facciata "invio senza account" (direzione approvata).
@@ -31,6 +32,14 @@ function onEncryptDone() {
 function onReset() {
   shell.value?.calm()
 }
+
+// Si può tornare qui a invio già avviato (o già finito): il fondo deve raccontare
+// lo stato vero, non ripartire da fermo solo perché il componente è nuovo.
+const guestUpload = useGuestUploadStore()
+onMounted(() => {
+  if (guestUpload.isBusy) shell.value?.surge()
+  else if (guestUpload.status === 'done') shell.value?.settle()
+})
 </script>
 
 <template>
