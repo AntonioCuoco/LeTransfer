@@ -46,11 +46,23 @@ const steps = [
   },
 ]
 
+/**
+ * ⚠️ Questa tabella è una dichiarazione pubblica: ogni riga deve corrispondere al
+ * codice, non a come ci piacerebbe che fosse.
+ *
+ * Correzione del 2026-08-02: qui c'era scritto che il nome del file il server **non**
+ * lo vede negli invii senza account. Era **falso**. Il client lo manda in
+ * `guest/upload/init` e di nuovo in `complete` ([stores/guestUpload.ts](../stores/guestUpload.ts)),
+ * il backend lo salva nel record `SharedLinks` (BACKEND_API_DOCS §3.2) e la pagina di
+ * ricezione lo mostra *prima* di decifrare — quindi non potrebbe essere altrimenti.
+ * Come renderlo vero davvero: FRONTEND_WORKORDER_ROADMAP §F2 "nome del file cifrato".
+ */
 const serverKnows = [
   ['Blocchi cifrati', 'sì — sono l’unica cosa che riceve', false],
   ['Dimensione e data', 'sì — servono a far scadere il link', false],
+  ['Indirizzo IP di chi carica', 'sì — serve contro gli abusi', false],
+  ['Il nome del file', 'sì — lo mostriamo a chi riceve, prima di decifrare', false],
   ['Il contenuto del file', 'no', true],
-  ['Il nome del file', 'no, se invii senza account', true],
   ['La chiave di cifratura', 'no — non l’ha mai vista', true],
 ]
 </script>

@@ -41,7 +41,7 @@ const notCovered = [
   },
   {
     title: 'I metadati minimi',
-    body: 'Vediamo dimensione, orario e indirizzo IP di chi carica — servono a far scadere i link e a fermare gli abusi. Non li vendiamo, ma non possiamo dire di non averli.',
+    body: 'Vediamo dimensione, orario, indirizzo IP di chi carica e il nome del file — quest’ultimo perché la pagina di ricezione lo mostra prima di decifrare. Servono a far scadere i link e a fermare gli abusi. Non li vendiamo, ma non possiamo dire di non averli.',
   },
   {
     title: 'Il codice che ti serviamo',

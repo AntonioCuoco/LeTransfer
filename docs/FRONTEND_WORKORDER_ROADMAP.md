@@ -47,7 +47,7 @@ Fatti dal codice, che condizionano tutto:
 | Fase | Stato | Cosa resta |
 |---|---|---|
 | **F0** Design system | 🟢 chiusa | Token unificati ✅, **font self-hosted** ✅, **primitivi GSAP** ✅ (F0.2), **pelle PrimeVue** ✅ (F0.4: raggi/focus/motion nel preset, voce tipografica in `pt.ts`) |
-| **F1** Invio senza account | 🟢 chiusa | Routing, `SendBox`, cifratura+upload guest, ricezione ridisegnata, header/footer pubblici, **progresso per-file**, **QR del link**, **upload in background**, drop delle cartelle ✅ |
+| **F1** Invio senza account | 🟢 chiusa | Facciata, cifratura+upload guest, ricezione, progresso per-file, QR, upload in background, drop cartelle, segnalazione, revoca, **controllo pre-invio** ✅ |
 | **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
 | **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
 | **F4** AI on-device | ⚪ non iniziata | tutto |
@@ -231,6 +231,46 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 
 ---
 
+### F1.5 Anti-abuso lato UI (le leve che il backend aveva già)
+
+> Architettura completa e piano di evoluzione: **[ANTI_ABUSO.md](ANTI_ABUSO.md)**.
+> In breve: un controllo nel browser di chi invia **non è anti-abuso** (chi abusa non esegue il
+> nostro JS, chiama l'API con `curl`). La difesa vera è il comportamento osservabile sul ciphertext
+> e la segnalazione di chi riceve — l'unico che il file lo vede davvero.
+
+- [x] **Segnalazione** ([ReportLinkDialog.vue](../vue-app/src/components/LinkAccess/ReportLinkDialog.vue))
+  sulla pagina di ricezione. `POST /api/guest/report/:publicToken` esisteva da tempo lato backend e
+  **non aveva un bottone**: la quarantena automatica scatta a soglia di segnalazioni, quindi quella
+  soglia non poteva essere raggiunta da nessuno. Macchina montata, leva scollegata.
+  La UI non promette la rimozione immediata: prometterla trasformerebbe il bottone in un modo per
+  censurare il link di qualcun altro.
+- [x] **Revoca** dell'invio nella carta del mittente (`POST /api/guest/:publicToken/revoke`).
+  ⚠️ Limite dichiarato all'utente: il `manageToken` è una capability mostrata una volta sola e non
+  viene conservato, quindi si può revocare **finché la carta è aperta**. L'alternativa è un "link di
+  gestione" da conservare — più potente, ma è un secondo segreto da custodire: da decidere.
+- [x] **Controllo strutturale pre-invio** ([fileInspection.ts](../vue-app/src/utils/fileInspection.ts),
+  [test](../vue-app/src/utils/fileInspection.test.ts)): magic bytes contro estensione dichiarata,
+  override bidirezionale `U+202E` e doppia estensione nel nome, eseguibili e voci cifrate dentro gli
+  archivi (letti dal *central directory*, senza decomprimere), macro OOXML, Office legacy, PDF con
+  contenuto attivo.
+  - **Si segnala solo l'inganno, non il rischio**: un `.exe` che si chiama `.exe` non produce alcun
+    avviso. Mandare build è un caso d'uso centrale, e avvisare su tutto insegna a ignorare gli avvisi —
+    a quel punto passa inosservato anche quello che conta. I test "non deve segnalare" difendono
+    esplicitamente questa scelta.
+  - **Avvisa, non blocca**: solo i tre casi di *travestimento* (nome camuffato, doppia estensione,
+    contenuto che contraddice l'estensione) chiedono una spunta "so cosa sto inviando".
+  - **A fette, mai il file intero** (testa 64 KB + coda 64 KB + eventuale central directory): la RAM
+    costante è una proprietà di progetto dell'uploader.
+  - **Caricamento pigro**: chunk separato da 2,5 kB gzip, scaricato al primo file aggiunto. Chi apre la
+    facciata e legge soltanto non paga niente.
+  - **Il risultato non lascia il dispositivo.** Mai. Mandarlo al server sarebbe leak di metadati di
+    contenuto: romperemmo la promessa per difenderla.
+- [ ] **Da chiedere al backend** (ANTI_ABUSO §5): Turnstile anche su `report`, deduplicazione per
+  (IP, token) e soglia **relativa** ai download. Oggi tre richieste da tre IP mettono in quarantena
+  il link di chiunque.
+
+---
+
 ## F2 — Privacy verificabile (E2): il differenziatore reso UI
 
 - [x] **`PrivacyReceipt`** in invio e in ricezione (varianti `send`/`receive`).
@@ -252,6 +292,18 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
   ferma**. Chi vuole verificare le nostre affermazioni legge una cartella, non tutta l'app.
 - [ ] Hash del bundle / **build riproducibili** — il workflow esiste ([reproducible-build.yml](../.github/workflows/reproducible-build.yml))
   ma non è mai girato: finché non è verde, `/sicurezza` dichiara onestamente "in lavorazione".
+- [x] **Corretta una dichiarazione falsa** (2026-08-02). `/come-funziona` sosteneva che il server
+  **non** vede il nome del file negli invii senza account. Falso: il client lo manda in
+  `guest/upload/init` e in `complete`, il backend lo salva nel record `SharedLinks`
+  (BACKEND_API_DOCS §3.2) e la pagina di ricezione lo mostra **prima** di decifrare — non potrebbe
+  funzionare altrimenti. Ora la tabella dice la verità, e `/sicurezza` elenca il nome fra i metadati.
+  Su una pagina che esiste per essere verificabile, una riga ottimista vale più danno di dieci
+  funzionalità mancanti.
+- [ ] **Renderla vera invece che ritirarla — nome del file cifrato.** Il nome viaggerebbe dentro i
+  metadati cifrati, e la pagina di ricezione lo mostrerebbe **dopo** aver letto la chiave dal
+  fragment (che ha già al primo caricamento). Richiede una modifica **backend**: `complete` deve
+  accettare un blob opaco al posto di `fileName`, e la risposta di `/shared-links/:token` smettere di
+  restituirlo. Costo medio, guadagno reale: è l'ultimo metadato di contenuto che ci resta in mano.
 
 ---
 
@@ -325,6 +377,54 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
 - **Tab "Organizzazione"** renderizzava lo stesso componente di "Integrazioni". Rimossa.
 - **Bottoni finti** (2FA, elimina account) senza alcun handler: ora dichiarati "non ancora disponibile".
 - **`isEncrypted` non era mai mostrato**: la proprietà centrale del prodotto ora ha una colonna sua.
+
+---
+
+## Test — tre livelli, tre domande diverse
+
+> Criterio unico per decidere se qualcosa merita un test: **se sbaglia, sbaglia in silenzio**.
+> Un QR storto sembra un QR; una barra sfasata sembra una barra; un link senza chiave sembra un link —
+> e fallisce a casa di qualcun altro, giorni dopo.
+
+| Livello | Comando | Ambiente | Domanda a cui risponde |
+|---|---|---|---|
+| **logica** (`*.test.ts`) | `npm run test:logica` | node | «Il calcolo è giusto?» Crittografia, QR, progresso per-file, controllo pre-invio, ricostruzione dei link, orchestrazione dell'invio guest |
+| **componenti** (`*.spec.ts`) | `npm run test:componenti` | happy-dom | «L'utente vede e può fare la cosa giusta?» Macchina a stati della carta d'invio, cancello del controllo pre-invio, segnalazione, pillola, QR |
+| **end-to-end** (`e2e/`) | `npm run test:e2e` | Chromium, sul **build di produzione** | «La promessa del prodotto regge?» |
+
+`npm run test:tutto` esegue i primi due e poi il terzo.
+
+### Cosa verifica davvero l'end-to-end
+
+[e2e/percorso-critico.spec.ts](../vue-app/e2e/percorso-critico.spec.ts) fa il giro completo — file
+scelto → cifrato → caricato → link → pagina di ricezione → decifrato → scaricato — e confronta i byte
+in uscita con quelli in entrata. **La rete è finta, la crittografia no**: Web Crypto, gli stream e le
+`Blob.slice` girano davvero, ed è esattamente ciò che un DOM simulato finge di eseguire.
+
+Le due asserzioni che valgono più di tutte le altre, ripetute a livello unitario e end-to-end:
+
+1. **la chiave non compare mai in una richiesta al nostro server**;
+2. **il testo in chiaro non compare mai in ciò che si carica** (nemmeno i nomi dei file dentro lo zip).
+
+Se una modifica le rompe, ha rotto il prodotto, non un test.
+
+### Due cose che l'end-to-end ha già insegnato
+
+- Lo stub dello storage ha dovuto implementare il **preflight CORS** e l'header
+  **`Access-Control-Expose-Headers: ETag`**: senza, il PUT cross-origin non parte e il multipart non
+  può ricomporre l'oggetto. È lo stesso requisito che il bucket R2 vero deve soddisfare
+  (BACKEND_API_DOCS §5-bis, punto 2 del cutover) — il test lo rende una condizione verificata invece
+  di una riga in un documento.
+- In headless si disattiva `showSaveFilePicker` per esercitare il **percorso di ripiego** (blob +
+  ancora), che è poi quello che ricevono davvero gli utenti di Firefox e Safari.
+
+### Cosa resta scoperto (dichiarato, non dimenticato)
+
+- Area autenticata: dashboard, gestione link, impostazioni — nessun test di componente.
+- Percorsi che dipendono da API del browser non disponibili in headless: `showSaveFilePicker` vero,
+  drag&drop di **cartelle** (`webkitGetAsEntry`), Turnstile.
+- Il movimento (`v-lift`, `v-reveal`): si giudica a occhio, non con un'asserzione. Nei test di
+  componente le direttive sono segnaposto.
 
 ---
 

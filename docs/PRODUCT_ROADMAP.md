@@ -53,13 +53,25 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 - **Ricezione pubblica**: pagina di accesso link con flusso a 3 step + chiave nel fragment.
 
 ### ⏳ Da completare / non ancora fatto
-- **Binario PROD/Express + Infra** (obbligatorio per la sicurezza reale): verifica firma JWT (#15), CSP autoritativa (#3), CORS, HTTPS, residenza dati → Epica **E0**.
-- **Migrazione storage S3 → Cloudflare R2** (egress $0; da fare prima di E1) → Epica **E0.5**.
-- **Invio senza account** (Porta A) → Epica **E1**.
-- **Privacy verificabile** (fingerprint destinatario #5, oggi rinviato; ricevuta di privacy; client open-source) → Epica **E2**.
-- **Piani & funnel di conversione** → Epica **E3**.
-- **Post-quantum, AI on-device, compliance B2B, key transparency, team, mobile** → Epiche **E4–E9**.
-- **Ridisegno UI/UX ispirato a Proton** → §6.
+
+> **Aggiornato il 2026-08-02** dopo aver riletto [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) (che dichiara di
+> essere allineato al codice) e il frontend. Questo elenco era **molto più pessimista della realtà**: E1 ed E2
+> sono sostanzialmente costruite. Ciò che resta è quasi tutto **infrastruttura e decisioni**, non codice.
+
+- **E0 — binario PROD**: firma JWT ✅, CORS + no error-leak ✅, ownership multipart ✅, password policy ✅.
+  Restano **CSP autoritativa (#3) e HTTPS**, entrambi **bloccati dal dominio**, più la residenza dati da fissare.
+- **E0.5 — R2**: il **codice c'è** (switch automatico via env, ACL/SSE omessi su R2). Resta l'**infra**: bucket,
+  API token, CORS, **lifecycle su `uploads/guest/`**, copia dati, flip. ⚠️ È il vero blocco all'apertura al pubblico.
+- **E1 — invio senza account**: backend ✅ e frontend ✅ (facciata, cifratura, progresso per-file, QR, background).
+  Restano: **UI di segnalazione abuso e di revoca** (gli endpoint esistono e non hanno un bottone) e il
+  **controllo pre-invio on-device**.
+- **E2 — privacy verificabile**: fingerprint destinatario ✅, ricevuta di privacy ✅, nucleo crypto isolato e
+  documentato ✅. Resta la **build riproducibile** (workflow scritto, mai eseguito).
+- **E3 — piani**: limiti applicati **server-side** ✅, claim end-to-end ✅. Restano **prezzi**, limiti mostrati
+  in UI, Stripe, notifiche di download.
+- **E4–E9** (post-quantum, AI on-device, compliance B2B, key transparency, team, mobile): non iniziate.
+- **§6 Ridisegno UI/UX**: design system ✅ e schermate pubbliche/auth/onboarding ✅; restano dashboard,
+  gestione link e impostazioni.
 
 ---
 
@@ -104,19 +116,22 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 ### Epica E1 — Porta A: invio senza account, cifrato  · **P0** · ⚙️🖥️ · **XL**
 > Il canale di acquisizione di massa. Cifrato E2E ma senza login. Riusa il lato ricezione esistente; costruisce il lato invio da zero con controlli anti-abuso.
 
-**Backend ⚙️**
-- [ ] Nuovo prefisso storage per gli invii senza account con **TTL/auto-scadenza** (es. `uploads/guest/{token}/`), separato da `uploads/files/{sub}/`. Configurare lifecycle S3 per cancellazione automatica.
-- [ ] Endpoint di **upload senza autenticazione** (single + multipart) **senza `authenticateToken`**, ma con: rate limit per IP aggressivo, cap dimensione (es. 2–5 GB free), cap numero invii/IP/giorno.
-- [ ] Endpoint **creazione link senza account** (variante no-auth di `POST /api/shared-links`): record `SharedLinks` **senza owner**, con scadenza breve di default (es. 3–7 gg) e `maxDownloads` opzionale.
-- [ ] **Endpoint di segnalazione abuso** (`POST /report`) + meccanismo di **revoca rapida** e quarantena dei link segnalati.
-- [ ] Metadati streaming (`formatVersion`/`chunkSize`/`originalSize`) gestiti anche per il flusso senza account.
+**Backend ⚙️** — **fatto** (documentato in [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §4.9, §5-quater). Restano due passi **infra**, non di codice.
+- [x] Prefisso storage `uploads/guest/{transferId}/` separato da `uploads/files/{sub}/`, con `ttl` DynamoDB sul record.
+- [ ] ⚠️ **Lifecycle sul bucket** per la cancellazione automatica degli oggetti: passo manuale su R2/S3, **non risulta fatto**. Senza, alla scadenza muore il link ma i byte restano — e noi promettiamo che spariscono.
+- [ ] ⚠️ **TTL DynamoDB da abilitare in console** sulla tabella `SharedLinks`.
+- [x] Endpoint di **upload senza autenticazione** (`/api/guest/upload/{init,urls,complete,abort}`), con rate limit per IP, **Turnstile** su `init`, cap dimensione **rivalidato sull'oggetto reale** (`HeadObject` → `413` + cleanup).
+- [x] **Creazione link senza account**: record `SharedLinks` senza owner (`isGuest`, `transferId`, `manageTokenHash`, `abuseReports`, `ttl`), retention clampata a `GUEST_MAX_EXPIRY`, `maxDownloads` opzionale.
+- [x] **Segnalazione abuso** (`POST /api/guest/report/:publicToken`) + **revoca rapida** (`POST /api/guest/:publicToken/revoke` col `manageToken`, confronto a tempo costante) + **quarantena automatica** a soglia.
+- [x] Metadati streaming (`formatVersion`/`chunkSize`/`originalSize`) gestiti anche nel flusso senza account.
 
 **Frontend 🖥️** — chiuso il 2026-08-02 tranne l'anti-abuso. Dettaglio in [FRONTEND_WORKORDER_ROADMAP.md](FRONTEND_WORKORDER_ROADMAP.md) §F1.
 - [x] Generazione **chiave file casuale** lato client (non la coppia RSA utente) → cifra il file → chiave nel **fragment `#`** del link (riusa `createKeyHash`/pattern esistente).
 - [x] UI di invio "alla WeTransfer": drag-and-drop (file **e cartelle**), **progresso per-file reale**, copia link e **QR** — senza login. Multi-file impacchettato in **zip streaming**, un solo link.
 - [x] **Upload in background**: lo stato vive in uno store, si può navigare mentre si cifra e una pillola annuncia il link pronto.
 - [x] Riuso della pagina di ricezione ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue) + `usePublicLink`) per il download.
-- [ ] Scansione anti-abuso **on-device pre-upload** (versione minima; la piena è E5): blocco tipi/pattern pericolosi prima della cifratura. ← **unico item aperto di E1**, ed è quello del rischio §7 (Firefox Send).
+- [x] **Segnalazione abuso e revoca** nella UI: gli endpoint esistevano da tempo e **non avevano un bottone**, quindi la quarantena automatica non poteva scattare. È la difesa che conta davvero su un canale zero-knowledge — chi riceve è l'unico che il file lo vede.
+- [x] Controllo **on-device pre-upload** (versione minima): analisi strutturale locale prima della cifratura. ⚠️ **Non è anti-abuso** e non va chiamato così: chi abusa non esegue il nostro JS, chiama l'API con `curl`. Serve al mittente disattento. Il perché, e cosa sarebbe invece una difesa vera, in **[ANTI_ABUSO.md](ANTI_ABUSO.md)**.
 
 **DoD:** un utente non registrato manda un file cifrato e condivide un link funzionante; il server vede solo ciphertext; scadenza e cancellazione automatiche attive; rate limit e segnalazione/revoca funzionanti.
 
@@ -138,8 +153,11 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 ### Epica E3 — Piani, limiti e funnel di conversione  · **P1** · ⚙️🖥️ · **M**
 > Monetizzazione + il ponte senza-account → Free → Pro/Business.
 
-- [ ] Definire limiti per tier (proposta in §4) e applicarli lato backend (dimensione, retention, n° trasferimenti, cronologia).
-- [ ] **"Reclama il trasferimento"**: dopo un invio senza account, invito a creare account gratuito per estendere retention + notifiche di download + cronologia.
+- [x] Definire limiti per tier e **applicarli lato backend**: `loadPlan` + enforcement su dimensione
+  (`413` a init **e** ricontrollo reale a complete) e retention (clamp sui link). Manca solo il **contatore
+  trasferimenti/mese**, che richiede tracking usage. Vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §5-ter.
+- [x] **"Reclama il trasferimento"**: dopo un invio senza account, invito a creare account gratuito
+  (`POST /api/share/claim`; il `publicToken` non cambia, i link già distribuiti restano validi).
 - [ ] Pagina **prezzi/piani** + gestione abbonamento (integrazione pagamenti, es. Stripe).
 - [ ] Notifiche di download (email/in-app) per invii con account.
 - [ ] Migrazione trasferimento senza account → account (associa il record `SharedLinks` all'utente al momento del claim).

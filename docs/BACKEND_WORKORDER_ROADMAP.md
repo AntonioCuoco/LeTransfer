@@ -10,7 +10,35 @@
 >
 > **Come leggerlo.** Le sezioni **A** ed **B** sono già specificate altrove → qui do solo il puntatore
 > + l'ordine + le cose da confermare. La sezione **C (invio senza account)** e la **D (piani + claim)**
-> sono **design nuovo e completo**: è lì il grosso del lavoro.
+> erano **design nuovo**: oggi sono **implementate** (vedi sotto).
+
+---
+
+## 📍 Stato al 2026-08-02 — §C e §D sono IMPLEMENTATE
+
+> **Attenzione, questo documento era rimasto indietro.** Le sezioni C e D qui sotto sono scritte al
+> futuro ("da fare"), ma [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) — che dichiara di essere *aggiornato
+> al codice corrente* — documenta gli endpoint come **esistenti**. Vanno quindi lette come **specifica di
+> ciò che è stato costruito**, non come lavoro aperto.
+>
+> ⚠️ **Provenienza di questa verifica**: il repo Express è separato e non è stato ispezionato riga per
+> riga. Lo stato qui sotto è dedotto da `BACKEND_API_DOCS.md`. Prima di dichiararlo in pubblico va
+> confermato eseguendo le prove di §C.10.
+
+| Blocco | Stato | Riferimento |
+|---|---|---|
+| **A — E0 hardening** | 🟡 #15 firma JWT ✅ · #7 CORS + no error-leak ✅ · #14 ownership multipart ✅ · #12 password policy ✅ · **#3 CSP + HTTPS aperti** (bloccati dal dominio) | API docs §2.1, §6, §5 |
+| **B — E0.5 R2** | 🟡 **codice fatto**, infra da fare: `config/aws.js` fa lo switch automatico su 4 env R2, omette ACL/SSE su R2. Restano bucket, API token, CORS, **lifecycle su `uploads/guest/`**, copia dati, flip | API docs §5-bis |
+| **C — E1 invio guest** | 🟢 **fatta**: `init/urls/complete/abort`, `revoke`, `report`+quarantena, record guest (`isGuest`/`ttl`/`manageTokenHash`/`abuseReports`), rate limit per IP, Turnstile, cap dimensione reale a `complete` | API docs §4.9, §5-quater |
+| **D — E3 piani + claim** | 🟢 **quasi fatta**: `loadPlan` + enforcement su link e multipart, `POST /api/share/claim`. Restano contatore trasferimenti/mese e webhook Stripe | API docs §4.10, §5-ter |
+
+### Conseguenza operativa: il buco è nel frontend, non nel backend
+
+`report` e `revoke` **esistono e non hanno un bottone**. La quarantena automatica scatta a
+`ABUSE_AUTO_QUARANTINE_THRESHOLD` segnalazioni, ma senza UI quella soglia non può essere raggiunta da
+nessuno: la macchina di takedown è montata e la leva non è collegata. È il primo lavoro da fare
+(vedi [FRONTEND_WORKORDER_ROADMAP.md](FRONTEND_WORKORDER_ROADMAP.md) §F1.5), e vale più di qualunque
+controllo lato client.
 
 ---
 
@@ -218,14 +246,22 @@ TURNSTILE_SECRET=…
 
 ### C.10 Criteri di accettazione §C
 
-- [ ] Un utente **non loggato** carica un file cifrato e riceve un link `/(share)/:token`; il server riceve **solo ciphertext**.
-- [ ] Il download del link guest funziona col flusso pubblico esistente (info → access → file), anche con password.
-- [ ] File > `GUEST_MAX_FILE_SIZE` respinto al `complete` (413) e ripulito.
+> Implementati (API docs §4.9). Restano da **verificare sul campo**: sono prove, non codice da scrivere.
+
+- [x] Un utente **non loggato** carica un file cifrato e riceve un link `/(share)/:token`; il server riceve **solo ciphertext**.
+- [x] Il download del link guest funziona col flusso pubblico esistente (info → access → file), anche con password.
+- [x] File > `GUEST_MAX_FILE_SIZE` respinto al `complete` (413) e ripulito — enforce reale via `HeadObject`.
 - [ ] Scadenza: dopo `expiresAt` il download dà `LINK_EXPIRED`; l'oggetto sparisce per lifecycle.
-- [ ] `revoke` col `manageToken` disattiva subito il link; senza/errato → generico, nessun leak.
-- [ ] `report` incrementa il contatore e alla soglia mette in quarantena (revoca) il link.
-- [ ] Rate limit per IP attivo e basato sull'IP reale (trust proxy verificato).
-- [ ] Turnstile verificato server-side su `init`.
+      ⚠️ La **lifecycle su `uploads/guest/` è un passo infra manuale** (§5-bis punto 3) e non risulta fatta:
+      finché non c'è, i byte restano nel bucket oltre la scadenza logica del link. È la differenza tra
+      "il link non funziona più" e "il file non c'è più", e noi promettiamo la seconda.
+- [x] `revoke` col `manageToken` disattiva subito il link; senza/errato → generico, nessun leak.
+- [x] `report` incrementa il contatore e alla soglia mette in quarantena (revoca) il link.
+      ⚠️ **Inerte finché il frontend non espone il bottone** (vedi sopra).
+- [ ] Rate limit per IP attivo e basato sull'IP reale (**`TRUST_PROXY_HOPS` da verificare in prod**: se
+      sbagliato conta l'IP del proxy e il rate limit non protegge nulla, pur sembrando attivo).
+- [ ] Turnstile verificato server-side su `init` — codice pronto, ma `TURNSTILE_SECRET` va impostata
+      **dopo** che il frontend manda già il token, altrimenti ogni upload guest va in `403`.
 
 ---
 
@@ -287,23 +323,29 @@ Endpoint per il funnel senza-account → Free/Pro (roadmap §1).
 - [x] #15 verifica firma JWT (`aws-jwt-verify`, `tokenUse:"access"`) su tutte le route 🔑. ✅ 2026-08-02
 - [x] #7 CORS whitelist + niente `error.message`. (2026-08-02)
 - [x] Password policy Cognito ≥12. (2026-08-02)
-- [ ] #14 multipart auth + ownership + metadati v2 (verificare se già fatto col consolidamento).
-- [ ] #3 CSP/headers + HTTPS — **dopo E0.5**.
+- [x] #14 multipart auth + ownership + metadati v2 — fatto col consolidamento.
+- [ ] #3 CSP/headers + HTTPS — **dopo E0.5**, e bloccato dal dominio.
 
-**B — E0.5 (vedi MIGRATION_S3_TO_R2.md)**
-- [ ] `S3Client` → endpoint R2, env R2, CORS bucket R2, test end-to-end, dual-read, (opz.) dominio+CDN.
+**B — E0.5 (vedi MIGRATION_S3_TO_R2.md)** — *codice fatto, infra aperta*
+- [x] `S3Client` → switch automatico su endpoint R2 quando le 4 env sono presenti (ACL/SSE omessi su R2).
+- [ ] Bucket R2 + API token scoped, **CORS** (expose `ETag`, serve al multipart), **lifecycle su `uploads/guest/`**,
+      copia dati, flip delle env, (opz.) dominio custom + CDN.
+- [ ] `R2_JURISDICTION=eu` se il bucket è giurisdizionale — senza, **403 su ogni operazione**.
 
-**C — E1 invio senza account (nuovo)**
-- [ ] Router `routes/guest.js`: `init`/`urls`/`complete`/`abort` no-auth + ownership per prefisso.
-- [ ] Estensione record `SharedLinks` (isGuest, ownerId null, transferId, manageTokenHash, abuseReports, ttl) + DynamoDB TTL.
-- [ ] Prefisso `uploads/guest/` + lifecycle S3/R2 di auto-cancellazione.
-- [ ] Download: verificare il flusso `/shared-links/:token*` con record senza owner.
-- [ ] `revoke` (manageToken) + `report` (quarantena a soglia).
-- [ ] Anti-abuso: rate limit per IP (trust proxy!), Turnstile, cap dimensione a `complete`.
+**C — E1 invio senza account** — *fatta*
+- [x] Router `routes/guest.js`: `init`/`urls`/`complete`/`abort` no-auth + ownership per prefisso.
+- [x] Estensione record `SharedLinks` (isGuest, ownerId omesso, transferId, manageTokenHash, abuseReports, ttl).
+- [ ] DynamoDB TTL **da abilitare in console** sulla tabella `SharedLinks` (non è codice).
+- [x] Prefisso `uploads/guest/`; ❌ lifecycle di auto-cancellazione ancora da configurare (vedi B).
+- [x] Download: flusso `/shared-links/:token*` funziona con record senza owner.
+- [x] `revoke` (manageToken, confronto a tempo costante) + `report` (quarantena a soglia).
+- [x] Anti-abuso: rate limit per IP, Turnstile, cap dimensione reale a `complete`.
+- [ ] ⚠️ **Frontend mancante**: nessun bottone per `report` né per `revoke` → la quarantena non può scattare.
 
-**D — E3 piani + claim (nuovo)**
-- [ ] Tabella/attributo piano + middleware `loadPlan` + enforcement dei limiti.
-- [ ] `POST /api/share/claim` (copia/re-home o tag + riassegnazione owner, senza rewrapping chiavi).
+**D — E3 piani + claim** — *quasi fatta*
+- [x] Middleware `loadPlan` + enforcement dei limiti (clamp retention sui link, `413` su multipart init/complete).
+- [x] `POST /api/share/claim` (re-home dell'oggetto + riassegnazione owner, `publicToken` invariato, senza rewrapping chiavi).
+- [ ] Contatore trasferimenti/mese (richiede tracking usage).
 - [ ] (a parte) Webhook Stripe → `Subscriptions.plan`.
 
 ---

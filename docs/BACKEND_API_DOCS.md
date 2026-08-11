@@ -27,7 +27,7 @@
 
 Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia end-to-end (E2E) di file, appoggiandosi a:
 
-- **AWS S3** → storage fisico dei file (privati, cifrati lato server con AES256).
+- **Object storage: AWS S3 ↔ Cloudflare R2** → storage fisico dei file, con **switch automatico** via env (§5-bis). Su S3: privati + `ServerSideEncryption: AES256`; su R2: privati e cifrati at-rest di default (ACL/SSE omessi). Bucket R2 **EU-giurisdizionale** → serve `R2_JURISDICTION=eu`.
 - **AWS DynamoDB** → metadati file, link condivisi, chiavi E2E.
 - **AWS Cognito** → autenticazione utenti (login/registrazione, JWT).
 - **Sharp** → ottimizzazione immagini.
@@ -40,8 +40,10 @@ Backend **Node.js + Express 5** che gestisce upload, condivisione e crittografia
 |---|---|
 | `app.js` | Entry point: setup Express, CORS, helmet, mounting route, auth Cognito inline, avvio server. |
 | `config/aws.js` | Init e getter di S3, Cognito, DynamoDB. `isInitialized()`. |
-| `config/constants.js` | Nomi tabelle, limiti upload, rate limit, MIME ammessi. |
-| `middleware/auth.js` | `authenticateToken` — verifica JWT Cognito. |
+| `config/constants.js` | Nomi tabelle, limiti upload/piani/guest, rate limit, MIME ammessi. |
+| `middleware/auth.js` | `authenticateToken` — verifica **firma** JWT Cognito (access token). Espone `verifier`/`resolveUserInfo`. |
+| `middleware/plan.js` | `loadPlan` — risolve piano utente + limiti (§5-ter). |
+| `middleware/guest.js` | Rate limit per IP + verifica Turnstile per le rotte guest (§4.9, §5-quater). |
 | `middleware/validation.js` | Rate limiter + validatori input (express-validator). |
 | `routes/*.js` | Definizione endpoint (vedi sotto). |
 | `services/s3.js` | Upload/ottimizzazione file su S3. |
@@ -258,9 +260,10 @@ Distinta da `SharedFiles` (email) e `SharedLinks` (link pubblici).
 ```
 uploads/images/{userId}/{timestamp}-{uuid}.jpg          // immagini (ottimizzate, max 1200px, jpeg q85)
 uploads/profiles/{userId}/profile-{timestamp}-{uuid}.jpg // profilo (400x400 cover, jpeg q90)
-uploads/files/{userId}/{timestamp}-{uuid}-{nome}.ext     // file generici
+uploads/files/{userId}/{timestamp}-{uuid}-{nome}.ext     // file generici (owner = Cognito sub)
+uploads/guest/{transferId}/{timestamp}-{uuid}-{nome}.ext // invii guest §4.9 (lifecycle auto-delete)
 ```
-Tutti gli oggetti: `ACL: private`, `ServerSideEncryption: AES256`, con `Metadata` (`original-name`, `uploaded-by`, `file-size-formatted`, ecc.).
+Su **S3** gli oggetti hanno `ACL: private` + `ServerSideEncryption: AES256`; su **R2** questi due sono **omessi** (oggetti privati e cifrati at-rest di default). I `Metadata` (`original-name`, `uploaded-by`, `file-size-formatted`, ecc.) restano su entrambi.
 
 ---
 
@@ -569,6 +572,7 @@ rimuove `ttl` e i marker guest → cancella l'oggetto originale.
 | `COGNITO_CLIENT_ID` | — (obbligatoria) | Cognito App Client. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | Credenziali AWS (DynamoDB/Cognito, e S3 se non R2). Fallback `_2`. |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | — | Cloudflare R2. Se **tutte e 4** impostate → lo storage oggetti passa a R2 (§5-bis). |
+| `R2_JURISDICTION` | — | Solo per bucket **giurisdizionali** (`eu`/`fedramp`): forza l'endpoint `<account>.<juris>.r2.cloudflarestorage.com`. Senza → endpoint standard. Se mancante su un bucket EU → **403 su ogni operazione**. |
 | `SESSION_SECRET` | default insicuro | Firma session token link. |
 | `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
 | `MAX_FILE_SIZE` | 5MB | Limite immagini. |

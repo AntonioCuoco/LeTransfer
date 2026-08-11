@@ -78,3 +78,9 @@ amplifytools.xcconfig
 .secret-*
 **.sample
 #amplify-do-not-edit-end
+
+# Playwright (test end-to-end)
+/vue-app/test-results/
+/vue-app/playwright-report/
+/vue-app/blob-report/
+/vue-app/.playwright/

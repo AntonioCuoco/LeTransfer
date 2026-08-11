@@ -9,6 +9,7 @@ import PrivacyReceipt from '@/src/components/landing/PrivacyReceipt.vue'
 import LinkAccessForm from '@/src/components/LinkAccess/LinkAccessForm.vue'
 import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
 import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
+import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT } from '@/src/crypto/streamingDownload'
@@ -347,6 +348,11 @@ const handlePreview = () => {
           </div>
         </template>
       </div>
+
+      <!-- Sotto la carta, non dentro: è la leva anti-abuso, non un'azione del flusso.
+           Noi il file non possiamo guardarlo — chi lo riceve sì, ed è l'unico controllo
+           di contenuto compatibile con lo zero-knowledge. -->
+      <ReportLinkDialog v-if="publicToken" :public-token="publicToken" class="mt-3.5" />
     </div>
 
     <template #footer>

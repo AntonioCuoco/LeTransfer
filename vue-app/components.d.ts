@@ -51,6 +51,7 @@ declare module 'vue' {
     QrCode: typeof import('./src/components/ui/QrCode.vue')['default']
     RecipientFingerprintDialog: typeof import('./src/components/RecipientFingerprintDialog.vue')['default']
     RecoveryKeySetup: typeof import('./src/components/RecoveryKeySetup.vue')['default']
+    ReportLinkDialog: typeof import('./src/components/LinkAccess/ReportLinkDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Select: typeof import('primevue/select')['default']

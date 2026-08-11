@@ -8,6 +8,8 @@ import { storeToRefs } from 'pinia'
 import { useGuestUploadStore } from '@/src/stores/guestUpload'
 import { useTurnstile } from '@/src/composables/useTurnstile'
 import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
+import { useGuestModeration } from '@/src/composables/useGuestModeration'
+import { usePreSendCheck } from '@/src/composables/usePreSendCheck'
 import { savePendingClaim } from '@/src/composables/usePendingClaim'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
@@ -44,6 +46,20 @@ const optionsOpen = ref(false)
 const qrOpen = ref(false)
 const copyLabel = ref('Copia')
 const claimLabel = ref('Reclama questo invio →')
+const revoked = ref(false)
+
+const { isRevoking, revokeTransfer } = useGuestModeration()
+
+/**
+ * Controllo strutturale locale, prima della cifratura (F1.5). Non è un anti-abuso —
+ * chi abusa non esegue questo codice — è un favore a chi inoltra per sbaglio un file
+ * infetto. Avvisa; blocca solo davanti a un travestimento, e solo con una conferma.
+ */
+const { findings, truncated: checkTruncated, acknowledged, check: runPreSendCheck, reset: resetPreSendCheck } = usePreSendCheck()
+
+const criticalFindings = computed(() => findings.value.filter((finding) => finding.severity === 'critical'))
+const warnFindings = computed(() => findings.value.filter((finding) => finding.severity === 'warn'))
+const needsAcknowledgement = computed(() => criticalFindings.value.length > 0 && !acknowledged.value)
 
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const folderInputEl = ref<HTMLInputElement | null>(null)
@@ -106,7 +122,10 @@ function formatSize(bytes: number): string {
 }
 
 function addFiles(list: FileList | File[] | null | undefined) {
-  if (list && list.length) files.value.push(...Array.from(list))
+  if (list && list.length) {
+    files.value.push(...Array.from(list))
+    void runPreSendCheck(files.value)
+  }
 }
 
 /**
@@ -140,6 +159,7 @@ function onFolderInput(event: Event) {
 }
 function removeFile(index: number) {
   files.value.splice(index, 1)
+  void runPreSendCheck(files.value)
 }
 
 function claimNameOf(): string {
@@ -157,6 +177,8 @@ function summarize(): string {
 
 async function startUpload() {
   if (files.value.length === 0) return
+  // I rilievi gravi non impediscono l'invio: chiedono di dire "so cosa sto mandando".
+  if (needsAcknowledgement.value) return
   // Se TURNSTILE_SECRET è impostata sul backend, init richiede un token valido.
   const turnstileToken = await getTurnstileToken()
   emit('start')
@@ -179,7 +201,29 @@ function resetWidget() {
   reset()
   files.value = []
   qrOpen.value = false
+  revoked.value = false
+  resetPreSendCheck()
   emit('reset')
+}
+
+/**
+ * Revoca del proprio invio. Il `manageToken` è una **capability mostrata una volta
+ * sola**: vive nello store finché questa carta è aperta, e non lo mettiamo da nessuna
+ * parte di persistente. Conseguenza dichiarata all'utente qui sotto: chiusa la scheda,
+ * il link non si può più ritirare. L'alternativa (un "link di gestione" da conservare)
+ * è più potente ma è un secondo segreto da custodire — vedi roadmap §F1.5.
+ */
+async function revokeCurrent() {
+  const current = result.value
+  if (!current || isRevoking.value) return
+
+  const ok = await revokeTransfer(current.publicToken, current.manageToken)
+  if (ok) {
+    revoked.value = true
+    notify.success('Invio revocato: il link non funziona più.')
+  } else {
+    notify.error('Non è stato possibile revocare l’invio. Riprova.')
+  }
 }
 
 function copyLink() {
@@ -275,6 +319,42 @@ onMounted(() => {
         <span>{{ files.length }} file</span><span class="font-bold text-[#1b1140]">{{ totalLabel }}</span>
       </div>
 
+      <!-- Controllo pre-invio (F1.5): locale, prima della cifratura, e il risultato non
+           esce da qui. Compare solo quando c'è qualcosa da dire: un pannello sempre
+           presente insegnerebbe a non leggerlo. -->
+      <div v-if="findings.length" class="mt-3 flex flex-col gap-1.5">
+        <div
+          v-for="(finding, index) in [...criticalFindings, ...warnFindings]"
+          :key="`${finding.code}-${index}`"
+          class="rounded-[11px] border px-2.5 py-2"
+          :class="finding.severity === 'critical' ? 'border-[#f3cfcc] bg-[#fdeceb]' : 'border-[#eadfc0] bg-[#fdf7e9]'"
+        >
+          <div class="flex items-start gap-2">
+            <svg viewBox="0 0 24 24" class="mt-px h-3.5 w-3.5 flex-none" fill="none" stroke-width="2.2" :stroke="finding.severity === 'critical' ? '#d64545' : '#8a6d1f'">
+              <path d="M12 8v5M12 17h.01" /><path d="M10.3 3.6 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0z" />
+            </svg>
+            <div class="min-w-0">
+              <p class="text-[0.8rem] font-bold leading-tight" :class="finding.severity === 'critical' ? 'text-[#b3352f]' : 'text-[#8a6d1f]'">
+                {{ finding.title }}
+              </p>
+              <p class="mt-0.5 truncate font-mono text-[0.64rem] text-[#6a5f8c]" :title="finding.fileName">{{ finding.fileName }}</p>
+              <p class="mt-1 text-[0.76rem] leading-normal text-[#3d3260]">{{ finding.detail }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- La conferma esplicita, solo per i travestimenti: non blocchiamo un `.exe`
+             che si dichiara tale, blocchiamo un `.exe` che si spaccia per una foto. -->
+        <label v-if="criticalFindings.length" class="flex cursor-pointer items-start gap-2 px-1 pt-1 text-[0.76rem] leading-normal text-[#3d3260]">
+          <input v-model="acknowledged" type="checkbox" class="mt-0.5 accent-[#724cf9]" />
+          So cosa sto inviando e voglio procedere.
+        </label>
+
+        <p v-if="checkTruncated" class="px-1 font-mono text-[0.64rem] text-[#a79cc4]">
+          Controllati i primi 200 file della selezione.
+        </p>
+      </div>
+
       <div class="lt-rule my-2.5"></div>
 
       <!-- Opzioni (dropdown chiuso di default) -->
@@ -350,8 +430,8 @@ onMounted(() => {
 
       <!-- v-lift: il "cede alla pressione" sul bottone che avvia una cifratura
            potenzialmente lunga — è lì che serve la conferma tattile di aver premuto. -->
-      <button v-lift type="button" class="lt-btn mt-1" :disabled="files.length === 0" @click="startUpload">
-        Cifra e crea il link
+      <button v-lift type="button" class="lt-btn mt-1" :disabled="files.length === 0 || needsAcknowledgement" @click="startUpload">
+        {{ needsAcknowledgement ? 'Conferma per procedere' : 'Cifra e crea il link' }}
       </button>
     </div>
 
@@ -445,8 +525,26 @@ onMounted(() => {
       <PrivacyReceipt variant="send" />
 
       <div class="flex items-center justify-between pt-0.5">
-        <button type="button" class="cursor-pointer text-[0.82rem] font-semibold text-[#12b89a] hover:underline" @click="claimTransfer">{{ claimLabel }}</button>
+        <button v-if="!revoked" type="button" class="cursor-pointer text-[0.82rem] font-semibold text-[#12b89a] hover:underline" @click="claimTransfer">{{ claimLabel }}</button>
+        <span v-else class="text-[0.82rem] font-semibold text-[#d64545]">Invio revocato</span>
         <button type="button" class="cursor-pointer text-[0.82rem] font-semibold text-[#6a5f8c] hover:underline" @click="resetWidget">Nuovo invio</button>
+      </div>
+
+      <!-- La revoca è possibile finché questa carta è aperta: il token di gestione è
+           mostrato una volta sola e non lo conserviamo da nessuna parte. Dirlo qui
+           evita di far scoprire il limite quando è troppo tardi per rimediare. -->
+      <div v-if="!revoked" class="flex items-center justify-between gap-3 border-t border-[#f0ebfa] pt-2.5">
+        <span class="font-mono text-[0.64rem] leading-normal text-[#a79cc4]">
+          Sbagliato file? Puoi ritirarlo finché non chiudi questa scheda.
+        </span>
+        <button
+          type="button"
+          class="flex-none cursor-pointer font-mono text-[0.68rem] font-semibold text-[#d64545] underline-offset-4 hover:underline disabled:opacity-50"
+          :disabled="isRevoking"
+          @click="revokeCurrent"
+        >
+          {{ isRevoking ? 'Revoco…' : 'Revoca invio' }}
+        </button>
       </div>
     </div>
 
