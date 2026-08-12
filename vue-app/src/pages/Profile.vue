@@ -177,32 +177,32 @@ onMounted(async () => {
 
 <template>
   <div class="h-fit bg-deep-900">
+    <!-- L'intestazione resta a filo: è la fascia d'identità della pagina, non contenuto.
+         Tutto il resto vive in `.lt-page`, lo stesso contenitore di /app e /app/settings. -->
     <ProfileHeader />
 
-    <!-- Recovery key mancante: è il punto in cui gli utenti E2E perdono i file per sempre,
-         quindi il tono è serio ma spiegato, non un rettangolo rosso da errore di sistema. -->
-    <div v-if="isSetupRequired" class="mx-8 mt-6 rounded-panel border border-warn-400/30 bg-warn-400/[0.07] p-5">
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-start gap-3">
-          <i class="pi pi-shield mt-0.5 text-xl text-warn-400" />
-          <div>
-            <h4 class="m-0 font-semibold text-haze-100">Non hai ancora una chiave di recupero</h4>
-            <p class="m-0 mt-1 max-w-[70ch] text-sm leading-relaxed text-haze-300">
-              I tuoi file si aprono solo con la chiave che vive in questo browser. Se perdi il dispositivo
-              e non hai una chiave di recupero, <b class="text-haze-100">nessuno può recuperarli — nemmeno noi</b>.
-              Sono 24 parole da conservare fuori dal computer.
-            </p>
+    <div class="lt-page space-y-8">
+      <!-- Recovery key mancante: è il punto in cui gli utenti E2E perdono i file per sempre,
+           quindi il tono è serio ma spiegato, non un rettangolo rosso da errore di sistema. -->
+      <div v-if="isSetupRequired" class="rounded-panel border border-warn-400/30 bg-warn-400/[0.07] p-5">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <i class="pi pi-shield mt-0.5 text-xl text-warn-400" />
+            <div>
+              <h4 class="m-0 font-semibold text-haze-100">Non hai ancora una chiave di recupero</h4>
+              <p class="m-0 mt-1 max-w-[70ch] text-sm leading-relaxed text-haze-300">
+                I tuoi file si aprono solo con la chiave che vive in questo browser. Se perdi il dispositivo
+                e non hai una chiave di recupero, <b class="text-haze-100">nessuno può recuperarli — nemmeno noi</b>.
+                Sono 24 parole da conservare fuori dal computer.
+              </p>
+            </div>
           </div>
+          <Button label="Creala ora" @click="securitySetupVisible = true" />
         </div>
-        <Button label="Creala ora" @click="securitySetupVisible = true" />
       </div>
-    </div>
 
-    <div class="px-8 pt-8">
       <FileStatsGrid :tiles="statTiles" />
-    </div>
 
-    <div class="p-8">
       <div class="rounded-panel border border-white/10 bg-white/[0.03]">
         <div class="p-6">
           <div class="flex justify-between items-center mb-4">
@@ -258,7 +258,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="mt-8 rounded-panel border border-white/10 bg-white/[0.03]">
+      <div class="rounded-panel border border-white/10 bg-white/[0.03]">
         <div class="p-6">
           <div class="mb-4">
             <h2 class="m-0 text-2xl font-bold tracking-[-0.02em] text-haze-100">Link generati</h2>

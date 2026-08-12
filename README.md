@@ -48,24 +48,19 @@ Il progetto si distingue per la sua architettura **Serverless** su AWS e per l'i
 *   **Storage**: Amazon S3 (Bucket privati con presigned URLs)
 *   **Database**: Amazon DynamoDB (Metadati file e chiavi pubbliche)
 *   **Compute**: backend Node.js + Express unico (deploy su Fly.io)
-*   **Nota**: le vecchie AWS Lambda + API Gateway sono in fase di consolidamento nell'unico Express — vedi [docs/BACKEND_CONSOLIDATION.md](docs/BACKEND_CONSOLIDATION.md)
+*   **Nota**: le vecchie AWS Lambda + API Gateway sono state dismesse e i loro stack rimossi — tutta la logica vive nell'Express. Il contratto completo è in [docs/BACKEND_API_DOCS.md](docs/BACKEND_API_DOCS.md)
 
 ---
 
 ## 📚 Documentazione
 
-La documentazione dettagliata è disponibile nella cartella `docs/`:
+L'indice completo è in [**docs/README.md**](docs/README.md). I documenti da cui partire:
 
-1.  [**Autenticazione**](docs/01-autenticazione.md): Flussi di login, registrazione e gestione token.
-2.  [**Upload File**](docs/02-upload-file.md): Architettura Multipart, Presigned URL e gestione stato.
-3.  [**Transfer Manager**](docs/03-transfer-manager.md): Sistema di code e concorrenza.
-4.  [**Condivisione File**](docs/04-condivisione-file.md): Logica di invio email e gestione destinatari.
-5.  [**Shared Links**](docs/05-shared-links.md): Generazione, validazione e opzioni dei link pubblici.
-6.  [**Gestione File (DynamoDB)**](docs/06-gestione-file-dynamodb.md): Schema dati e sincronizzazione S3-DynamoDB.
-7.  [**Profilo Utente**](docs/07-profilo-utente.md): Gestione dati utente e impostazioni.
-8.  [**Landing Page**](docs/08-landing-page.md): Design e animazioni della pagina pubblica.
-9.  [**Infrastruttura AWS**](docs/09-infrastruttura-aws.md): Dettagli sulle risorse CloudFormation e Lambda.
-10. [**E2E Encryption**](docs/10-e2e-encryption.md): **(Nuovo)** Dettagli tecnici sull'implementazione crittografica.
+*   [**Contratto API backend**](docs/BACKEND_API_DOCS.md): architettura, auth, modelli DynamoDB, tutti gli endpoint. È la fonte di verità quando un altro documento lo contraddice.
+*   [**Modello crittografico**](vue-app/src/crypto/README.md): primitive, formato dei file, ciclo di vita delle chiavi — mantenuto nello stesso commit del codice che descrive.
+*   [**Lavoro backend aperto**](docs/BACKEND_HANDOFF.md): cosa manca per aprire al pubblico, in ordine di priorità.
+
+Riferimento per funzionalità: [autenticazione](docs/01-autenticazione.md), [upload](docs/02-upload-file.md), [transfer manager](docs/03-transfer-manager.md), [condivisione](docs/04-condivisione-file.md), [shared links](docs/05-shared-links.md), [gestione file](docs/06-gestione-file-dynamodb.md), [profilo](docs/07-profilo-utente.md), [landing page](docs/08-landing-page.md).
 
 ---
 

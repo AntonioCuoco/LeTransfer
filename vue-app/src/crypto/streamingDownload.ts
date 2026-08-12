@@ -9,7 +9,13 @@ import { decryptChunkFramed, encryptedChunkSizeV2 } from './crypto'
 // Dove si scrive il decifrato — progressive enhancement:
 //  • Chromium (File System Access API): scrittura DIRETTA su disco → nessun limite di dimensione.
 //  • Firefox/Safari (fallback Blob): il browser tiene il Blob su disco → limite pratico ~2 GB.
-//    ⚠️ Vedi docs/SECURITY_FIX_6_STREAMING.md §8: superare questo limite su FF/Safari è un TODO.
+//
+// ⚠️ TODO — superare il limite ~2 GB su Firefox/Safari. Opzioni da valutare:
+//  • StreamSaver.js come secondo fallback (Service Worker): sblocca Firefox oltre i 2 GB; Safari
+//    resta il caso ostico (streaming download via SW storicamente problematico).
+//  • Rivalutare quando/se Firefox e Safari adotteranno la File System Access API.
+//  • Monitorare l'Origin Private File System (OPFS) come storage intermedio.
+// Baseline decisa: FSA su Chromium + fallback Blob altrove. Il formato è specificato in README.md §3.
 
 interface SaveFilePickerOptions {
   suggestedName?: string

@@ -45,7 +45,7 @@ toglie ogni dipendenza da React.
 
 ## 4. Dove va agganciata nel backend
 
-Una volta consolidato il backend (vedi `BACKEND_CONSOLIDATION.md`), l'invio email va richiamato in:
+Il backend è ormai consolidato sull'Express ([BACKEND_API_DOCS.md](BACKEND_API_DOCS.md)): l'invio email va richiamato in:
 - **`POST /api/share`** (condivisione utente→utente) — dopo aver creato il record in `SharesTable`.
 - **`POST /api/file-sharing/send`** (condivisione via email) — è il punto naturale, oggi registra
   solo i record.

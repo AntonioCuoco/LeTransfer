@@ -127,7 +127,7 @@ onMounted(refreshAll)
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1400px] p-6">
+  <div class="lt-page">
     <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p class="lt-label mb-2 !text-verified-400">Invia</p>

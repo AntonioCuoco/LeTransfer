@@ -26,9 +26,18 @@ import { ref, onBeforeUnmount } from 'vue'
 const SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
 
 // Origine della stanza isolata. Se manca, si ricade sulla propria origine: l'iframe
-// funziona ma NON isola più nulla — in sviluppo basta puntare a 127.0.0.1 mentre
+// funziona ma NON isola più nulla — in sviluppo si punta all'IP della LAN mentre
 // l'app gira su localhost (per il browser sono due origini distinte).
-const CAPTCHA_ORIGIN = import.meta.env.VITE_CAPTCHA_ORIGIN || window.location.origin
+//
+// L'IP e non 127.0.0.1: Turnstile valida l'hostname della pagina in cui il widget
+// renderizza, cioè QUESTA origine, e l'IP è quello registrato negli Hostname del
+// widget su Cloudflare.
+//
+// ⚠️ Normalizzata togliendo lo slash finale. `event.origin` non ce l'ha MAI, quindi un
+// `VITE_CAPTCHA_ORIGIN=http://host:5173/` farebbe fallire per sempre il confronto in
+// onMessage(): il token verrebbe scartato in silenzio e l'invio andrebbe in timeout
+// senza un solo errore in console.
+const CAPTCHA_ORIGIN = (import.meta.env.VITE_CAPTCHA_ORIGIN || window.location.origin).replace(/\/+$/, '')
 
 interface CaptchaMessage {
   source?: string
@@ -72,7 +81,8 @@ export function useTurnstile() {
     if (CAPTCHA_ORIGIN === window.location.origin && import.meta.env.DEV) {
       console.warn(
         '[turnstile] VITE_CAPTCHA_ORIGIN non impostata: il widget gira nella stessa origine e NON è isolato. ' +
-        'In sviluppo apri l\'app su http://localhost:5173 e imposta VITE_CAPTCHA_ORIGIN=http://127.0.0.1:5173.',
+        'In sviluppo apri l\'app su http://localhost:5173 e imposta VITE_CAPTCHA_ORIGIN sull\'IP della LAN ' +
+        'registrato negli Hostname del widget Turnstile (es. http://192.168.1.213:5173).',
       )
     }
 

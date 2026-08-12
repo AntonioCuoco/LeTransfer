@@ -1,7 +1,15 @@
 # Migrazione storage: AWS S3 → Cloudflare R2
 
 Documento di valutazione e piano operativo per spostare **solo lo storage dei file** da S3 a
-Cloudflare R2, con l'obiettivo di **azzerare i costi di egress**. Lavoro futuro, non ancora avviato.
+Cloudflare R2, con l'obiettivo di **azzerare i costi di egress**.
+
+> **Stato (2026-08-12): cutover eseguito.** Il codice era già pronto da tempo (`config/aws.js` fa lo
+> switch automatico quando le 4 env R2 sono presenti) e l'infra è stata completata, `R2_JURISDICTION=eu`
+> incluso — vedi [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md) voce 7.
+>
+> Cosa resta di questo documento: i **conti dei costi** (§2), le **prove da eseguire** dopo il cutover
+> (multipart completo, presigned GET, `HeadObject`) e la nota sulla CORS di produzione, che è ancora
+> aperta ([DA_CONTROLLARE_QUANDO.md](DA_CONTROLLARE_QUANDO.md)).
 
 > **In una riga:** un'app di file transfer è download-heavy → l'egress è il costo dominante. R2 ha
 > **egress $0** ed è **S3-compatibile**, quindi si migra lo storage con poco sforzo e **senza toccare
@@ -94,9 +102,9 @@ const s3 = new S3Client({
 **Frontend:** **nessuna modifica** — continua a fare PUT/GET verso gli URL presigned che il backend
 gli passa. Cambia solo l'host dell'URL (r2.cloudflarestorage.com o il tuo dominio custom).
 
-**Compatibilità con il design #6 (streaming):** piena. R2 supporta il multipart (parti ≥5 MB, max object
-5 TB) → il formato "v2" a chunk e lo streaming upload/download del [SECURITY_FIX_6_STREAMING.md](SECURITY_FIX_6_STREAMING.md)
-funzionano identici. Nessun conflitto.
+**Compatibilità con lo streaming (#6):** piena. R2 supporta il multipart (parti ≥5 MB, max object
+5 TB) → il formato "v2" a chunk e lo streaming upload/download descritti in
+[crypto/README.md §3](../vue-app/src/crypto/README.md) funzionano identici. Nessun conflitto.
 
 ---
 
@@ -138,7 +146,9 @@ su R2 — la migrazione copia byte, non ricifra. Le chiavi e i metadati (DynamoD
 - [ ] Creare bucket R2 + API token scoped.
 - [ ] Configurare **CORS** R2 (origin frontend dev+prod, `GET/PUT/HEAD`, expose `ETag`).
 - [ ] Aggiungere env `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET`.
-- [ ] Aggiornare le istanze `S3Client` (endpoint + region `auto` + credenziali).
+- [x] Aggiornare le istanze `S3Client` (endpoint + region `auto` + credenziali). ✅ **il codice è già pronto**:
+      `config/aws.js` fa lo switch automatico quando le 4 env R2 sono presenti e omette `ACL`/`ServerSideEncryption`
+      su R2 (che li rifiuta). Vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §5-bis. Resta solo l'infra.
 - [ ] Test: upload multipart end-to-end (init→urls→PUT→complete) su R2.
 - [ ] Test: download via presigned GET (file/condivisione/link pubblico) su R2.
 - [ ] Test: `HeadObject` nel flusso condivisione.

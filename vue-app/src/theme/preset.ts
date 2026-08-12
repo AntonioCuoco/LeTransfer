@@ -11,7 +11,7 @@ import Aura from '@primeuix/themes/aura'
  * Prima erano due scale gemelle da tenere allineate a mano: non esiste più il rischio.
  *
  * - `primary` → viola del brand: bottoni, link, focus ring…
- * - dark `surface` → i grigi-viola della dashboard (token `shell-*`).
+ * - dark `surface` → le superfici della dashboard (token `haze-*` e `shell-*`).
  *
  * **Divisione del lavoro con [pt.ts](pt.ts)** (roadmap F0.4): qui stanno i *token* —
  * colore, raggio, motion, focus — perché un token si propaga da solo a tutti gli 80
@@ -72,15 +72,25 @@ export const LeTransferPreset = definePreset(Aura, {
     },
     colorScheme: {
       dark: {
+        /**
+         * La scala `surface` scura. Metà di questi valori erano grigi scritti a
+         * mano qui dentro (#8c7f8d, #6b6070, #524759…) — in violazione della
+         * regola in cima al file, e con un difetto visibile: neutri o addirittura
+         * caldi (#dbd4d3 tirava al beige) dentro un'interfaccia viola. È da lì che
+         * veniva il grigio del campo disabilitato e delle intestazioni di tabella.
+         *
+         * Ora l'intera scala viene dai token: `haze` per l'estremità chiara
+         * (testi e bordi sopra il fondo scuro), `shell` per le superfici.
+         */
         surface: {
           0: '#ffffff',
-          50: '#f0edf5',
-          100: '#dbd4d3',
-          200: '#c5bdc5',
-          300: '#a99ea6',
-          400: '#8c7f8d',
-          500: '#6b6070',
-          600: '#524759',
+          50: 'var(--color-haze-100)',
+          100: 'var(--color-haze-200)',
+          200: 'var(--color-haze-300)',
+          300: 'var(--color-haze-400)',
+          400: 'var(--color-haze-500)',
+          500: 'var(--color-shell-500)',
+          600: 'var(--color-shell-600)',
           700: 'var(--color-shell-700)',
           800: 'var(--color-shell-800)',
           900: 'var(--color-shell-900)',

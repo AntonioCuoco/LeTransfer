@@ -33,7 +33,7 @@ const handleReset = () => {
   <div v-if="isLoading" class="flex items-center justify-center h-full">
     <ProgressSpinner />
   </div>
-  <div v-else class="p-6 max-w-[900px] mx-auto">
+  <div v-else class="lt-page">
     <header class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="m-0 text-3xl font-bold text-white flex items-center gap-3">

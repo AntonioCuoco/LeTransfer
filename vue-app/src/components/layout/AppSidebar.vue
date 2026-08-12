@@ -29,16 +29,20 @@ const navItems = [
 const isCurrent = (item: { path: string; exact: boolean }) =>
   item.exact ? route.path === item.path : route.path.startsWith(item.path)
 
+// L'indicatore è una CHIAVE, non un pallino colorato: un cerchio verde non dice di
+// cosa parla, e per chi non distingue verde e ambra non dice proprio niente. La
+// chiave nomina l'oggetto, e lo stato "bloccato" si legge dalla forma — sbarrata —
+// prima ancora che dal colore.
 const vault = computed(() => {
   if (encryptionStore.isUnlocked) {
-    return { label: 'Chiavi sbloccate', tip: 'Chiavi sbloccate', dot: 'bg-verified-400' }
+    return { label: 'Chiavi sbloccate', tip: 'Chiavi sbloccate', state: 'lt-vault-on' }
   }
   return {
     label: 'Chiavi bloccate',
     // Se c'è una chiave di recupero configurata, questo pulsante è la via di rientro
     // dopo aver chiuso il dialogo di sblocco.
     tip: canUnlock.value ? 'Chiavi bloccate — sbloccale' : 'Chiavi bloccate',
-    dot: 'bg-warn-400',
+    state: 'lt-vault-off',
   }
 })
 
@@ -90,7 +94,9 @@ const handleLogout = async () => {
         :title="vault.label"
         @click="requestUnlock"
       >
-        <span class="h-2.5 w-2.5 rounded-full" :class="vault.dot" />
+        <span class="lt-vault" :class="vault.state">
+          <i class="pi pi-key text-xl" />
+        </span>
         <span class="lt-tip">{{ vault.tip }}</span>
       </button>
 
@@ -124,6 +130,38 @@ const handleLogout = async () => {
 
 .lt-rail-off { color: var(--color-haze-400); }
 .lt-rail-off:hover { background: rgb(114 76 249 / 0.15); color: var(--color-haze-100); }
+
+/* Stato del vault. Il colore resta, ma come conferma di un segno che si legge già
+   da solo: menta = aperto, ambra + chiave sbarrata = chiuso. */
+.lt-vault {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lt-vault-on { color: var(--color-verified-400); }
+.lt-vault-off { color: var(--color-warn-400); }
+
+/* La sbarra del "bloccato". Il filo scuro sopra la stacca dalla chiave, altrimenti
+   a 20px le due forme si impastano e non si capisce più cosa sia il segno. */
+.lt-vault-off::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  box-shadow: 0 -3px 0 -1px var(--color-deep-900);
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* Il colore del vault è informazione, non stato di hover: lo schiarimento delle
+   voci di navigazione non lo tocca (il colore è sullo span, non ereditato). Resta
+   solo un accenno di risposta al passaggio del mouse. */
+.lt-rail-off:hover .lt-vault-on { color: var(--color-verified-300); }
 
 .lt-tip {
   position: absolute;

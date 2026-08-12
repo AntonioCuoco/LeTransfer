@@ -66,13 +66,21 @@
   --color-ink-400: #8a7fae;
   --color-ink-300: #a79cc4;
 
-  /* ── Shell: i grigi-viola della dashboard (area autenticata).
-   * Sono l'eredità del vecchio design: F5 li porterà sul mondo `deep`. Averli
-   * qui come token significa poterli ritirare da un punto solo. */
-  --color-shell-700: #4a4554;
-  --color-shell-800: #3c364c;
-  --color-shell-900: #2c2638;
-  --color-shell-950: #1e1a2a;
+  /* ── Shell: le superfici della dashboard (area autenticata).
+   * Erano quattro grigi quasi neutri (#4a4554 e compagni: saturazione ~10%)
+   * ereditati dal vecchio design. Accanto al mondo `deep` non leggevano come
+   * "grigio": leggevano come sporco — un fondo neutro dentro un'interfaccia
+   * viola sembra sempre un errore di stampa. Ora sono la stessa tinta di `deep`
+   * (~252°) tenuta a saturazione bassa: restano superfici, non diventano accenti.
+   *
+   * Alimentano la scala `surface` scura di PrimeVue (theme/preset.ts): cambiarle
+   * qui muove insieme campi, tabelle, pannelli e menu. */
+  --color-shell-500: #574b85;
+  --color-shell-600: #483e6f;
+  --color-shell-700: #3b3160;
+  --color-shell-800: #2e2650;
+  --color-shell-900: #221b3f;
+  --color-shell-950: #171030;
 
   /* ── Semantici, separati dal brand ────────────────────────────────────────── */
   --color-warn-400: #e0b34a;
@@ -129,6 +137,20 @@
  * Stanno nel layer `components` → le utility Tailwind possono sempre sovrascriverli.
  */
 @layer components {
+  /* La regione di contenuto delle pagine autenticate (/app, /app/profile, /app/settings).
+   *
+   * Esiste perché le tre pagine avevano tre contenitori diversi — `max-w-[1400px]`,
+   * `max-w-[900px]` e nessun vincolo — con due gutter diversi (24px e 32px). Il
+   * risultato era che passando da una sezione all'altra il contenuto cambiava
+   * larghezza e i margini saltavano: sembravano tre prodotti.
+   *
+   * Larghezza piena, gutter unico. Chi ha bisogno di trattenere una colonna di
+   * testo lo fa sul suo blocco (`max-w-[70ch]`), non sulla pagina intera. */
+  .lt-page {
+    width: 100%;
+    padding: 2rem;
+  }
+
   /* La carta chiara: l'oggetto che chi invia, chi riceve e chi si registra vedono uguale. */
   .lt-card {
     border-radius: var(--radius-card);

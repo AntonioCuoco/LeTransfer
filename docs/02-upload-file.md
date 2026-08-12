@@ -30,9 +30,9 @@ CLIENT (Vue)                              BACKEND (Express unico)
 └─────────────────────────┘
 ```
 
-> Nota: in passato il multipart era servito da AWS Lambda + API Gateway. Con il consolidamento
-> backend tutto passa dall'unico Express (`/api/upload/multipart/*`). Vedi
-> `docs/BACKEND_CONSOLIDATION.md`. Lato frontend la base URL è ora `VITE_API_URL`.
+> Nota: in passato il multipart era servito da AWS Lambda + API Gateway, ora dismesse. Tutto passa
+> dall'unico Express (`/api/upload/multipart/*`) — vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md)
+> §4.3-bis. Lato frontend la base URL è `VITE_API_URL`.
 
 ---
 
@@ -104,7 +104,7 @@ pauseUpload(); resumeUpload(); abortUpload()
 
 ## Backend: route multipart
 
-Endpoint serviti dall'Express (porting dalle vecchie Lambda — vedi `BACKEND_CONSOLIDATION.md` §3):
+Endpoint serviti dall'Express (riferimento completo: [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §4.3-bis):
 
 1. **`POST /api/upload/multipart/init`** — crea il multipart su S3, ritorna `uploadId` e `fileKey`.
 2. **`POST /api/upload/multipart/urls`** — genera gli URL firmati per ogni chunk (validità 1h).
@@ -118,8 +118,8 @@ Endpoint serviti dall'Express (porting dalle vecchie Lambda — vedi `BACKEND_CO
 ```
 uploads/files/{userId}/{fileName}
 ```
-> Il consolidamento backend prevede di passare a una key con timestamp+uuid per evitare collisioni
-> di nome (vedi `BACKEND_CONSOLIDATION.md` §3.1).
+> La key reale include timestamp e uuid per evitare collisioni di nome, ed è costruita dal backend
+> a partire dal `sub` del token (mai dal body) — vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §4.3-bis.
 
 ---
 

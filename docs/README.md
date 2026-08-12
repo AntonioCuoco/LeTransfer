@@ -1,183 +1,87 @@
 # Documentazione LeTransfer
 
-Questa cartella contiene la documentazione completa per il sistema di cifratura End-to-End di LeTransfer.
-
-## Documenti Disponibili
-
-### 📘 [10-e2e-encryption.md](./10-e2e-encryption.md)
-**Documentazione Tecnica Completa E2E**
-
-Destinato a: Sviluppatori, DevOps, Security Engineers
-
-Contenuto:
-- Architettura del sistema E2E
-- Flusso di cifratura dettagliato
-- Schema tabelle DynamoDB
-- API endpoints
-- Algoritmi crittografici
-- Problemi risolti e soluzioni
-- Guida al testing
-- Troubleshooting tecnico
+> **Cos'è questa cartella.** La documentazione di lavoro del progetto: cosa è aperto, cosa è
+> deciso, e dove sta la verità quando due documenti si contraddicono.
+>
+> **Regola d'oro.** Quando un documento e il codice non concordano, il documento da credere è
+> [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) per il backend e
+> [vue-app/src/crypto/README.md](../vue-app/src/crypto/README.md) per la crittografia: sono gli
+> unici due che dichiarano di seguire il codice e vengono aggiornati insieme a lui.
 
 ---
 
-### 📝 [CHANGELOG_E2E_FIX.md](./CHANGELOG_E2E_FIX.md)
-**Changelog dei Fix Applicati**
+## Da dove si comincia
 
-Destinato a: Sviluppatori, Team Lead, QA
-
-Contenuto:
-- Dettaglio di tutti i fix applicati
-- Comparazioni before/after
-- File modificati
-- Impatto delle modifiche
-- Test raccomandati
-- Metriche di successo
+| Documento | A cosa serve |
+|---|---|
+| ⭐ [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md) | **L'indice unico del lavoro backend aperto**, in ordine di priorità. Ogni voce dice cosa fare, perché, e come si verifica |
+| ⭐ [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) | Il contratto completo: architettura, auth, modelli DynamoDB, tutti gli endpoint, config e limiti |
+| [DA_CONTROLLARE_QUANDO.md](DA_CONTROLLARE_QUANDO.md) | Checklist **condizionali** — cosa verificare quando prendi il dominio, quando apri al pubblico, quando accendi i pagamenti |
 
 ---
 
-### 👤 [GUIDA_UTENTE_E2E.md](./GUIDA_UTENTE_E2E.md)
-**Guida Utente Semplificata**
+## Sicurezza e promessa del prodotto
 
-Destinato a: Utenti finali, Support Team
-
-Contenuto:
-- Spiegazione semplice della cifratura E2E
-- Guida passo-passo per il setup
-- Istruzioni per l'uso quotidiano
-- FAQ comuni
-- Checklist di sicurezza
+| Documento | Contenuto |
+|---|---|
+| [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) | L'analisi di sicurezza completa e il piano d'esecuzione. Restano aperti i punti #2, #3, #4, #5, #8, #9 |
+| [PAGINE_CRITICHE.md](PAGINE_CRITICHE.md) | Le regole non negoziabili sulle pagine dove nascono e si usano le chiavi |
+| [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) | Hardening backend #1–#15. Resta aperta la CSP/HTTPS, che è la voce 8 dell'handoff |
+| [SECURITY_PUNTI_RINVIATI.md](SECURITY_PUNTI_RINVIATI.md) | I punti #5 e #14 più la **checklist di prove da eseguire** (non è codice da scrivere) |
+| [ANTI_ABUSO.md](ANTI_ABUSO.md) | Modello di abuso del canale pubblico e contromisure |
 
 ---
 
-## Quick Links
+## Work order aperti
 
-### Per Sviluppatori
-- [Architettura E2E](./10-e2e-encryption.md#architettura-del-sistema)
-- [Problemi Risolti](./10-e2e-encryption.md#problemi-risolti)
-- [API Endpoints](./10-e2e-encryption.md#api-endpoints)
-- [Testing](./10-e2e-encryption.md#testing)
+Specifiche pronte da implementare, ognuna con il suo "come".
 
-### Per QA/Testing
-- [Test Raccomandati](./CHANGELOG_E2E_FIX.md#testing-raccomandato)
-- [Metriche di Successo](./CHANGELOG_E2E_FIX.md#metriche-di-successo)
-
-### Per Support
-- [Guida Utente](./GUIDA_UTENTE_E2E.md)
-- [FAQ](./GUIDA_UTENTE_E2E.md#domande-frequenti)
-- [Troubleshooting](./10-e2e-encryption.md#troubleshooting)
+| Documento | Stato |
+|---|---|
+| [BACKEND_WORKORDER_AUTH_COOKIES.md](BACKEND_WORKORDER_AUTH_COOKIES.md) | **Aperto.** Refresh token in cookie `httpOnly`; oggi i token stanno in cookie leggibili da JavaScript |
+| [EMAIL_NOTIFICHE.md](EMAIL_NOTIFICHE.md) | **Aperto.** Design dell'invio email (Resend). È la voce 14 dell'handoff |
+| [MIGRATION_S3_TO_R2.md](MIGRATION_S3_TO_R2.md) | **Cutover fatto.** Resta come riferimento sui costi e come piano di verifica |
 
 ---
 
-## Panoramica Rapida
+## Roadmap
 
-### Cos'è la Cifratura E2E?
-
-LeTransfer implementa un sistema di cifratura End-to-End che garantisce:
-- 🔒 I file sono cifrati sul client prima dell'upload
-- 🔒 Il server non può decifrare i file
-- 🔒 Solo l'utente con la Recovery Key può accedere ai file
-
-### Componenti Principali
-
-1. **Recovery Key**: 24 parole (BIP39) generate localmente
-2. **Master Key**: Derivata dalla Recovery Key, mantenuta solo in memoria
-3. **File Keys**: Chiavi AES-256 uniche per ogni file, cifrate con la Master Key
-
-### Flusso Semplificato
-
-```
-Setup → Genera Recovery Key → Deriva Master Key
-  ↓
-Upload → Genera File Key → Cifra File → Wrap File Key → Salva
-  ↓
-Download → Unwrap File Key → Decifra File → Restituisci
-```
+| Documento | Taglio |
+|---|---|
+| [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) | Prodotto: cosa costruiamo e in che ordine |
+| [BACKEND_WORKORDER_ROADMAP.md](BACKEND_WORKORDER_ROADMAP.md) | Backend, inclusi i criteri di accettazione del canale guest (§C.10) |
+| [FRONTEND_WORKORDER_ROADMAP.md](FRONTEND_WORKORDER_ROADMAP.md) | Frontend Vue |
 
 ---
 
-## Sicurezza
+## Riferimento per funzionalità
 
-### Cosa il Server NON Può Fare
-- ❌ Leggere il contenuto dei file
-- ❌ Decifrare le chiavi dei file
-- ❌ Recuperare la Recovery Key
-- ❌ Derivare la Master Key
+Descrizioni per area dell'applicazione. Utili per orientarsi, ma **più vecchie del codice**: per il
+contratto con il backend vale sempre [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md).
 
-### Cosa l'Utente DEVE Fare
-- ✅ Salvare la Recovery Key in un luogo sicuro
-- ✅ Non condividere mai la Recovery Key
-- ✅ Inserire la Recovery Key su nuovi dispositivi
-
----
-
-## Algoritmi Utilizzati
-
-| Componente | Algoritmo | Parametri |
-|------------|-----------|-----------|
-| File Encryption | AES-256-GCM | IV: 12 bytes |
-| Key Wrapping | AES-256-GCM | IV: 12 bytes |
-| Key Derivation | PBKDF2 | 100,000 iterazioni, SHA-256 |
-| Recovery Key | BIP39 | 24 parole, 256 bit entropia |
+1. [Autenticazione](01-autenticazione.md) — login, registrazione, OAuth, refresh token
+2. [Upload file](02-upload-file.md) — upload standard e multipart
+3. [Transfer manager](03-transfer-manager.md) — code, concorrenza, progresso
+4. [Condivisione file](04-condivisione-file.md) — invio a utente registrato
+5. [Shared links](05-shared-links.md) — link pubblici, scadenza, password, revoca
+6. [Gestione file (DynamoDB)](06-gestione-file-dynamodb.md) — schema dati e sincronizzazione
+7. [Profilo utente](07-profilo-utente.md)
+8. [Landing page](08-landing-page.md)
+10. [E2E encryption](10-e2e-encryption.md) — ⚠️ descrive ancora il vecchio formato a blob unico. Per
+    il formato reale (v2 a chunk) vedi [crypto/README.md §3](../vue-app/src/crypto/README.md)
 
 ---
 
-## Tabelle DynamoDB
+## Per gli utenti finali
 
-### UserRecoveryKeys
-Memorizza salt e verification hash per ogni utente.
-
-### UserFileKeys
-Memorizza le chiavi cifrate per ogni file.
-
-Vedi [10-e2e-encryption.md](./10-e2e-encryption.md#tabelle-dynamodb) per dettagli completi.
+[GUIDA_UTENTE_E2E.md](GUIDA_UTENTE_E2E.md) — spiegazione della cifratura in linguaggio non tecnico.
+Le stesse cose sono in-app su `/come-funziona` e `/sicurezza`.
 
 ---
 
-## Testing
+## Fuori da questa cartella
 
-### Test Essenziali
-
-1. ✅ Setup Recovery Key
-2. ✅ Upload file cifrato
-3. ✅ Download file cifrato
-4. ✅ Recovery su nuovo dispositivo
-
-Vedi [CHANGELOG_E2E_FIX.md](./CHANGELOG_E2E_FIX.md#testing-raccomandato) per dettagli.
-
----
-
-## Troubleshooting Rapido
-
-### File Corrotto al Download
-→ Verifica che la chiave sia stata salvata in DynamoDB
-
-### "Missing encryption data or context"
-→ Verifica che lo store Pinia di cifratura sia sbloccato (`encryptionStore.isUnlocked === true`)
-
-### Recovery Key Non Accettata
-→ Verifica di aver inserito tutte le 24 parole correttamente
-
-Vedi [10-e2e-encryption.md](./10-e2e-encryption.md#troubleshooting) per dettagli completi.
-
----
-
-## Contribuire
-
-Per contribuire alla documentazione:
-
-1. Mantieni la documentazione aggiornata con i cambiamenti al codice
-2. Usa linguaggio chiaro e semplice
-3. Includi esempi pratici
-4. Aggiungi diagrammi quando utile
-
----
-
-## Contatti
-
-Per domande o suggerimenti sulla documentazione, contatta il team di sviluppo.
-
----
-
-**Ultima modifica**: 2026-01-20
-**Versione**: 2.0.0
+**[vue-app/src/crypto/README.md](../vue-app/src/crypto/README.md)** — la specifica del nucleo
+crittografico, mantenuta nello stesso commit del codice che descrive. È il documento da leggere per
+verificare le affermazioni del prodotto: primitive, formato v2 a chunk, ciclo di vita delle chiavi,
+verifica del destinatario, e la §7 che dice **dove la promessa si ferma**.

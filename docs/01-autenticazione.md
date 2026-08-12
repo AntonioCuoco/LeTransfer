@@ -360,8 +360,8 @@ showError('Sessione scaduta. Effettua nuovamente il login.')
 4. **Refresh Token Rotation** — non implementato (consigliato per produzione).
 5. **Rate Limiting** — gestito da Cognito.
 
-> Nota backend: la verifica del token lato server va irrobustita (`aws-jwt-verify`) nel
-> consolidamento — vedi `docs/BACKEND_CONSOLIDATION.md` §5.
+> Nota backend: la verifica della firma con `aws-jwt-verify` (`tokenUse: "access"`) è **implementata**
+> in `middleware/auth.js` — vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2.
 
 ---
 

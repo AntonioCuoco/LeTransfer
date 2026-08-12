@@ -6,7 +6,7 @@ Analisi dell'implementazione E2E e dei meccanismi di sicurezza. L'architettura c
 
 ## 📐 Architettura backend (leggere prima)
 
-Il backend è stato **consolidato**: le AWS Lambda + API Gateway sono state dismesse e tutta la logica è ora in un **unico backend Express su Fly.io** (mantenendo S3, DynamoDB, Cognito). Il frontend Vue punta già tutto a `VITE_API_URL`. Vedi [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) e [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md).
+Il backend è stato **consolidato**: le AWS Lambda + API Gateway sono state dismesse e i loro stack rimossi; tutta la logica è ora in un **unico backend Express su Fly.io** (mantenendo DynamoDB e Cognito; lo storage è passato a Cloudflare R2). Il frontend Vue punta già tutto a `VITE_API_URL`. Vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md).
 
 Conseguenze per questo documento:
 
@@ -77,7 +77,7 @@ crypto.subtle.generateKey({ name:'RSA-OAEP', modulusLength:4096, publicExponent:
 
 ### 15. ✅ RISOLTO — Backend Express: verifica della firma JWT
 **Ambito:** ⚙️ Backend Express · **Stato: implementato, verificato il 2026-08-02**
-**File:** `middleware/auth.js` del repo Express (vedi [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §5)
+**File:** `middleware/auth.js` del repo Express (vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2)
 
 **Problema (storico).** `authenticateToken` faceva `jwt.decode()` **senza verificare la firma**: un token
 **forgiato** (payload arbitrario, firma finta) sarebbe stato accettato su **tutte** le route protette, con
@@ -191,7 +191,7 @@ export async function deriveKeyFromPassword(pwd: string, salt: Uint8Array, itera
 **Ambito:** 🌐 Infra/PROD + ⚙️ Backend Express (le lambda sono codice morto)
 
 Le 4 lambda avevano `Access-Control-Allow-Origin: *` e leak di `error.message`. **Non vanno più corrette lì** (dismesse). Gli equivalenti sull'Express:
-- **CORS:** whitelist in `app.js` con l'origine del frontend (dev: `localhost`; prod: dominio reale) — vedi [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §8.5.
+- **CORS:** whitelist in `app.js` con l'origine del frontend (dev: `localhost`; prod: dominio reale) — vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §5.
 - **Error leak:** le route non devono rispondere con dettagli interni/`error.message`; loggare server-side, rispondere generico.
 
 ---
@@ -273,11 +273,11 @@ Tutto codice in `vue-app/`, nessuna dipendenza esterna. Ordine consigliato (dal 
 - **#3 (parte dev)** ✅ header sicuri in `vite.config.ts` (nosniff/X-Frame-Options/Referrer-Policy); CSP autoritativa nel binario PROD.
 
 **✅ Fase 1 — Chiavi (FATTA)**
-- **#1** ✅ private key RSA `extractable:false` in IndexedDB (`utils/keyStore.ts`), backup estraibile-on-demand, migrazione da localStorage. Dettaglio: [SECURITY_FIX_1_KEYPAIR.md](SECURITY_FIX_1_KEYPAIR.md).
+- **#1** ✅ private key RSA `extractable:false` in IndexedDB (`crypto/keyStore.ts`), backup estraibile-on-demand, migrazione da localStorage. Dettaglio: [crypto/README.md §4](../vue-app/src/crypto/README.md).
 - **#9** ✅ AAD `s3Key` in `wrapFileKey`/`unwrapFileKey` **con fallback** per le chiavi vecchie.
 
 **✅ Fase 2 — Streaming encryption (FATTA)**
-- **#6** ✅ formato "v2" a chunk: upload streaming (`utils/streamingDownload.ts` + `encryptChunkFramed`/`decryptChunkFramed` in crypto.ts), download con File System Access API + fallback Blob e avviso utente su Firefox/Safari, routing v1/v2 nei 3 percorsi (file propri, condivisi, link pubblico). Retrocompatibile con i file v1. **Design:** [SECURITY_FIX_6_STREAMING.md](SECURITY_FIX_6_STREAMING.md). ⚠️ Backend deve persistire/restituire `formatVersion`/`chunkSize`/`originalSize` ([BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) §7).
+- **#6** ✅ formato "v2" a chunk: upload streaming (`utils/streamingDownload.ts` + `encryptChunkFramed`/`decryptChunkFramed` in crypto.ts), download con File System Access API + fallback Blob e avviso utente su Firefox/Safari, routing v1/v2 nei 3 percorsi (file propri, condivisi, link pubblico). Retrocompatibile con i file v1. **Formato:** [crypto/README.md §3](../vue-app/src/crypto/README.md). ⚠️ Backend deve persistire/restituire `formatVersion`/`chunkSize`/`originalSize` ([BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) §7).
 
 **✅ Fase 3 — Minori (FATTA)**
 - **#10** ✅ `keyCache` → `shallowRef` + idle-timeout (svuota la cache dopo 20 min di inattività).

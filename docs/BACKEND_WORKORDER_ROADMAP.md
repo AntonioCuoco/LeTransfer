@@ -50,10 +50,9 @@ Da chiarire con chi conosce lo stato attuale del repo Express, perché i doc si 
    `authenticateToken` verifica davvero la firma (`CognitoJwtVerifier`, `tokenUse:"access"`) e
    `routes/fileSharing.js` riusa lo stesso verifier. Aveva ragione [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §2.1;
    gli altri documenti erano rimasti indietro e sono stati allineati. **#15 è fatto.**
-2. ~~**Incongruenza `tokenUse`.**~~ ✅ **RISOLTO il 2026-08-02.** Lo snippet sbagliato in
-   [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) §5 diceva **`tokenUse: "id"`** ed è stato corretto in
-   **`"access"`**, che è il contratto reale (il codice fa già così). Promemoria che resta valido: l'email non è
-   nell'access token → va risolta via Cognito dove serve.
+2. ~~**Incongruenza `tokenUse`.**~~ ✅ **RISOLTO il 2026-08-02.** Uno snippet nelle docs diceva
+   **`tokenUse: "id"`** ed è stato corretto in **`"access"`**, che è il contratto reale (il codice fa già
+   così). Promemoria che resta valido: l'email non è nell'access token → va risolta via Cognito dove serve.
 3. **Ordine con R2 (§B).** Le nuove rotte "guest" (§C) toccano lo storage: vanno scritte **puntando a R2**
    (dopo E0.5), non prima, per non rifarle. Ma #15 (§A) è indipendente dallo storage → si fa **subito**.
 

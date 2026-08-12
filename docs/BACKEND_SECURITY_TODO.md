@@ -42,8 +42,8 @@ Body (POST) e risposta (GET → `data`):
 > Vedi [BACKEND_API_DOCS §2.1](BACKEND_API_DOCS.md).
 >
 > ⚠️ Questa sezione è rimasta a lungo a dire il contrario mentre il codice era già a posto: se
-> modifichi il middleware, aggiorna **qui**, in [BACKEND_CONSOLIDATION §5](BACKEND_CONSOLIDATION.md)
-> e in [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md) — sono tre punti che parlano della stessa cosa.
+> modifichi il middleware, aggiorna **qui**, in [BACKEND_API_DOCS §2](BACKEND_API_DOCS.md) e in
+> [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md) — sono tre punti che parlano della stessa cosa.
 
 **Perché contava:** con `jwt.decode()` la firma non veniva controllata → un token forgiato con
 payload arbitrario sarebbe stato accettato su **tutte** le route protette (impersonazione totale).
@@ -87,7 +87,7 @@ sull'Express **non ripetere** l'errore.
 
 **Route:** `POST /api/upload/multipart/{init,urls,complete,abort}`.
 
-**Cosa fare (dettaglio già in `BACKEND_CONSOLIDATION.md` §3.1–3.4):**
+**Cosa fare (contratto delle rotte in [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §4.3-bis):**
 - Tutte protette da `authenticateToken`.
 - **Non fidarsi del `userId` dal body**: usare `req.user.sub`.
 - `init`: costruire la key come `uploads/files/${sub}/${Date.now()}-${randomUUID()}-${safeName}`.
@@ -179,13 +179,15 @@ Referrer-Policy: strict-origin-when-cross-origin
 
 ## ✅ Checklist
 
-- [ ] `keypair-backup` salva/restituisce il blob opaco `{ encryptedPrivateKey, iv }` (no salt/iterations).
+- [x] `keypair-backup` salva/restituisce il blob opaco `{ encryptedPrivateKey, iv }` (no salt/iterations).
+      ✅ verificato il 2026-08-02 su [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §4.6/§3.3 (la casella era rimasta indietro).
 - [x] **(CRITICO)** `middleware/auth.js` verifica la firma con `aws-jwt-verify`, `tokenUse: "access"`. ✅ 2026-08-02
 - [x] Route multipart: `authenticateToken` + ownership su `uploads/files/${sub}/` + `userId` dal `sub`. ✅ 2026-08-02
 - [x] CORS whitelist (dev + prod) e nessun `error.message` nelle risposte. ✅ 2026-08-02
 - [x] Cognito password policy ≥12 con classi di caratteri. ✅ 2026-08-02
 - [ ] BLOCCATO DAL DOMINIO - CSP + security headers sull'host del frontend (prod) + HTTPS.
-- [ ] **(#6 attivo)** `formatVersion`/`chunkSize`/`originalSize` persistiti in `complete` e restituiti in lista/get/link.
+- [x] **(#6)** `formatVersion`/`chunkSize`/`originalSize` persistiti in `complete` e restituiti in lista/get/link.
+      ✅ verificato il 2026-08-02 su API docs §4.3-bis/§4.5/§4.8; il frontend li consuma in download e anteprima.
 
 > Note di coordinamento: `email` non è nell'access token → risolverla via Cognito dove serve.
 > Verificare che gli endpoint di logout usati dal frontend esistano (`/auth/logout` e/o `/logout`):

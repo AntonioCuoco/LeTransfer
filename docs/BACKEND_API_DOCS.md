@@ -197,7 +197,11 @@ con questi campi extra e **senza `ownerId`/`ownerEmail`** (omessi, non `null` �
   manageTokenHash,         // sha256 del manageToken (revoca/claim) — mai in chiaro
   abuseReports: 0,         // contatore segnalazioni (quarantena a soglia)
   ttl,                     // number, epoch secondi → DynamoDB TTL (auto-cancellazione del record)
-  quarantined?             // true se messo in quarantena dai report
+  quarantined?,            // true se messo in quarantena dai report
+  reporterIpHashes?,       // list di sha256(IP) — dedup delle segnalazioni (§4.9 report)
+  abuseReportsLog?,        // list capped di { at, reason } per la revisione umana
+  appealRequestedAt?,      // ISO — set da /appeal (§4.9)
+  appealStatus?            // 'pending' quando c'è un appello in attesa di revisione
 }
 ```
 > Il download usa lo **stesso** flusso pubblico (§4.5): `getLinkByPublicToken`/`validateLinkStatus` non
@@ -510,7 +514,8 @@ senza owner (§3.2) → il **download riusa il flusso pubblico esistente** (§4.
 | 🔓 | `POST` | `/api/guest/upload/complete` | vedi sotto | `201 { publicToken, url, expiresAt }` |
 | 🔓 | `POST` | `/api/guest/upload/abort` | `{ fileKey*, uploadId* }` | `{ status: 'aborted' }` |
 | 🔓 | `POST` | `/api/guest/:publicToken/revoke` | `{ manageToken* }` | `{ status: 'revoked' }` |
-| 🔓 | `POST` | `/api/guest/report/:publicToken` | `{ reason? }` | `202 { status: 'received' }` |
+| 🔓 | `POST` | `/api/guest/report/:publicToken` | `{ reason?, turnstileToken? }` | `202 { status: 'received' }` |
+| 🔓 | `POST` | `/api/guest/:publicToken/appeal` | `{ manageToken* }` | `202 { status: 'appeal_received' }` |
 
 **`init`** — verifica Turnstile + rate-limit, poi genera `transferId` (uuid), `publicToken` (nanoid 21),
 `manageToken` (nanoid 32, **mostrato una sola volta** — serve per `revoke`/claim), `fileKey` sotto
@@ -535,9 +540,16 @@ Assembla l'oggetto, **rivalida la dimensione reale** (`HeadObject` → `413 FILE
 vs `manageTokenHash` (tempo costante), set `revokedAt` + delete immediato dell'oggetto. Risposta **uniforme**
 `403 FORBIDDEN` se link assente o token errato (nessun leak sull'esistenza).
 
-**`report`** — segnalazione abuso: incrementa `abuseReports`; alla soglia `ABUSE_AUTO_QUARANTINE_THRESHOLD`
-mette il link in **quarantena** (`revokedAt` + `quarantined:true`; l'oggetto è **conservato** per revisione).
-Risposta sempre generica `202` (non rivela l'esistenza del link).
+**`report`** — segnalazione abuso, **hardened anti-censura**: **gated da Turnstile** (come `init`),
+**deduplicato per (IP, link)** (una seconda segnalazione dallo stesso IP sullo stesso link non conta) e con
+**soglia relativa ai download** `max(ABUSE_AUTO_QUARANTINE_THRESHOLD, ceil(downloadCount × 0.05))` — così pochi
+report non abbattono un link popolare. Alla soglia va in **quarantena** (`revokedAt` + `quarantined:true`;
+oggetto **conservato** per revisione). Risposta sempre generica `202` (nessun leak sull'esistenza).
+Se `TURNSTILE_SECRET` è attivo, il client deve inviare `turnstileToken` (altrimenti `403`).
+
+**`appeal`** — chi possiede il `manageToken` (il mittente) può **contestare una quarantena**: confronto
+`sha256(manageToken)` a tempo costante → marca `appealRequestedAt` + `appealStatus:'pending'` per revisione
+umana. **Non riattiva** il link (decide un umano). `202` se autorizzato, `403` uniforme altrimenti.
 
 - Errori: `400 INVALID_REQUEST` · `403 FORBIDDEN`/`CAPTCHA_*` · `413 FILE_TOO_LARGE` · `429 RATE_LIMITED` · `503 SERVICE_UNAVAILABLE`/`CAPTCHA_UNAVAILABLE` · `500 INTERNAL_ERROR`.
 
@@ -588,7 +600,8 @@ rimuove `ttl` e i marker guest → cancella l'oggetto originale.
 | `GUEST_MAX_EXPIRY` | 168 | Cap retention link guest (ore). |
 | `GUEST_RATE_MAX_INIT_PER_HOUR` / `GUEST_RATE_MAX_REQUESTS` | 20 / 300 | Rate-limit per IP: `init`/h e richieste guest/h (finestra `GUEST_RATE_WINDOW_MS`, def. 1h). |
 | `GUEST_TTL_GRACE_SECONDS` | 172800 | Grazia aggiunta a `expiresAt` per il `ttl` DynamoDB del record guest. |
-| `ABUSE_AUTO_QUARANTINE_THRESHOLD` | 3 | N. di `report` oltre cui il link guest va in quarantena (revoca). |
+| `ABUSE_AUTO_QUARANTINE_THRESHOLD` | 3 | Soglia **minima** (floor) di `report` per la quarantena di un link guest. |
+| `ABUSE_REPORT_DOWNLOAD_RATIO` | 0.05 | Fattore della soglia relativa ai download: quarantena a `max(floor, ceil(downloadCount × ratio))` report (§4.9). |
 | `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
 | `NODE_ENV` | `development` | Solo logging richieste in dev. Il **dettaglio errori non è più esposto** al client in nessun ambiente (§6). |
 
@@ -613,7 +626,7 @@ Enforcement server-side dei limiti per piano. `loadPlan` (dopo `authenticateToke
 
 ### 5-quater. Invio guest & anti-abuso (§C)
 
-Il canale guest (§4.9) è no-auth → protetto da tre livelli:
+Il canale guest (§4.9) è no-auth → protetto da quattro livelli:
 - **Rate limit per IP** (`middleware/guest.js`): `guestInitLimiter` (solo `init`) + `guestLimiter` (tutte le
   rotte guest). ⚠️ Richiede `app.set('trust proxy', TRUST_PROXY_HOPS)` **corretto**, altrimenti conta l'IP del
   proxy invece del client (rate-limit inutile). Default `1` (solo Fly); `2` se dietro proxy Cloudflare.
@@ -624,6 +637,10 @@ Il canale guest (§4.9) è no-auth → protetto da tre livelli:
 - **Storage/lifecycle**: prefisso `uploads/guest/{transferId}/`; una **lifecycle rule R2** cancella gli oggetti
   dopo `GUEST_MAX_EXPIRY` giorni (garanzia dura sui byte). Il **TTL DynamoDB** sull'attributo `ttl` ripulisce il
   record (best-effort ~48h; va **abilitato in console** sulla tabella `SharedLinks`).
+- **Segnalazioni & quarantena** (§4.9 `report`/`appeal`): `report` è **Turnstile-gated**, **deduplicato per
+  (hash IP, link)** e con **soglia relativa ai download** `max(ABUSE_AUTO_QUARANTINE_THRESHOLD, ceil(downloadCount
+  × ABUSE_REPORT_DOWNLOAD_RATIO))` — anti-censura: pochi report non abbattono un link popolare. Chi ha il
+  `manageToken` può **contestare** la quarantena via `appeal` (marca per revisione umana, **non** riattiva).
 
 ### Rate limiting
 - `uploadLimiter`: 10 richieste / 15 min sulle rotte `/api/upload`.

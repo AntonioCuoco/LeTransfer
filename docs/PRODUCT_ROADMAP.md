@@ -4,7 +4,7 @@
 > La promessa che nessun concorrente semplice può fare: **«Impossibile da leggere. Anche per noi — e te lo dimostriamo.»**
 >
 > Analisi di mercato completa (dossier): https://claude.ai/code/artifact/530bfe1c-7235-4cfe-b79d-976a1b55aef2
-> Documenti collegati: [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) · [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) · [BACKEND_CONSOLIDATION.md](BACKEND_CONSOLIDATION.md) · [10-e2e-encryption.md](10-e2e-encryption.md) · [05-shared-links.md](05-shared-links.md)
+> Documenti collegati: [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) · [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) · [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) · [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md) · [05-shared-links.md](05-shared-links.md)
 
 ---
 

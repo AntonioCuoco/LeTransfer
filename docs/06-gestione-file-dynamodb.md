@@ -24,10 +24,10 @@ Sistema per gestire i file dell'utente con sincronizzazione tra S3 (storage) e D
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      AWS BACKEND                             │
+│                  BACKEND (Express unico)                     │
 │                                                              │
 │  ┌──────────────────────┐      ┌────────────────────────┐   │
-│  │     API Gateway      │      │       DynamoDB         │   │
+│  │    Express routes    │      │       DynamoDB         │   │
 │  │                      │      │     SharedFiles        │   │
 │  │  /user/files/dynamo  │◄────▶│  ┌──────────────────┐  │   │
 │  │  /user/files/:id     │      │  │ fileId (PK)      │  │   │
@@ -238,11 +238,15 @@ interface FilesTableProps {
 
 Quando un file viene caricato su S3:
 
-1. **Upload Standard**: La Lambda salva metadata in DynamoDB
-2. **Multipart Upload**: `complete-upload` Lambda salva metadata
+1. **Upload Standard**: la route Express salva i metadati in DynamoDB
+2. **Multipart Upload**: `POST /api/upload/multipart/complete` salva i metadati (`saveFileToDynamoDB`),
+   inclusi `formatVersion` / `chunkSize` / `originalSize` del formato a chunk
+
+> ⚠️ Lo snippet qui sotto è **illustrativo e datato** (viene dalla vecchia Lambda). Per la forma reale
+> del record vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §3.
 
 ```javascript
-// Lambda complete-upload.js
+// forma del record scritto al termine del multipart
 const putCmd = new PutItemCommand({
     TableName: process.env.SHARED_TABLE_NAME,
     Item: {

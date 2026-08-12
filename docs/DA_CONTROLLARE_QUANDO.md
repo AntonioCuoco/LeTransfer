@@ -58,7 +58,8 @@ Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio.
 
 - [ ] **Lifecycle R2 attiva** su `uploads/guest/` (delete dopo 7 giorni) — è la garanzia dura di cancellazione.
 
-- [ ] **Password policy Cognito ≥12** con classi di caratteri — hardening da avere prima del pubblico.
+- [x] **Password policy Cognito ≥12** con classi di caratteri. ✅ **2026-08-02** (#12) — la casella qui era
+      rimasta indietro rispetto a [BACKEND_SECURITY_TODO.md](BACKEND_SECURITY_TODO.md) e [PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md).
 
 ---
 
