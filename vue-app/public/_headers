@@ -23,29 +23,31 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' <<<API_ORIGIN>>> <<<COGNITO_IDP>>> <<<COGNITO_HOSTED_UI>>> <<<R2_HOST>>>; frame-src <<<CAPTCHA_ORIGIN>>>; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cognito-idp.eu-central-1.amazonaws.com https://eu-central-1rkwgxhzif.auth.eu-central-1.amazoncognito.com <<<API_ORIGIN>>> <<<R2_HOST>>>; frame-src https://captcha.novren.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
-# Cosa mettere al posto dei segnaposto, e perché ognuno serve:
+# ── Già compilati (2026-08-13) ───────────────────────────────────────────────
+#   cognito-idp.eu-central-1.amazonaws.com    L'SDK Cognito chiama qui per login,
+#       registrazione e reset password. Senza, l'autenticazione muore in silenzio.
+#   eu-central-1rkwgxhzif.auth...amazoncognito.com   La Hosted UI (User Pool
+#       eu-central-1_RKWgXhZIf). /oauth2/callback ci fa una fetch per scambiare il
+#       codice con i token: senza, il login Google si ferma a metà, dopo che
+#       l'utente ha già dato il consenso.
+#   frame-src https://captcha.novren.net      L'origine isolata del widget.
 #
-#   <<<API_ORIGIN>>>        L'origine dell'Express (solo schema+host, senza /api).
-#                           Es. https://api.novren.net
+# ── Ancora da compilare ──────────────────────────────────────────────────────
+#   <<<API_ORIGIN>>>   L'origine dell'Express (solo schema+host, SENZA /api).
+#                      Sarà https://api.novren.net. Da mettere quando deployi il
+#                      backend — insieme a VITE_API_URL in .env.production, e con
+#                      un nuovo build: i due valori vanno cambiati sempre in coppia.
 #
-#   <<<COGNITO_IDP>>>       https://cognito-idp.<regione>.amazonaws.com
-#                           L'SDK Cognito chiama qui per login, registrazione e
-#                           reset password. Senza, l'autenticazione muore in silenzio.
+#   <<<R2_HOST>>>      https://<account>.r2.cloudflarestorage.com
+#                      (o il dominio custom se metti un CDN davanti a R2).
+#                      È dove vanno le PUT/GET firmate: senza, upload e download
+#                      falliscono mentre la pagina sembra funzionare benissimo.
 #
-#   <<<COGNITO_HOSTED_UI>>> Lo stesso valore di VITE_COGNITO_DOMAIN.
-#                           /oauth2/callback ci fa una fetch per scambiare il
-#                           codice con i token. Senza, il login Google si ferma
-#                           a metà, dopo che l'utente ha già dato il consenso.
-#
-#   <<<R2_HOST>>>           https://<account>.r2.cloudflarestorage.com
-#                           (o il dominio custom se metti un CDN davanti a R2).
-#                           È dove vanno le PUT/GET firmate: senza, gli upload e
-#                           i download falliscono ma la pagina sembra funzionare.
-#
-#   <<<CAPTCHA_ORIGIN>>>    Lo stesso valore di VITE_CAPTCHA_ORIGIN.
-#                           Es. https://captcha.novren.net
+# ⚠️ Finché restano lì, il browser scarta quei due token come sorgenti non valide
+#    (con un avviso in console) e applica il resto della direttiva. Non è un
+#    problema adesso — senza backend non ci sono né API né URL firmati da chiamare.
 #
 # Perché `style-src 'unsafe-inline'` — non è pigrizia: PrimeVue v4 inietta il tema
 # come <style> a runtime, e Vue scrive stili inline per ogni `:style`. Senza,
@@ -66,11 +68,12 @@
 #    `frame-ancestors` fa la stessa cosa ma con una lista.
 /captcha.html
   ! X-Frame-Options
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'unsafe-inline'; connect-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors <<<FRONTEND_ORIGIN>>>
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'unsafe-inline'; connect-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors https://novren.net
   Cache-Control: public, max-age=0, must-revalidate
 
-# <<<FRONTEND_ORIGIN>>> = l'origine dell'app, es. https://novren.net
-# (se un giorno servi l'app da più origini, elencale qui separate da spazio).
+# `frame-ancestors https://novren.net` = chi può incorniciare questa pagina. È l'origine
+# dell'app. `novren.it` non va elencato: fa 301 verso il .net, e dopo un redirect la
+# pagina è servita dal .net — un redirect non è un'origine.
 #
 # Nota sulla CSP del captcha: è volutamente più stretta di quella dell'app.
 # `default-src 'none'` e poi solo ciò che serve a Turnstile. Questa pagina non deve
