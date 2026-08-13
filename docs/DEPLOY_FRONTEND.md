@@ -27,6 +27,20 @@ Tre passi dipendono l'uno dall'altro e sbagliarne l'ordine costa un giro di depl
 
 ## 1. Riempire `.env.production`
 
+> 🔖 **Deciso il 2026-08-13: primo deploy SENZA backend.**
+> `VITE_API_URL` resta **vuota** finché il prodotto non è pronto. Il sito pubblicato è quindi una
+> **vetrina statica**: facciata, pagine, routing, header e CSP si collaudano; login, registrazione,
+> upload e link condivisi **no**, perché non c'è nessuna API da chiamare.
+>
+> Lasciala vuota e non `http://localhost:3000/api`: una pagina HTTPS che chiama `http://localhost`
+> viene bloccata come *mixed content*, e la console si riempie di errori che nascondono quelli veri
+> — comprese le violazioni CSP, che sono esattamente ciò che vuoi leggere in questa fase.
+>
+> **Da fare quando la roadmap è completa:** deployare il backend su Fly, metterci davanti
+> `api.novren.net` (CNAME → Fly, vedi §8 e [BACKEND_WORKORDER_AUTH_COOKIES.md](BACKEND_WORKORDER_AUTH_COOKIES.md)),
+> riempire `VITE_API_URL`, **ricostruire e ridiployare** il frontend, e aggiungere quell'host a
+> `connect-src` in `_headers`. Il valore è incorporato nel bundle: senza un nuovo build non cambia niente.
+
 Il file è in [vue-app/.env.production](../vue-app/.env.production), già commentato variabile
 per variabile. **Non è in `.gitignore` ed è giusto committarlo**: sono valori pubblici, che
 finiscono comunque dentro il bundle. Committandoli, il build su Pages li trova da solo senza
