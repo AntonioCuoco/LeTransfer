@@ -60,14 +60,41 @@
 # aggiunto captcha.novren.net come dominio aggiuntivo). Se invece usi un progetto
 # separato, questo blocco va nel _headers di QUEL progetto.
 #
-# 🚨 Le due righe qui sotto esistono per una ragione precisa: `X-Frame-Options: DENY`
-#    del blocco /* colpirebbe anche questa pagina, che per costruzione vive DENTRO
-#    un iframe cross-origin. Il browser rifiuterebbe di renderizzarla e mostrerebbe
-#    «ha rifiutato la connessione» dentro il riquadro — un messaggio che sembra un
-#    guasto di rete e non lo è. XFO non ammette eccezioni: va rimosso, non ristretto.
-#    `frame-ancestors` fa la stessa cosa ma con una lista.
+# 🚨 Le tre righe qui sotto esistono per una ragione precisa, e vanno tenute INSIEME.
+#
+#    Pages applica **tutte** le regole che combaciano: senza le rimozioni, questa pagina
+#    si prenderebbe anche gli header del blocco /*.
+#
+#    `! X-Frame-Options` — `DENY` colpirebbe anche questa pagina, che per costruzione vive
+#    DENTRO un iframe cross-origin. Il browser rifiuterebbe di renderizzarla e mostrerebbe
+#    «ha rifiutato la connessione» nel riquadro: sembra un guasto di rete e non lo è.
+#    XFO non ammette eccezioni — va rimosso, non ristretto.
+#
+#    `! Content-Security-Policy` — meno ovvio e altrettanto fatale. Con **due** header CSP
+#    il browser applica l'**intersezione**, non l'ultimo: la globale dice `script-src 'self'`
+#    e quella qui sotto `'self' https://challenges.cloudflare.com`, quindi passerebbe solo
+#    `'self'` e lo script di Turnstile verrebbe bloccato. Idem per `frame-ancestors`, dove
+#    `'none'` della globale vincerebbe sulla lista di qui.
+#    Verificato in produzione il 2026-08-13: senza questa riga arrivavano due CSP.
+#
+# 🚨 **Perché il blocco è duplicato su `/captcha` e `/captcha.html`.**
+#    Cloudflare Pages serve i file `.html` senza estensione: una richiesta a
+#    `/captcha.html` riceve un **308 verso `/captcha`**, ed è `/captcha` la pagina vera.
+#    Con la regola scritta solo su `/captcha.html`, gli header finivano sulla risposta di
+#    *redirect* — inutile — mentre la pagina servita ricadeva sotto `/*` e si riprendeva
+#    `X-Frame-Options: DENY` e `frame-ancestors 'none'`, cioè l'iframe bloccato.
+#    Verificato in produzione il 2026-08-13: `/captcha` rispondeva con XFO DENY.
+#    Il codice punta a `/captcha.html` (che funziona ovunque, non solo su Pages), quindi
+#    servono entrambe: una per il redirect, una per la pagina.
+/captcha
+  ! X-Frame-Options
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'unsafe-inline'; connect-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors https://novren.net
+  Cache-Control: public, max-age=0, must-revalidate
+
 /captcha.html
   ! X-Frame-Options
+  ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'unsafe-inline'; connect-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors https://novren.net
   Cache-Control: public, max-age=0, must-revalidate
 
