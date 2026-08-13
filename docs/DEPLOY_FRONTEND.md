@@ -147,11 +147,51 @@ Su Pages → Custom domains, aggiungi:
 > ci sarebbe ancora, ma l'isolamento sarebbe **zero** — un iframe same-origin legge il genitore.
 > Un sottodominio è il modo più economico di avere un'origine diversa.
 
-Su DNS, per il redirect verso l'origine unica, una **Redirect Rule** di Cloudflare:
+### 3.2 Il redirect verso l'origine unica
 
+`novren.it` va aggiunto a Cloudflare **con la stessa procedura del §3.0** (Add a site +
+nameserver). Non è facoltativo: una Redirect Rule scatta solo sul traffico che **arriva** a
+Cloudflare, e se i nameserver del `.it` restano su GoDaddy quelle richieste Cloudflare non le
+vede mai.
+
+**Prima i record.** Un dominio che non ospita niente deve comunque risolvere verso Cloudflare,
+altrimenti non c'è nessuna richiesta da intercettare. Dalla documentazione: *«Use the IP address
+`192.0.2.1` for the A record. This address does not route traffic to an origin server but allows
+Cloudflare to apply rules, redirects, and Workers to incoming traffic.»* (`192.0.2.1` è un
+indirizzo riservato alla documentazione, non instradabile.)
+
+Nella zona `novren.it`:
+
+| Tipo | Nome | Valore | Proxy |
+|---|---|---|---|
+| A | `@` | `192.0.2.1` | **Proxied** |
+| A | `www` | `192.0.2.1` | **Proxied** |
+
+🚨 **Proxied (nuvoletta arancione) è obbligatorio.** In "DNS only" Cloudflare non tocca il
+traffico, la regola non scatta e il browser tenta davvero di raggiungere `192.0.2.1`, che non
+risponde: il dominio sembra semplicemente morto.
+
+**Poi la regola.** Rules → Redirect Rules → Create, con l'editor di espressioni:
+
+- **Quando**: `(http.host eq "novren.it" or http.host eq "www.novren.it")`
+- **Target URL** (dynamic): `concat("https://novren.net", http.request.uri.path)`
+- **Status**: `301` · **Preserve query string**: attivo
+
+⚠️ Il `concat` con `http.request.uri.path` serve a **conservare il percorso**. Con un redirect
+statico alla sola home, chi apre `novren.it/share/<token>` finisce sulla homepage e il file non
+lo vede mai. Su un prodotto in cui il link *è* il prodotto, è la differenza fra un redirect e un
+link rotto.
+
+**Stessa cosa per `www.novren.net`**, ma nella zona `.net`: record `www` proxied verso
+`192.0.2.1` e regola con `http.host eq "www.novren.net"`.
+
+**Verifica.**
+
+```bash
+curl -sI https://novren.it/share/test | grep -iE "^(HTTP|location)"
 ```
-novren.it, www.novren.it, www.novren.net   →  301  →  https://novren.net/$1
-```
+
+Deve rispondere `301` con `location: https://novren.net/share/test` — **col percorso conservato**.
 
 > **Perché `captcha.novren.net` sullo stesso progetto.** Serve la stessa `captcha.html` da
 > un'origine diversa, che è tutto ciò che conta per l'isolamento: lo script di Cloudflare
@@ -164,7 +204,18 @@ novren.it, www.novren.it, www.novren.net   →  301  →  https://novren.net/$1
 > L'alternativa più netta è un secondo progetto Pages che serva **solo** `captcha.html`.
 > In quel caso il blocco `/captcha.html` di `_headers` va spostato in quel progetto.
 
-**Verifica.** `curl -sI https://novren.it` deve rispondere `301` con `location: https://novren.net/`.
+---
+
+## 3-bis. Cosa puoi fare mentre il DNS propaga
+
+Il cambio di nameserver è l'unica cosa che ti fa aspettare (da minuti a qualche ora). Non è un
+tempo morto:
+
+- **Il progetto Pages puoi crearlo e deployarlo subito**: l'URL `*.pages.dev` non dipende dal tuo
+  DNS. Da lì collaudi già registrazione, login, upload, generazione e apertura dei link.
+- **L'unica cosa che non puoi provare è il captcha**, perché ha bisogno della sua origine dedicata.
+- **Collegare i domini custom invece richiede la zona attiva**: Pages verifica che sia nel tuo
+  account, e finché i nameserver non sono propagati non lo è.
 
 ---
 
