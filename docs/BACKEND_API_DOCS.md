@@ -586,7 +586,7 @@ rimuove `ttl` e i marker guest → cancella l'oggetto originale.
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` | — | Cloudflare R2. Se **tutte e 4** impostate → lo storage oggetti passa a R2 (§5-bis). |
 | `R2_JURISDICTION` | — | Solo per bucket **giurisdizionali** (`eu`/`fedramp`): forza l'endpoint `<account>.<juris>.r2.cloudflarestorage.com`. Senza → endpoint standard. Se mancante su un bucket EU → **403 su ogni operazione**. |
 | `SESSION_SECRET` | default insicuro | Firma session token link. |
-| `FRONTEND_URL` | `https://letransfer.app` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
+| `FRONTEND_URL` | `https://novren.net` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
 | `MAX_FILE_SIZE` | 5MB | Limite immagini. |
 | `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici (upload singolo). |
 | `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Valore reale: `dev-swiftsend-shares`. |

@@ -22,9 +22,11 @@ Fatti dal codice, che condizionano tutto:
    → **Decisione routing (§A.0):** la porta pubblica di invio diventa la **facciata**.
 2. **Il brand viola combacia con Proton.** → **Decisione design:** *evolvere* il viola, non sostituirlo.
    Consolidare i token (preset PrimeVue + Tailwind + CSS vars) in un unico design system.
-3. **Crittografia client già pronta**: `utils/crypto.ts` (AES-GCM, `createKeyHash` per il fragment,
-   `encryptChunkFramed`), `utils/streamingDownload.ts`, `utils/keyStore.ts`. Il guest-send **riusa** questi,
+3. **Crittografia client già pronta**: `crypto/crypto.ts` (AES-GCM, `createKeyHash` per il fragment,
+   `encryptChunkFramed`), `crypto/streamingDownload.ts`, `crypto/keyStore.ts`. Il guest-send **riusa** questi,
    generando una **chiave casuale** invece della coppia RSA utente.
+   *(I tre file stavano in `utils/`; sono stati raccolti in `src/crypto/` insieme alla loro specifica —
+   vedi [crypto/README.md](../vue-app/src/crypto/README.md).)*
 
 ### Nuova mappa delle rotte (proposta)
 
@@ -42,19 +44,19 @@ Fatti dal codice, che condizionano tutto:
 
 ---
 
-## 📍 Stato al 2026-08-02
+## 📍 Stato al 2026-08-13
 
 | Fase | Stato | Cosa resta |
 |---|---|---|
 | **F0** Design system | 🟢 chiusa | Token unificati ✅, **font self-hosted** ✅, **primitivi GSAP** ✅ (F0.2), **pelle PrimeVue** ✅ (F0.4: raggi/focus/motion nel preset, voce tipografica in `pt.ts`) |
 | **F1** Invio senza account | 🟢 chiusa | Facciata, cifratura+upload guest, ricezione, progresso per-file, QR, upload in background, drop cartelle, segnalazione, revoca, **controllo pre-invio** ✅ |
 | **F2** Privacy verificabile | 🟢 chiusa | `PrivacyReceipt` ✅, **impronta destinatario + rilevamento cambio chiave** ✅, la propria impronta in impostazioni ✅, pagina `/sicurezza` ✅. Resta: hash del bundle / build riproducibili |
-| **F3** Piani e claim | 🟡 in corso | `/prezzi` ✅, **claim end-to-end** ✅. Restano: **prezzi da confermare**, limiti per tier in UI, checkout Stripe, notifiche di download |
+| **F3** Piani e claim | 🟢 chiusa lato client | `/prezzi` ✅, **claim end-to-end** ✅, **fonte unica dei piani** ✅, **limiti visibili + prompt di upgrade** ✅, **pannello abbonamento + ritorno pagamento** ✅, **badge nuovi download** ✅. Restano due cose che **non sono frontend**: i **prezzi da decidere** e i tre endpoint di [BACKEND_HANDOFF §13-bis](BACKEND_HANDOFF.md) |
 | **F4** AI on-device | ⚪ non iniziata | tutto |
 | **F5** Redesign schermate | 🟢 chiusa | Auth, dashboard, tabelle, layout app, profilo, impostazioni, onboarding chiavi ✅. Palette legacy azzerata, 5 componenti orfani rimossi |
 
 > ⚠️ **Da decidere prima del pubblico**: i prezzi in `/prezzi` sono segnaposto (i *limiti* sono reali,
-> presi dai default del backend); `security@letransfer.app` deve esistere prima di pubblicare `/sicurezza`.
+> presi dai default del backend); `security@novren.net` deve esistere prima di pubblicare `/sicurezza`.
 > `AppSlider.vue` e `PasswordInput.vue` sono rimasti orfani dopo il redesign auth.
 
 ---
@@ -117,7 +119,7 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 ### F0.3 Motivo "cifra/sigillo" (l'identità)
 - [x] Componente **fingerprint** ([KeyFingerprint.vue](../vue-app/src/components/ui/KeyFingerprint.vue)):
   digest SHA-256 **intero** in coppie esadecimali su griglia — troncarlo starebbe più comodo ma renderebbe
-  il confronto a voce meno solido. Impronta canonica **RFC 7638** ([fingerprint.ts](../vue-app/src/utils/fingerprint.ts)).
+  il confronto a voce meno solido. Impronta canonica **RFC 7638** ([fingerprint.ts](../vue-app/src/crypto/fingerprint.ts)).
 - [x] Badge "cifrato in questo browser" + campo generativo `CipherField` + climax del sigillo.
 - [x] Componente **`PrivacyReceipt`** riusabile: variante `send` (link pronto) e `receive` (dopo la decifratura).
 
@@ -309,15 +311,39 @@ monetizza. F4/F5 rifiniscono. F4 (post-quantum E4) è quasi tutto in `crypto.ts`
 
 ## F3 — Piani, claim e conversione (E3)
 
+- [x] **Fonte unica dei piani** ([types/plan.ts](../vue-app/src/types/plan.ts)) — ✅ **2026-08-13**. Limiti,
+  prezzi e feature in un file solo, che alimenta listino, pannello abbonamento, prompt di upgrade e
+  dashboard. Prima i limiti erano copiati a mano in `/prezzi`: un secondo posto da ricordare, su numeri
+  che l'utente usa per decidere se pagare. Il file dichiara di essere uno **specchio** delle env del
+  backend, non la verità — chi decide resta il `413`.
 - [x] **Pagina [`/prezzi`](../vue-app/src/pages/PricingPage.vue)**: Free / Pro / Business con i **limiti reali**
-  (2/20/100 GB, 168/720 h — default backend §5). ⚠️ Gli **importi sono segnaposto**, da confermare.
+  (2/20/100 GB, 168/720 h — default backend §5). ⚠️ Gli **importi sono segnaposto**: dietro il flag
+  `PLAN_PRICES_PROVISIONAL`, che lo dichiara in pagina e **blocca il checkout** finché è acceso.
 - [x] **Flusso "Reclama l'invio"** ([usePendingClaim.ts](../vue-app/src/composables/usePendingClaim.ts)):
   il widget mette da parte `publicToken` + `manageToken` in **sessionStorage** (non localStorage: il
   manageToken è una capability e l'intero percorso avviene nella stessa scheda, anche col redirect OAuth),
   e `AppLayout` riscatta all'ingresso nell'area autenticata — un punto solo per password, registrazione e Google.
-- [ ] **Limiti per tier nella UI**: mostrare dimensione/retention/quota, con upgrade prompt quando si superano.
-- [ ] **Checkout** (Stripe) + gestione abbonamento nelle impostazioni.
-- [ ] **Notifiche di download** (per invii con account): impostazioni + badge in dashboard.
+- [x] **Limiti per tier nella UI** — ✅ **2026-08-13**. Il cap è scritto in dashboard *prima* di
+  incontrarlo (badge piano + "fino a N per file"), i file fuori misura **non entrano in coda**
+  (`handleFilesConfirm`), e il `413` del multipart non finisce più in un generico "Errore durante
+  l'upload": è riconosciuto e apre `UpgradeDialog`, che mostra quanto pesa il file, quanto ammette il
+  piano e **il piano più piccolo che basterebbe** — non il più caro.
+  Il piano arriva da [usePlan.ts](../vue-app/src/composables/usePlan.ts), che **degrada su `free`**
+  quando `GET /api/user/plan` non esiste (oggi: sempre). Dove il piano è dedotto e non confermato, la
+  UI lo dichiara invece di far finta.
+- [x] **Checkout + gestione abbonamento** — ✅ **2026-08-13**. Tab «Abbonamento» nelle impostazioni
+  ([SubscriptionSection.vue](../vue-app/src/components/settings/SubscriptionSection.vue)), portale
+  Stripe, e pagina di ritorno [`/app/abbonamento/esito`](../vue-app/src/pages/BillingReturnPage.vue)
+  che **aspetta il webhook** ricontrollando a intervalli crescenti (~14s) invece di dire "fatto!"
+  mostrando ancora i limiti vecchi. ⏳ **Inerte finché il backend non espone i tre endpoint**
+  ([BACKEND_HANDOFF §13-bis](BACKEND_HANDOFF.md)): `404`/`501` sono trattati come "non ancora attivo",
+  non come guasto.
+- [x] **Notifiche di download**, parte client — ✅ **2026-08-13**. La tessera «Download ricevuti» segna
+  `+N nuovi` confrontando `downloadCount` con l'ultimo valore visto
+  ([useDownloadActivity.ts](../vue-app/src/composables/useDownloadActivity.ts)), azzerato all'apertura
+  della pagina dei link. ⚠️ È un ripiego: funziona solo se l'utente apre l'app. L'invio vero è
+  [BACKEND_HANDOFF voce 12](BACKEND_HANDOFF.md) — e le impostazioni ora **dichiarano** che le email non
+  partono ancora, invece di lasciarlo scoprire aspettandole.
 
 ---
 
@@ -350,7 +376,11 @@ Applicare il design system (F0) a tutto il resto, schermata per schermata:
   costruire un link completo — o rifiutarsi, spiegando perché — ed è
   [testato](../vue-app/src/composables/useShareLink.test.ts) proprio sul caso negativo.
   Nella modale di condivisione il QR non passa dal vault: lì il link è appena nato e ha già il frammento.
-- [ ] **Layout app** ([AppHeader.vue](../vue-app/src/components/layout/AppHeader.vue), [AppSidebar.vue](../vue-app/src/components/layout/AppSidebar.vue), [AppFooter.vue](../vue-app/src/components/layout/AppFooter.vue)).
+- [x] **Layout app** ✅ — [AppLayout.vue](../vue-app/src/components/layout/AppLayout.vue) +
+  [AppSidebar.vue](../vue-app/src/components/layout/AppSidebar.vue). `AppHeader.vue` e `AppFooter.vue`
+  **non esistono più**: il redesign ha sostituito header e footer con la barra laterale, e i due file
+  sono stati rimossi. Nella barra, l'indicatore del vault è una **chiave sbarrata**, non un pallino
+  colorato: un cerchio verde non dice di cosa parla, e a chi non distingue verde e ambra non dice nulla.
 - [x] **Auth** ([LoginPage.vue](../vue-app/src/pages/LoginPage.vue), [RegisterPage.vue](../vue-app/src/pages/RegisterPage.vue)):
   dentro `PublicShell` e la carta chiara condivisa; campi numerati, avviso BLOC MAIUSC, criteri password live,
   conferma del codice come **vista della carta** invece che dialog. Logica Cognito invariata.

@@ -24,14 +24,14 @@ Le uniche due strade:
 
 | Opzione | Cosa comporta | Giudizio |
 |---|---|---|
-| **A. API su sottodominio del frontend** — `api.letransfer.app` (CNAME → Fly) | Cookie `SameSite=Lax` funzionanti, protezione CSRF quasi gratis | ✅ **Consigliata** |
+| **A. API su sottodominio del frontend** — `api.novren.net` (CNAME → Fly) | Cookie `SameSite=Lax` funzionanti, protezione CSRF quasi gratis | ✅ **Consigliata** |
 | B. Domini diversi + `SameSite=None; Secure` | Il cookie parte cross-site, ma si perde la difesa CSRF nativa → serve token anti-CSRF esplicito su ogni mutazione | ❌ più lavoro e più superficie |
 
 **Decisione da prendere per prima**: assegnare al backend un sottodominio del dominio del frontend.
 Senza questo passo, il resto del documento non è implementabile come scritto.
 
-> Corollario: i cookie vanno impostati **host-only** (nessun attributo `Domain=.letransfer.app`).
-> Un cookie su tutto il dominio verrebbe inviato anche a `captcha.letransfer.app`, cioè proprio
+> Corollario: i cookie vanno impostati **host-only** (nessun attributo `Domain=.novren.net`).
+> Un cookie su tutto il dominio verrebbe inviato anche a `captcha.novren.net`, cioè proprio
 > all'origine dove facciamo girare codice di terze parti. Oggi `js-cookie` li scrive host-only: deve restare così.
 
 ---
@@ -111,7 +111,7 @@ Oggi l'app client è **pubblico** (nessun secret) perché girava nel browser. Sp
 - [ ] Calcolare `SECRET_HASH` = Base64(HMAC-SHA256(`username` + `clientId`, `clientSecret`)) su
       `InitiateAuth`, `SignUp`, `ConfirmSignUp`, `ForgotPassword`, `RespondToAuthChallenge`.
 - [ ] Env su Fly: `COGNITO_CLIENT_ID`, `COGNITO_CLIENT_SECRET`, `COGNITO_REGION`, `COGNITO_USER_POOL_ID`.
-- [ ] Aggiungere `https://api.letransfer.app/api/auth/oauth/callback` alle **Callback URL** del client
+- [ ] Aggiungere `https://api.novren.net/api/auth/oauth/callback` alle **Callback URL** del client
       (il redirect di Google non torna più al frontend).
 - [ ] **Dopo la migrazione**: disattivare `USER_PASSWORD_AUTH` sul client pubblico, così il vecchio
       percorso browser smette di funzionare invece di restare una porta aperta dimenticata.
@@ -164,7 +164,7 @@ Il prodotto non è ancora pubblico → **taglio netto**, niente doppio supporto.
 - [ ] Un refresh token già usato → revoca della famiglia e `401` (rilevamento del riuso)
 - [ ] `logout` invalida davvero: il vecchio refresh non funziona più
 - [ ] `forgot-password` risponde `202` sia per email esistenti che inesistenti
-- [ ] Il cookie **non** viene inviato a `captcha.letransfer.app` (host-only + Path)
+- [ ] Il cookie **non** viene inviato a `captcha.novren.net` (host-only + Path)
 
 ---
 

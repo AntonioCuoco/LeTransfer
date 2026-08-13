@@ -77,7 +77,7 @@ const handleGenerate = async () => {
 
 const downloadAsFile = () => {
   const content = [
-    'LeTransfer — chiave di recupero',
+    'Novren — chiave di recupero',
     '',
     "Queste 24 parole sono l'unico modo per riaprire i tuoi file se perdi",
     "l'accesso a questo dispositivo. Chi le possiede può leggere i tuoi file.",
@@ -91,7 +91,8 @@ const downloadAsFile = () => {
   const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }))
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = 'letransfer-chiave-di-recupero.txt'
+  // Il nome del file finisce sul disco dell'utente: è UI a tutti gli effetti.
+  anchor.download = 'novren-chiave-di-recupero.txt'
   document.body.appendChild(anchor)
   anchor.click()
   document.body.removeChild(anchor)

@@ -1,0 +1,89 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Novren — header di sicurezza (Cloudflare Pages)
+#
+# Questo file viene copiato in dist/ dal build e letto da Pages. È il posto dove
+# vive la CSP **autoritativa**: in sviluppo non può stare, perché una CSP stretta
+# rompe l'HMR di Vite (usa eval e websocket). Vedi vite.config.ts.
+#
+# ⚠️ I <<<SEGNAPOSTO>>> vanno sostituiti PRIMA del deploy. Se ne resta uno, la CSP
+#    non è valida per quella direttiva e il browser blocca le richieste — con
+#    l'app che sembra rotta senza dire perché. Controlla sempre la console dopo
+#    il primo deploy: le violazioni CSP si leggono lì.
+#
+# ⚠️ Il build di produzione **non contiene `eval`** (verificato), quindi
+#    `script-src 'self'` regge senza `unsafe-eval`. Se un domani aggiungi WASM
+#    (E5, AI on-device) servirà `'wasm-unsafe-eval'`.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── L'applicazione ───────────────────────────────────────────────────────────
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' <<<API_ORIGIN>>> <<<COGNITO_IDP>>> <<<COGNITO_HOSTED_UI>>> <<<R2_HOST>>>; frame-src <<<CAPTCHA_ORIGIN>>>; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+
+# Cosa mettere al posto dei segnaposto, e perché ognuno serve:
+#
+#   <<<API_ORIGIN>>>        L'origine dell'Express (solo schema+host, senza /api).
+#                           Es. https://api.novren.net
+#
+#   <<<COGNITO_IDP>>>       https://cognito-idp.<regione>.amazonaws.com
+#                           L'SDK Cognito chiama qui per login, registrazione e
+#                           reset password. Senza, l'autenticazione muore in silenzio.
+#
+#   <<<COGNITO_HOSTED_UI>>> Lo stesso valore di VITE_COGNITO_DOMAIN.
+#                           /oauth2/callback ci fa una fetch per scambiare il
+#                           codice con i token. Senza, il login Google si ferma
+#                           a metà, dopo che l'utente ha già dato il consenso.
+#
+#   <<<R2_HOST>>>           https://<account>.r2.cloudflarestorage.com
+#                           (o il dominio custom se metti un CDN davanti a R2).
+#                           È dove vanno le PUT/GET firmate: senza, gli upload e
+#                           i download falliscono ma la pagina sembra funzionare.
+#
+#   <<<CAPTCHA_ORIGIN>>>    Lo stesso valore di VITE_CAPTCHA_ORIGIN.
+#                           Es. https://captcha.novren.net
+#
+# Perché `style-src 'unsafe-inline'` — non è pigrizia: PrimeVue v4 inietta il tema
+# come <style> a runtime, e Vue scrive stili inline per ogni `:style`. Senza,
+# l'applicazione si vede completamente senza stile. Sugli stili il rischio è
+# basso; su `script-src` invece non transigiamo, ed è lì che 'unsafe-inline' NON c'è.
+
+
+# ── L'origine isolata del captcha ────────────────────────────────────────────
+# Vale solo se captcha.html è servita da questo stesso progetto Pages (cioè hai
+# aggiunto captcha.novren.net come dominio aggiuntivo). Se invece usi un progetto
+# separato, questo blocco va nel _headers di QUEL progetto.
+#
+# 🚨 Le due righe qui sotto esistono per una ragione precisa: `X-Frame-Options: DENY`
+#    del blocco /* colpirebbe anche questa pagina, che per costruzione vive DENTRO
+#    un iframe cross-origin. Il browser rifiuterebbe di renderizzarla e mostrerebbe
+#    «ha rifiutato la connessione» dentro il riquadro — un messaggio che sembra un
+#    guasto di rete e non lo è. XFO non ammette eccezioni: va rimosso, non ristretto.
+#    `frame-ancestors` fa la stessa cosa ma con una lista.
+/captcha.html
+  ! X-Frame-Options
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'unsafe-inline'; connect-src https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors <<<FRONTEND_ORIGIN>>>
+  Cache-Control: public, max-age=0, must-revalidate
+
+# <<<FRONTEND_ORIGIN>>> = l'origine dell'app, es. https://novren.net
+# (se un giorno servi l'app da più origini, elencale qui separate da spazio).
+#
+# Nota sulla CSP del captcha: è volutamente più stretta di quella dell'app.
+# `default-src 'none'` e poi solo ciò che serve a Turnstile. Questa pagina non deve
+# poter fare nient'altro — è la ragione per cui è separata.
+
+
+# ── Cache ────────────────────────────────────────────────────────────────────
+# Gli asset con hash nel nome sono immutabili: si possono cachare per sempre.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# L'HTML no: è ciò che punta agli asset nuovi dopo un deploy. Se lo cachi, gli
+# utenti restano sulla versione vecchia senza accorgersene.
+# (captcha.html ha già la sua regola di cache nel blocco qui sopra.)
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

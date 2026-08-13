@@ -149,7 +149,7 @@ Il `connect-src` **deve** includere il dominio reale dell'API Express e il bucke
 
 ### 4. PBKDF2 100k anche sul backup con password utente
 **Ambito:** 🖥️ Frontend (DEV) — richiede un piccolo campo lato Backend Express
-**File:** [crypto.ts:6](vue-app/src/utils/crypto.ts#L6), [:129](vue-app/src/utils/crypto.ts#L129)
+**File:** [crypto.ts:6](vue-app/src/crypto/crypto.ts#L6), [:129](vue-app/src/crypto/crypto.ts#L129)
 
 **Problema.** 100k iterazioni vanno bene per la Recovery Key (mnemonica a 256 bit), ma sono deboli per il backup cifrato con **password utente** (potenzialmente debole), attaccabile offline se un attaccante accede al DB. OWASP 2023: ≥600k per PBKDF2-SHA256.
 
@@ -179,7 +179,7 @@ export async function deriveKeyFromPassword(pwd: string, salt: Uint8Array, itera
 **Ambito:** 🖥️ Frontend (DEV) — breaking change formato; tocca un campo metadati lato Express
 **File upload:** [useS3MultipartUpload.ts:231-266](vue-app/src/composables/useS3MultipartUpload.ts#L231-L266). **File download:** [useFileFromDynamoDB.ts:143-153](vue-app/src/composables/useFileFromDynamoDB.ts#L143-L153), [ShareAccessPage.vue:74-77](vue-app/src/pages/ShareAccessPage.vue#L74-L77)
 
-**Problema.** Il file viene cifrato/decifrato come un unico blob GCM in RAM: OOM su file grandi (annulla il senso del multipart) e nessuna integrità per-chunk. Esistono già `encryptChunk`/`decryptChunk` con AAD sull'indice ([crypto.ts:44-58](vue-app/src/utils/crypto.ts#L44-L58)) ma non sono collegati.
+**Problema.** Il file viene cifrato/decifrato come un unico blob GCM in RAM: OOM su file grandi (annulla il senso del multipart) e nessuna integrità per-chunk. Esistono già `encryptChunk`/`decryptChunk` con AAD sull'indice ([crypto.ts:44-58](vue-app/src/crypto/crypto.ts#L44-L58)) ma non sono collegati.
 
 **Soluzione.** Cifrare ogni chunk con IV unico + AAD=indice, prefissando l'IV al chunk. Va aggiornato **upload + download + preview** insieme, con **versioning del formato** (campo `formatVersion` nei metadati DynamoDB, scritto dall'Express in `complete`), altrimenti i file esistenti diventano illeggibili. È una breaking change → pianificata a parte.
 
@@ -213,7 +213,7 @@ Le 4 lambda avevano `Access-Control-Allow-Origin: *` e leak di `error.message`. 
 
 ### 9. Nessun legame crittografico tra wrapped key e file
 **Ambito:** 🖥️ Frontend (DEV)
-**File:** [encryption.ts](vue-app/src/stores/encryption.ts) — `storeKey`/`getKey`, [crypto.ts:158-170](vue-app/src/utils/crypto.ts#L158-L170)
+**File:** [encryption.ts](vue-app/src/stores/encryption.ts) — `storeKey`/`getKey`, [crypto.ts:158-170](vue-app/src/crypto/crypto.ts#L158-L170)
 
 `s3Key` non è inclusa come AAD nel wrapping delle file key: un server malevolo può scambiare le entry (l'unwrap non fallisce, ma l'utente decifra il file sbagliato — integrità, non confidenzialità). **Fix:** includere `s3Key` come `additionalData` in `wrapFileKey`/`unwrapFileKey`.
 

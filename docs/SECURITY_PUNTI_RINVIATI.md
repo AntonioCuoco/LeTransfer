@@ -119,7 +119,7 @@ Il passo 2 è fiducia cieca: **nessuno verifica che la chiave sia davvero del de
 
 | File | Modifica | Perché |
 |------|----------|--------|
-| [crypto.ts](../vue-app/src/utils/crypto.ts) | Nuova funzione `fingerprintPublicKey(jwk): string` — SHA-256 della JWK pubblica canonicalizzata, formattata leggibile | Primitiva per calcolare il fingerprint in modo deterministico |
+| [crypto.ts](../vue-app/src/crypto/crypto.ts) | Nuova funzione `fingerprintPublicKey(jwk): string` — SHA-256 della JWK pubblica canonicalizzata, formattata leggibile | Primitiva per calcolare il fingerprint in modo deterministico |
 | [useUserKeyPair.ts](../vue-app/src/composables/useUserKeyPair.ts) | `getRecipientPublicKey` ritorna anche il fingerprint della chiave ottenuta | Esporlo alla UI di condivisione |
 | [ShareFileModal.vue](../vue-app/src/components/ShareFileModal.vue) | Mostrare il fingerprint del destinatario + checkbox/step "Ho verificato l'identità" prima di condividere | Punto di verifica out-of-band dell'utente |
 | [GUIDA_UTENTE_E2E.md](GUIDA_UTENTE_E2E.md) | Sezione sul trust model e su come confrontare il fingerprint | Opzione 1, documentazione |

@@ -40,6 +40,7 @@ Specifiche pronte da implementare, ognuna con il suo "come".
 |---|---|
 | [BACKEND_WORKORDER_AUTH_COOKIES.md](BACKEND_WORKORDER_AUTH_COOKIES.md) | **Aperto.** Refresh token in cookie `httpOnly`; oggi i token stanno in cookie leggibili da JavaScript |
 | [EMAIL_NOTIFICHE.md](EMAIL_NOTIFICHE.md) | **Aperto.** Design dell'invio email (Resend). È la voce 14 dell'handoff |
+| [BACKEND_HANDOFF.md §13-bis](BACKEND_HANDOFF.md) | **Aperto.** I tre endpoint di piani e fatturazione che il frontend già chiama e che non esistono ancora. `GET /api/user/plan` è staccabile dagli altri due e non dipende da Stripe |
 | [MIGRATION_S3_TO_R2.md](MIGRATION_S3_TO_R2.md) | **Cutover fatto.** Resta come riferimento sui costi e come piano di verifica |
 
 ---

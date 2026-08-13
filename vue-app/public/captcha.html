@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="robots" content="noindex" />
-<title>Verifica anti-bot · LeTransfer</title>
+<title>Verifica anti-bot · Novren</title>
 <!--
   Stanza isolata per Cloudflare Turnstile.
 
@@ -42,12 +42,22 @@
   'use strict';
 
   // Origini autorizzate a incorporare questa pagina e a ricevere il token.
-  // In produzione va lasciato SOLO l'origine reale del frontend.
+  //
+  // ⚠️ È il gate vero sul token: qualunque origine elencata qui può incorniciare il
+  // widget e incassare il risultato della verifica. Si aggiunge solo ciò che è nostro.
+  //
+  // ⚠️ Le prime due sono di SVILUPPO e vanno tolte nel build di produzione: in dev
+  // l'app gira su localhost mentre questa pagina è servita dall'IP della LAN (due
+  // origini distinte, che è il punto). In produzione devono restare solo i domini
+  // ufficiali. Le varianti `www` ci sono perché per il browser sono origini diverse.
+  // Origine unica di produzione: `novren.it` e le varianti `www` fanno 301 verso
+  // `novren.net`, quindi il browser arriva qui sempre e solo da quell'origine.
+  // Un redirect non è un'origine: dopo il 301 la pagina è servita da novren.net,
+  // ed è quello che il browser dichiara come `parent`.
   var ALLOWED_PARENTS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'https://letransfer.app',
-    'https://www.letransfer.app'
+    'https://novren.net'
   ];
 
   var params = new URLSearchParams(location.search);

@@ -16,6 +16,12 @@ withDefaults(defineProps<{
   hint?: string
   icon?: string
   tone?: 'default' | 'brand' | 'verified' | 'warn'
+  /**
+   * Pastiglia "novità" accanto al numero (es. "+2 nuovi").
+   * A differenza delle `trend`/`change` rimosse qui sopra, questa non stima niente:
+   * è la differenza fra due conteggi reali, quello di adesso e quello già visto.
+   */
+  badge?: string | number
 }>(), { tone: 'default' })
 
 const TONE: Record<string, { icon: string; value: string }> = {
@@ -33,7 +39,15 @@ const TONE: Record<string, { icon: string; value: string }> = {
     </div>
     <div class="min-w-0 flex-1">
       <p class="lt-label m-0 mb-1.5 !text-haze-400">{{ label }}</p>
-      <p class="m-0 text-[1.9rem] font-bold leading-none tracking-[-0.03em]" :class="TONE[tone].value">{{ value }}</p>
+      <div class="flex items-baseline gap-2.5">
+        <p class="m-0 text-[1.9rem] font-bold leading-none tracking-[-0.03em]" :class="TONE[tone].value">{{ value }}</p>
+        <span
+          v-if="badge"
+          class="rounded-badge bg-verified-400/15 px-2 py-0.5 font-mono text-[0.66rem] font-bold text-verified-400"
+        >
+          {{ badge }}
+        </span>
+      </div>
       <p v-if="hint" class="m-0 mt-2 font-mono text-[0.72rem] text-haze-400">{{ hint }}</p>
     </div>
   </div>

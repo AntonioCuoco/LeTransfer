@@ -5,11 +5,16 @@ import Components from 'unplugin-vue-components/vite'
 import { PrimeVueResolver } from '@primevue/auto-import-resolver'
 import path from 'path'
 
-// Origini da cui l'app può incorporare la stanza del captcha.
-// ⚠️ Da tenere allineata a ALLOWED_PARENTS in public/captcha.html, che è il gate
-// vero: questa lista decide chi può *mostrare* l'iframe, quella chi può *ricevere*
-// il token. Se aggiungi un'origine di sviluppo (es. l'IP della LAN), va messa in
-// entrambe, e in produzione va lasciata la sola origine reale del frontend.
+// Origini da cui l'app può incorporare la stanza del captcha, **in sviluppo**.
+//
+// ⚠️ Da tenere allineata a ALLOWED_PARENTS in public/captcha.html, che è il gate vero:
+// questa lista decide chi può *mostrare* l'iframe, quella chi può *ricevere* il token.
+// Se aggiungi un'origine di sviluppo (es. l'IP della LAN), va messa in entrambe.
+//
+// In produzione questa costante non conta — il dev server non gira — ma l'host/CDN deve
+// servire `captcha.html` con `frame-ancestors https://novren.net https://www.novren.net
+// https://novren.it https://www.novren.it`, cioè gli stessi domini ufficiali che stanno
+// in ALLOWED_PARENTS. Vedi BACKEND_HANDOFF voce 8.
 const CAPTCHA_PARENTS = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',

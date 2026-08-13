@@ -82,7 +82,7 @@ defineExpose({ surge, settle, calm, stampSeal })
             @click.prevent="router.push('/')"
           >
             <BrandSeal :size="28" variant="mark" />
-            LeTransfer
+            Novren
           </a>
 
           <!-- Nav + azioni -->
@@ -131,7 +131,7 @@ defineExpose({ surge, settle, calm, stampSeal })
         <div class="max-w-[300px]">
           <div class="mb-3 flex items-center gap-2.5 text-[1.05rem] font-extrabold tracking-[-0.02em]">
             <BrandSeal :size="24" variant="mark" />
-            LeTransfer
+            Novren
           </div>
           <p class="text-[0.86rem] leading-relaxed text-[#8d7fb8]">
             Trasferimenti cifrati nel browser. La chiave non passa mai dai nostri server — per scelta,
@@ -154,14 +154,14 @@ defineExpose({ surge, settle, calm, stampSeal })
 
         <div class="grid gap-2.5">
           <span class="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Segnalazioni</span>
-          <a href="mailto:security@letransfer.app" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
-            security@letransfer.app
+          <a href="mailto:security@novren.net" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
+            security@novren.net
           </a>
         </div>
       </div>
 
       <div class="mt-9 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5 font-mono text-[0.7rem] text-[#6a5f8c]">
-        <span>© {{ new Date().getFullYear() }} LeTransfer</span>
+        <span>© {{ new Date().getFullYear() }} Novren</span>
         <span>Dati in UE · client open-source · nessun log dei contenuti</span>
       </div>
     </footer>

@@ -94,7 +94,7 @@ style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
 font-src 'self';
 connect-src 'self' https://<account>.r2.cloudflarestorage.com https://cognito-idp.<regione>.amazonaws.com;
-frame-src https://captcha.letransfer.app;
+frame-src https://captcha.novren.net;
 object-src 'none';
 base-uri 'none';
 frame-ancestors 'none';

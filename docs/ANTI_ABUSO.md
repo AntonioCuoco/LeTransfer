@@ -19,7 +19,7 @@ aveva la **macchina operativa** per accorgersi degli abusi e rimuoverli in frett
 Il rischio reale per noi, in ordine di gravità:
 
 1. **Blocklisting del dominio** — Google Safe Browsing, SmartScreen, i gateway di posta. Se
-   `letransfer.app` finisce in quelle liste, smettono di arrivare *tutti* i link, anche quelli
+   `novren.net` finisce in quelle liste, smettono di arrivare *tutti* i link, anche quelli
    legittimi. Per un prodotto di trasferimento file è una condanna a morte, ed è **reversibile
    solo lentamente**.
 2. **Pressione di provider e registrar** — abuse complaint verso Cloudflare/R2 e verso il registrar.

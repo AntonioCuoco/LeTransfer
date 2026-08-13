@@ -2,26 +2,51 @@
 import { ref } from 'vue'
 import { generateCodeVerifier, generateCodeChallenge } from '@/src/utils/pkce'
 
+/**
+ * Accesso con Google via Cognito Hosted UI + PKCE.
+ *
+ * **Il bottone non esiste se OAuth non è configurato.** Prima veniva mostrato sempre e,
+ * senza `VITE_COGNITO_DOMAIN`, al clic lanciava `Missing Cognito configuration.` — un
+ * messaggio in inglese, tecnico, su un percorso che non poteva funzionare in nessun caso.
+ * Offrire un metodo di accesso rotto è peggio che non offrirlo: l'utente non sa se ha
+ * sbagliato lui, e spesso non prova nemmeno la strada che funziona (email e password).
+ *
+ * ⚠️ `VITE_COGNITO_REDIRECT_URI` è volutamente **opzionale**: senza, si usa l'origine
+ * corrente. È il comportamento giusto se un giorno l'app risponde su più domini — un
+ * valore fisso farebbe fallire il login da tutti gli altri con `redirect_uri mismatch`.
+ * Le callback vanno comunque registrate su Cognito, una per origine.
+ */
+
 const props = defineProps<{ disabled?: boolean; onError?: (error: string) => void }>()
 
 const isLoading = ref(false)
+
+// Valutato una volta sola: se manca la configurazione, il bottone non si monta proprio.
+const COGNITO_DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN as string | undefined
+const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID as string | undefined
+const isConfigured = Boolean(COGNITO_DOMAIN && COGNITO_CLIENT_ID)
+
+if (!isConfigured && import.meta.env.DEV) {
+  console.warn(
+    '[oauth] Accesso con Google nascosto: manca VITE_COGNITO_DOMAIN e/o VITE_COGNITO_CLIENT_ID. ' +
+    'Il dominio è quello della Hosted UI di Cognito, es. https://<prefisso>.auth.<regione>.amazoncognito.com',
+  )
+}
 
 const handleGoogleLogin = async () => {
   if (props.disabled || isLoading.value) return
   isLoading.value = true
   try {
-    const domain = import.meta.env.VITE_COGNITO_DOMAIN as string
+    const domain = COGNITO_DOMAIN as string
     const redirect = (import.meta.env.VITE_COGNITO_REDIRECT_URI as string) || `${window.location.origin}/oauth2/callback`
-    const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID as string
-    if (!domain || !clientId) throw new Error('Missing Cognito configuration.')
+    const clientId = COGNITO_CLIENT_ID as string
     const verifier = generateCodeVerifier()
     sessionStorage.setItem('pkce_verifier', verifier)
     const challenge = await generateCodeChallenge(verifier)
     const scope = 'openid email profile'
     window.location.href = `${domain}/oauth2/authorize?identity_provider=Google&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&client_id=${clientId}&scope=${encodeURIComponent(scope)}&code_challenge_method=S256&code_challenge=${challenge}`
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : 'Error during Google login'
-    props.onError?.(msg)
+  } catch {
+    props.onError?.('Non siamo riusciti ad aprire l’accesso con Google. Riprova, oppure entra con email e password.')
   } finally {
     isLoading.value = false
   }
@@ -30,6 +55,7 @@ const handleGoogleLogin = async () => {
 
 <template>
   <button
+    v-if="isConfigured"
     type="button"
     :disabled="disabled || isLoading"
     class="flex w-full items-center justify-center gap-3 rounded-[13px] border border-[#e9e3f6] bg-white px-4 py-3 text-[0.92rem] font-semibold text-[#1b1140] transition hover:-translate-y-px hover:border-[#7c4dff] disabled:cursor-not-allowed disabled:opacity-60"

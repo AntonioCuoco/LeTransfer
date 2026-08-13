@@ -67,11 +67,16 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
   **controllo pre-invio on-device**.
 - **E2 — privacy verificabile**: fingerprint destinatario ✅, ricevuta di privacy ✅, nucleo crypto isolato e
   documentato ✅. Resta la **build riproducibile** (workflow scritto, mai eseguito).
-- **E3 — piani**: limiti applicati **server-side** ✅, claim end-to-end ✅. Restano **prezzi**, limiti mostrati
-  in UI, Stripe, notifiche di download.
+- **E3 — piani**: limiti applicati **server-side** ✅, claim end-to-end ✅, **tutto il lato client** ✅
+  (2026-08-13: limiti visibili, prompt di upgrade, pannello abbonamento, ritorno pagamento, badge download).
+  Restano due cose che **non sono codice frontend**: i **prezzi da decidere** e i tre endpoint di
+  [BACKEND_HANDOFF §13-bis](BACKEND_HANDOFF.md) (`GET /api/user/plan`, checkout, portal) più la tabella
+  `Subscriptions` + webhook (voce 13).
 - **E4–E9** (post-quantum, AI on-device, compliance B2B, key transparency, team, mobile): non iniziate.
-- **§6 Ridisegno UI/UX**: design system ✅ e schermate pubbliche/auth/onboarding ✅; restano dashboard,
-  gestione link e impostazioni.
+  Verificato nel codice il 2026-08-13: nessun riferimento a `webgpu`, `ml-kem`, `liboqs`, `onnx`, audit log.
+- **§6 Ridisegno UI/UX**: design system ✅, schermate pubbliche/auth/onboarding ✅, e dashboard/profilo/
+  impostazioni portate sullo stesso contenitore (`.lt-page`) il 2026-08-12. Resta la **gestione link**
+  (`SharedLinksTable` + `ShareFileModal`), l'unica schermata ancora col vecchio taglio.
 
 ---
 
@@ -140,11 +145,23 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 ### Epica E2 — Privacy verificabile (il differenziatore)  · **P1** · 🖥️⚙️ · **L**
 > Il verbo che ci distingue da tutti: **verificabile**. È il marketing dentro una feature. Trasforma il punto #5 da "rinviato" a strategico.
 
-- [ ] **#5 — Fingerprint della chiave del destinatario**: UI che mostra il fingerprint SHA-256 della chiave pubblica JWK, verifica out-of-band, opt-in. Documentare il trust model. (Oggi in [SECURITY_PUNTI_RINVIATI.md](SECURITY_PUNTI_RINVIATI.md).) 🖥️
-- [ ] **Ricevuta di privacy** per ogni invio: schermata/artefatto che mostra "il server ha visto solo ciphertext / non ha mai visto file, chiave, nome reale" + hash verificabile. 🖥️
-- [ ] **Open-source del client-crypto**: estrarre `crypto.ts`, `streamingDownload.ts`, key store in un modulo pubblicabile + README del modello crittografico. 🖥️
+> **Aggiornato il 2026-08-13.** Le caselle qui sotto erano rimaste indietro: tre su cinque erano già
+> fatte da settimane. Il riepilogo in §2 diceva il vero, questo elenco no.
+
+- [x] **#5 — Fingerprint della chiave del destinatario** ✅ — `RecipientFingerprintDialog.vue` con
+  rilevamento del cambio chiave, più la propria impronta in impostazioni (`MyKeyFingerprint.vue`).
+  Trust model documentato in [crypto/README.md §5](../vue-app/src/crypto/README.md) (RFC 7638). 🖥️
+- [x] **Ricevuta di privacy** ✅ — `PrivacyReceipt` riusabile, varianti `send` e `receive`. 🖥️
+- [x] **Modello crittografico specificato** ✅ — [crypto/README.md](../vue-app/src/crypto/README.md),
+  mantenuto nello stesso commit del codice, con la §7 che dichiara **dove la promessa si ferma**.
+  ⏳ Resta l'estrazione in un **modulo pubblicabile** vero e proprio: la specifica c'è, il pacchetto no. 🖥️
 - [ ] **Build riproducibili** (base): lockfile, build deterministico, hash pubblicato del bundle. 🌐
-- [ ] **#9** già fatto (AAD `s3Key`); verificare copertura anche nel flusso senza account.
+  ⚠️ Il workflow [reproducible-build.yml](../.github/workflows/reproducible-build.yml) **esiste ma non è
+  mai stato eseguito**, e non c'è la pagina dove confrontare l'hash. È l'ultimo pezzo che manca perché
+  «verificabile» smetta di essere un aggettivo: oggi chiunque può controllare il *modello*, nessuno può
+  controllare che il *bundle servito* sia quello.
+- [x] **#9** ✅ AAD `s3Key` in wrap/unwrap con fallback per le chiavi vecchie; il flusso senza account usa
+  la chiave nel fragment e l'AAD per-chunk (`chunk-<i>`), quindi è coperto per costruzione.
 
 **DoD:** un destinatario può verificare il fingerprint del mittente; ogni trasferimento produce una ricevuta di privacy; il codice crittografico è pubblico e il bundle ha un hash verificabile.
 
@@ -158,8 +175,18 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
   trasferimenti/mese**, che richiede tracking usage. Vedi [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md) §5-ter.
 - [x] **"Reclama il trasferimento"**: dopo un invio senza account, invito a creare account gratuito
   (`POST /api/share/claim`; il `publicToken` non cambia, i link già distribuiti restano validi).
-- [ ] Pagina **prezzi/piani** + gestione abbonamento (integrazione pagamenti, es. Stripe).
-- [ ] Notifiche di download (email/in-app) per invii con account.
+- [x] **Limiti visibili e prompt di upgrade** — ✅ **2026-08-13**. Il cap è scritto in dashboard prima di
+  incontrarlo, i file fuori misura non entrano in coda, e il `413` apre un dialogo che dice quanto pesa il
+  file, quanto ammette il piano e **il piano più piccolo che basterebbe**. Prima l'utente scopriva il
+  limite solo sbattendoci contro, a upload iniziato.
+- [x] Pagina **prezzi/piani** + **gestione abbonamento** — ✅ **2026-08-13** lato client (tab «Abbonamento»,
+  portale Stripe, pagina di ritorno che attende il webhook). ⏳ **Inerte** finché non ci sono gli endpoint:
+  vedi [BACKEND_HANDOFF §13-bis](BACKEND_HANDOFF.md).
+- [ ] **Prezzi da decidere.** Gli importi sono segnaposto dietro il flag `PLAN_PRICES_PROVISIONAL`, che li
+  dichiara in pagina e **blocca il checkout** finché è acceso. È una decisione, non codice — ma è ciò che
+  tiene ferme le altre due voci.
+- [~] Notifiche di download: la parte client c'è (badge «+N nuovi» dai conteggi reali), **l'invio no** —
+  è [BACKEND_HANDOFF voce 12](BACKEND_HANDOFF.md).
 - [ ] Migrazione trasferimento senza account → account (associa il record `SharedLinks` all'utente al momento del claim).
 
 **DoD:** i tre tier hanno limiti reali applicati; un utente senza account può convertirsi in Free e conservare il suo invio; il pagamento sblocca Pro/Business.
@@ -184,7 +211,8 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 > Feature "smart" senza mai vedere i file: la risposta esatta allo scandalo WeTransfer-AI. Gira sul device dell'utente.
 
 - [ ] **Scansione malware/NSFW nel browser** prima dell'invio (modello WASM/WebGPU) — versione piena dell'anti-abuso minimo di E1.
-- [ ] **Anteprime locali** (immagini/documenti) generate client-side, mai lato server.
+- [x] **Anteprime locali** ✅ (immagini/PDF/audio/video) generate client-side, mai lato server —
+  `FilePreviewCard.vue`. È l'unico pezzo di E5 già in piedi.
 - [ ] **Auto-tag / OCR locale** opzionale per organizzare i propri file (solo account).
 - [ ] Fallback grazioso dove WebGPU non è disponibile (Firefox/Safari) — coerente con l'avviso già presente nello streaming download.
 
@@ -238,13 +266,18 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 - [ ] **Onboarding delle chiavi umano**: il recovery BIP39 e il backup spiegati in modo comprensibile (è qui che i prodotti E2E perdono utenti).
 
 ### Schermate da ridisegnare
-- [ ] **Landing** ([LandingPage.vue](../vue-app/src/pages/LandingPage.vue)) — messaggio "impossibile da leggere, anche per noi".
-- [ ] **Invio senza account** (nuovo, Porta A) — l'esperienza drag-and-drop "alla WeTransfer" ma cifrata.
-- [ ] **Dashboard / file** ([Homepage.vue](../vue-app/src/pages/Homepage.vue), [FilesTable.vue](../vue-app/src/components/FilesTable.vue)).
-- [ ] **Gestione link** ([SharedLinksTable.vue](../vue-app/src/components/SharedLinksTable.vue)) + modale condivisione ([ShareFileModal.vue](../vue-app/src/components/ShareFileModal.vue)).
-- [ ] **Ricezione link** ([ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue)) — anteprima + ricevuta di privacy.
-- [ ] **Impostazioni / profilo / recovery** ([SettingsPage.vue](../vue-app/src/pages/SettingsPage.vue), [RecoveryKeySetup.vue](../vue-app/src/components/RecoveryKeySetup.vue)).
-- [ ] **UI dell'AI on-device** (E5) rifatta nello stesso linguaggio: scansione/anteprime come momenti fluidi e chiari, non tecnici.
+- [x] **Landing** ✅ — rifatta nel mondo viola, con il campo generativo e il climax del sigillo.
+- [x] **Invio senza account** ✅ — `GuestSendWidget` + facciata: drop, progresso per-file, QR, background.
+- [x] **Dashboard / file** ✅ — [Homepage.vue](../vue-app/src/pages/Homepage.vue) e le tabelle; i numeri
+  inventati ("+12%", "di 10 GB disponibili") sono stati rimossi perché non esisteva il dato dietro.
+- [ ] **Gestione link** ([SharedLinksTable.vue](../vue-app/src/components/SharedLinksTable.vue)) + modale
+  condivisione ([ShareFileModal.vue](../vue-app/src/components/ShareFileModal.vue)). ⬅️ **l'unica rimasta.**
+- [x] **Ricezione link** ✅ — [ShareAccessPage.vue](../vue-app/src/pages/ShareAccessPage.vue) con anteprima
+  e ricevuta di privacy.
+- [x] **Impostazioni / profilo / recovery** ✅ — incluso l'onboarding chiavi. Il 2026-08-12 le tre pagine
+  autenticate sono passate sullo stesso contenitore (`.lt-page`): prima avevano tre larghezze e due
+  gutter diversi, e il contenuto saltava passando da una all'altra.
+- [ ] **UI dell'AI on-device** (E5) rifatta nello stesso linguaggio — dipende da E5, non iniziata.
 
 **DoD:** tutte le schermate condividono un unico design system; la privacy è comunicata con chiarezza e calma; l'esperienza regge il confronto con Proton.
 
@@ -276,3 +309,8 @@ Dopo un invio senza account riuscito → invito a **«reclamare» il trasferimen
 ---
 
 *Creato il 2026-07-23. Documento vivo: aggiornare le checkbox man mano che le epiche avanzano.*
+
+*Riallineato al codice il 2026-08-13. Lezione da non ripetere: i **riepiloghi** (§2) venivano aggiornati,
+le **checkbox delle epiche** no — e le due metà del documento hanno finito per contraddirsi, con tre voci
+di E2 date per aperte mesi dopo essere state costruite. Se aggiorni una delle due, aggiorna l'altra nello
+stesso commit.*

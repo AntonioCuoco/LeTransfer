@@ -25,6 +25,9 @@ const router = createRouter({
         { path: '', component: () => import('@/src/pages/Homepage.vue') },
         { path: 'profile', component: () => import('@/src/pages/Profile.vue') },
         { path: 'settings', component: () => import('@/src/pages/SettingsPage.vue') },
+        // Ritorno da Stripe. Il path è cablato anche in useBilling.BILLING_RETURN_PATH,
+        // che è ciò che il backend deve usare per `success_url`/`cancel_url`.
+        { path: 'abbonamento/esito', component: () => import('@/src/pages/BillingReturnPage.vue') },
       ],
     },
   ],

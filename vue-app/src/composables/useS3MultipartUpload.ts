@@ -5,6 +5,7 @@ import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
 import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64 } from '@/src/crypto/crypto'
 import { useEncryptionStore } from '@/src/stores/encryption'
+import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
 
 const DEFAULT_CONFIG: MultipartUploadConfig = {
   chunkSize: 10 * 1024 * 1024,
@@ -26,6 +27,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   }
 
   const encryptionStore = useEncryptionStore()
+  const { promptForFileSize } = useUpgradePrompt()
 
   const state = ref<MultipartUploadState>({
     status: 'idle',
@@ -84,7 +86,20 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   }
 
   const handleError = (error: Error) => {
-    notify.error("Errore durante l'upload del file")
+    // Il `413` è l'unico errore che ha una risposta utile: il file supera il cap del piano
+    // (BACKEND_API_DOCS §5-ter — rifiuto a `init` sulla dimensione dichiarata, e ricontrollo
+    // reale a `complete` via HeadObject). Prima finiva in "Errore durante l'upload del file",
+    // che è vero e inservibile: l'utente non sapeva né perché né quanto poteva caricare.
+    const response = (error as { response?: { status?: number; data?: { errorCode?: string } } }).response
+    const isTooLarge = response?.status === 413 || response?.data?.errorCode === 'FILE_TOO_LARGE'
+
+    if (isTooLarge) {
+      notify.warning('Il file supera il limite del tuo piano.')
+      if (fileRef) promptForFileSize(fileRef.size)
+    } else {
+      notify.error("Errore durante l'upload del file")
+    }
+
     state.value.status = 'error'
     state.value.error = error
     abortController.value?.abort()

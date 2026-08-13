@@ -132,10 +132,10 @@ const { root: head } = usePageEnter()
           crittografia, dillo pure senza girarci intorno: preferiamo una figuraccia oggi a un incidente domani.
         </p>
         <a
-          href="mailto:security@letransfer.app"
+          href="mailto:security@novren.net"
           class="inline-block rounded-[13px] border border-white/15 bg-white/[0.06] px-5 py-3 font-mono text-[0.8rem] text-[#F2ECFF] transition hover:border-white/30"
         >
-          security@letransfer.app
+          security@novren.net
         </a>
       </section>
 

@@ -1,0 +1,16 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Novren — routing lato hosting (Cloudflare Pages)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Fallback SPA. **Senza questa riga il sito sembra funzionare e non funziona.**
+# Il router usa `createWebHistory`, quindi /prezzi, /sicurezza, /app/settings e
+# soprattutto /share/:token sono URL veri che l'utente apre direttamente o riceve
+# in un link. Sul disco quei file non esistono: senza il rewrite, Pages risponde
+# 404 e il link condiviso — cioè il prodotto — non si apre.
+# Navigando dall'interno andrebbe tutto bene: il difetto si vede solo ricaricando
+# o aprendo un link da fuori, che è esattamente ciò che fanno i destinatari.
+#
+# Lo status 200 (non 301) è essenziale: l'URL nella barra deve restare quello
+# richiesto, perché la chiave di cifratura vive nel fragment (#) e il router deve
+# poter leggere il path originale.
+/*  /index.html  200

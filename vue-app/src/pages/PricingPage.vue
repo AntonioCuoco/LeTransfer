@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import { usePageEnter } from '@/src/composables/useMotion'
+import {
+  PLAN_CATALOG,
+  PLAN_ORDER,
+  PLAN_PRICES_PROVISIONAL,
+  formatBytes,
+  formatRetention,
+  type PlanCatalogEntry,
+  type PlanId,
+} from '@/src/types/plan'
 
 /**
- * Prezzi (roadmap F3). I limiti NON sono inventati: vengono dai default del backend
- * (PLAN_*_MAX_FILE_GB 2/20/100, PLAN_*_MAX_EXPIRY_HOURS 168/720 — BACKEND_API_DOCS §5).
- * Gli importi sono da confermare prima della messa in vendita.
+ * Prezzi (roadmap F3).
+ *
+ * I piani NON sono più descritti qui: vengono da [types/plan.ts](../types/plan.ts), lo
+ * stesso catalogo che alimenta il pannello abbonamento, i prompt di upgrade e il limite
+ * scritto in dashboard. Prima i limiti erano copiati a mano in questa pagina — cioè un
+ * secondo posto da ricordare di aggiornare, su numeri che l'utente usa per decidere se
+ * pagare. Ora c'è un file solo, ed è quello che dichiara di specchiare le env del backend.
  *
  * Posizione: la crittografia sta in tutti i piani, anche in quello gratuito. È il
  * contrario del pattern "sicurezza come upsell" — ed è l'unica cosa da dire forte.
@@ -18,56 +31,20 @@ const router = useRouter()
 const yearly = ref(false)
 const { root: head } = usePageEnter()
 
-interface Plan {
-  id: string
-  name: string
-  tagline: string
-  monthly: number | null
-  maxFile: string
-  retention: string
-  features: string[]
-  cta: string
-  featured?: boolean
+// Le CTA sono l'unica cosa specifica di questa pagina: il catalogo descrive i piani,
+// non cosa deve succedere quando ci clicchi sopra da qui.
+const CTA: Record<PlanId, string> = {
+  free: 'Inizia senza account',
+  pro: 'Passa a Pro',
+  business: 'Parliamone',
 }
 
-const plans: Plan[] = [
-  {
-    id: 'free',
-    name: 'Free',
-    tagline: 'Per mandare qualcosa, adesso.',
-    monthly: 0,
-    maxFile: '2 GB',
-    retention: '7 giorni',
-    features: ['Invio senza account', 'Cifratura end-to-end', 'Password e max download', 'Revoca del link'],
-    cta: 'Inizia senza account',
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
-    tagline: 'Per chi manda file di lavoro tutti i giorni.',
-    monthly: 4,
-    maxFile: '20 GB',
-    retention: '30 giorni',
-    features: ['Tutto di Free', 'Storico e gestione dei link', 'Notifiche al download', 'Condivisione tra utenti (RSA-4096)'],
-    cta: 'Passa a Pro',
-    featured: true,
-  },
-  {
-    id: 'business',
-    name: 'Business',
-    tagline: 'Per team che scambiano materiale pesante.',
-    monthly: 12,
-    maxFile: '100 GB',
-    retention: 'a tua scelta',
-    features: ['Tutto di Pro', 'Più utenti sotto un’unica fatturazione', 'Verifica del fingerprint del destinatario', 'Supporto prioritario'],
-    cta: 'Parliamone',
-  },
-]
+const plans = computed(() => PLAN_ORDER.map((id) => PLAN_CATALOG[id]))
 
 // Sconto annuale: due mesi in regalo. Il prezzo mostrato resta sempre "al mese".
-function priceOf(plan: Plan): number {
-  if (!plan.monthly) return 0
-  return yearly.value ? (plan.monthly * 10) / 12 : plan.monthly
+function priceOf(plan: PlanCatalogEntry): number {
+  if (!plan.monthlyEur) return 0
+  return yearly.value ? (plan.monthlyEur * 10) / 12 : plan.monthlyEur
 }
 
 const faq = [
@@ -152,9 +129,9 @@ const faq = [
             :class="plan.featured ? 'bg-[#f5f1fd]' : 'border border-white/10 bg-white/[0.03]'"
           >
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">file max</dt>
-            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ plan.maxFile }}</dd>
+            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatBytes(plan.limits.maxFileBytes) }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">i link durano</dt>
-            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ plan.retention }}</dd>
+            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatRetention(plan.limits.maxExpiryHours) }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">cifratura</dt>
             <dd class="text-right font-bold text-[#12b89a]">AES-256</dd>
           </dl>
@@ -174,13 +151,18 @@ const faq = [
               : 'border border-white/15 bg-white/[0.06] text-[#F2ECFF] hover:border-white/30'"
             @click="router.push(plan.id === 'free' ? '/' : '/register')"
           >
-            {{ plan.cta }}
+            {{ CTA[plan.id] }}
           </button>
         </div>
       </div>
 
       <p class="mt-4 font-mono text-[0.7rem] text-[#8d7fb8]">
         Prezzi IVA esclusa. I limiti sono quelli applicati davvero dal server, non promesse di brochure.
+      </p>
+      <!-- Finché gli importi non sono decisi, dirlo è l'unica cosa corretta: chi legge sta
+           valutando una spesa, e merita di sapere che la cifra può ancora cambiare. -->
+      <p v-if="PLAN_PRICES_PROVISIONAL" class="mt-2 rounded-[10px] border border-[#e0b34a]/30 bg-[#e0b34a]/[0.08] px-3.5 py-2.5 font-mono text-[0.7rem] text-[#e0b34a]">
+        Gli importi sono ancora provvisori e l’acquisto non è attivo. I limiti qui sopra, invece, sono già quelli veri.
       </p>
 
       <!-- Domande scomode -->

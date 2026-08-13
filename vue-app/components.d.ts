@@ -44,6 +44,8 @@ declare module 'vue' {
     NotificationSection: typeof import('./src/components/settings/NotificationSection.vue')['default']
     Paginator: typeof import('primevue/paginator')['default']
     Password: typeof import('primevue/password')['default']
+    PlanBadge: typeof import('./src/components/billing/PlanBadge.vue')['default']
+    PlanLimitsPanel: typeof import('./src/components/billing/PlanLimitsPanel.vue')['default']
     PrivacyReceipt: typeof import('./src/components/landing/PrivacyReceipt.vue')['default']
     ProfileHeader: typeof import('./src/components/ProfileHeader.vue')['default']
     ProgressSpinner: typeof import('primevue/progressspinner')['default']
@@ -62,6 +64,7 @@ declare module 'vue' {
     SharedLinksTable: typeof import('./src/components/SharedLinksTable.vue')['default']
     ShareFileModal: typeof import('./src/components/ShareFileModal.vue')['default']
     StatCard: typeof import('./src/components/ui/StatCard.vue')['default']
+    SubscriptionSection: typeof import('./src/components/settings/SubscriptionSection.vue')['default']
     Tab: typeof import('primevue/tab')['default']
     TabList: typeof import('primevue/tablist')['default']
     TabPanel: typeof import('primevue/tabpanel')['default']
@@ -71,6 +74,7 @@ declare module 'vue' {
     Toast: typeof import('primevue/toast')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']
     TransferStatusPanel: typeof import('./src/components/TransferStatusPanel.vue')['default']
+    UpgradeDialog: typeof import('./src/components/billing/UpgradeDialog.vue')['default']
     UploadQueueManager: typeof import('./src/components/UploadQueueManager.vue')['default']
   }
   export interface GlobalDirectives {

@@ -86,7 +86,7 @@ function renderFileSharedHtml({ senderName, username, fileName, downloadUrl = ''
 
 export async function sendFileSharedEmail({ to, senderName, username, fileName, downloadUrl, viewUrl, trackingPixelUrl }) {
   return resend.emails.send({
-    from: process.env.EMAIL_FROM,            // es. "LeTransfer <noreply@letransfer.app>"
+    from: process.env.EMAIL_FROM,            // es. "Novren <noreply@novren.net>"
     to,
     subject: `${senderName} ti ha condiviso un file`,
     html: renderFileSharedHtml({ senderName, username, fileName, downloadUrl, viewUrl, trackingPixelUrl }),

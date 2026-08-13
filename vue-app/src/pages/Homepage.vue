@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { notify } from '@/src/utils/notify'
 import StatCard from '@/src/components/ui/StatCard.vue'
 import TransferStatusPanel from '@/src/components/TransferStatusPanel.vue'
@@ -11,6 +11,11 @@ import { useTransferStore } from '@/src/stores/transfer'
 import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
 import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
+import { usePlan } from '@/src/composables/usePlan'
+import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
+import { useDownloadActivity } from '@/src/composables/useDownloadActivity'
+import PlanBadge from '@/src/components/billing/PlanBadge.vue'
+import { formatBytes } from '@/src/types/plan'
 import { fileBadge } from '@/src/utils/fileBadge'
 import type { DynamoDBFile, ShareLinkData } from '@/src/types'
 
@@ -32,6 +37,9 @@ const router = useRouter()
 const store = useTransferStore()
 const { isUploading, loadFiles } = useFileFromDynamoDB()
 const { links, fetchLinks } = useSharedLinks()
+const { plan, limits, isAuthoritative, load: loadPlan, exceedsFileLimit } = usePlan()
+const { promptForFileSize } = useUpgradePrompt()
+const { newSince } = useDownloadActivity()
 
 const shareModalVisible = ref(false)
 const shareData = ref<ShareLinkData | null>(null)
@@ -61,6 +69,11 @@ const totalDownloads = computed(() =>
   links.value.reduce((sum, link) => sum + (link.downloadCount || 0), 0),
 )
 
+// Quanti download sono arrivati da quando l'utente ha guardato l'ultima volta. È la
+// versione onesta della "notifica di download": l'invio vero (email/push) è lavoro
+// backend che non esiste ancora, ma accorgersene si può già fare.
+const newDownloads = computed(() => newSince(totalDownloads.value))
+
 // Avvisi: solo situazioni vere e azionabili, niente riempitivi.
 const expiringSoon = computed(() =>
   activeLinks.value.filter((link) => {
@@ -85,9 +98,23 @@ const { isDragOver, dragProps, dropZoneRef } = useFolderDragAndDrop({
 
 const handleFilesConfirm = (files: File[]) => {
   previewModalVisible.value = false
-  files.forEach((f) => store.addUpload(f))
-  notify.success(`${files.length} file aggiunti alla coda di caricamento.`, 'In coda')
   previewFiles.value = []
+
+  // Pre-controllo del cap per file. Il server è comunque l'autorità (`413` a init e
+  // ricontrollo reale a complete), ma far partire un upload da 30 GB destinato a essere
+  // rifiutato è tempo dell'utente buttato: qui i file fuori misura non entrano in coda.
+  const tooBig = files.filter((f) => exceedsFileLimit(f.size))
+  const accepted = files.filter((f) => !exceedsFileLimit(f.size))
+
+  accepted.forEach((f) => store.addUpload(f))
+  if (accepted.length > 0) {
+    notify.success(`${accepted.length} file aggiunti alla coda di caricamento.`, 'In coda')
+  }
+
+  if (tooBig.length > 0) {
+    // Si propone il piano in base al file più grande: è quello che detta il fabbisogno.
+    promptForFileSize(Math.max(...tooBig.map((f) => f.size)))
+  }
 }
 
 const copyToClipboard = async (text: string) => {
@@ -123,7 +150,10 @@ const relativeDate = (iso?: string | null) => {
   return new Date(iso).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-onMounted(refreshAll)
+onMounted(() => {
+  void refreshAll()
+  void loadPlan()
+})
 </script>
 
 <template>
@@ -134,6 +164,14 @@ onMounted(refreshAll)
         <h1 class="m-0 text-3xl font-bold tracking-[-0.03em] text-haze-100">Da qui parte un file.</h1>
         <p class="mb-0 mt-1.5 text-haze-300">
           Caricalo nel tuo spazio, oppure mandalo direttamente a una persona. In entrambi i casi si cifra qui.
+        </p>
+        <!-- Il limite scritto PRIMA di incontrarlo: è il numero che il server applica. -->
+        <p class="mb-0 mt-2.5 flex items-center gap-2 font-mono text-[0.72rem] text-haze-400">
+          <PlanBadge :plan="plan" :presumed="!isAuthoritative" />
+          <span>fino a {{ formatBytes(limits.maxFileBytes) }} per file</span>
+          <RouterLink to="/app/settings" class="underline decoration-dotted underline-offset-2 hover:text-haze-200">
+            cambia piano
+          </RouterLink>
         </p>
       </div>
       <button type="button" class="lt-btn-dark" @click="router.push('/app/profile')">
@@ -156,7 +194,8 @@ onMounted(refreshAll)
         label="Download ricevuti"
         icon="pi pi-download"
         tone="verified"
-        hint="su tutti i tuoi link"
+        :badge="newDownloads > 0 ? `+${newDownloads} nuovi` : undefined"
+        :hint="newDownloads > 0 ? 'apri «I tuoi file» per vedere quali link' : 'su tutti i tuoi link'"
       />
     </div>
 

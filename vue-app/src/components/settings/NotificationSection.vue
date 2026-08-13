@@ -3,6 +3,14 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsToggle from './SettingsToggle.vue'
 import { useSettings } from '@/src/composables/useSettings'
 
+/**
+ * ⚠️ Queste preferenze oggi vivono **solo in questo browser** e nessun server le legge:
+ * l'invio email non è ancora agganciato (BACKEND_HANDOFF voci 12 e 14). Sono raccolte
+ * qui perché è dove l'utente le cerca, e perché quando il backend arriverà saranno già
+ * espresse — ma l'avviso in fondo lo dice apertamente. Un interruttore che finge di
+ * fare qualcosa è peggio di un interruttore assente: insegna a non fidarsi della UI.
+ */
+
 const { settings, updateNotifications } = useSettings()
 </script>
 
@@ -29,6 +37,10 @@ const { settings, updateNotifications } = useSettings()
         :disabled="!settings.notifications.emailNotifications"
         @update:model-value="(v) => updateNotifications({ downloadComplete: v })"
       />
+      <p class="m-0 -mt-1 pl-1 text-xs leading-relaxed text-haze-400">
+        Nel frattempo i nuovi download li trovi comunque segnati in dashboard, sulla tessera
+        «Download ricevuti».
+      </p>
       <SettingsToggle
         label="File Ricevuto"
         description="Notifica quando ricevi un file condiviso"
@@ -43,6 +55,16 @@ const { settings, updateNotifications } = useSettings()
         :disabled="!settings.notifications.emailNotifications"
         @update:model-value="(v) => updateNotifications({ linkExpiring: v })"
       />
+
+      <!-- Meglio dirlo che farlo scoprire aspettando un'email che non arriva. -->
+      <div class="mt-5 rounded-well border border-warn-400/25 bg-warn-400/[0.06] p-4">
+        <p class="m-0 text-sm font-semibold text-haze-100">L’invio delle email non è ancora attivo</p>
+        <p class="m-0 mt-1 max-w-[68ch] text-xs leading-relaxed text-haze-300">
+          Queste preferenze restano salvate in questo browser e verranno applicate quando accenderemo
+          le notifiche. Finché quel momento non arriva, non riceverai email da noi — nemmeno se qui
+          risultano attive.
+        </p>
+      </div>
     </SettingsSection>
   </div>
 </template>

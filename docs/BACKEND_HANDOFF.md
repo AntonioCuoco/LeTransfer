@@ -156,12 +156,27 @@ host storage **finale**, quindi dopo il punto 7), più `nosniff`, `X-Frame-Optio
 libreria da CDN, QR generato in locale. L'unica origine esterna è **Cloudflare Turnstile**
 (`script-src`/`frame-src`).
 
+> 🚨 **Trappola: questa voce e la voce 10 si contraddicono, e la contraddizione è già costata mezza
+> giornata in sviluppo (2026-08-12).**
+>
+> `frame-ancestors 'none'` e `X-Frame-Options: DENY` applicati **a tutto l'host** colpiscono anche
+> `captcha.html`, che per costruzione vive **dentro un iframe cross-origin** (è tutto il senso
+> dell'origine dedicata della voce 10: tenere lo script di Cloudflare fuori dalla pagina che genera
+> le chiavi). Con `DENY` il browser rifiuta di renderizzare il frame e mostra **«ha rifiutato la
+> connessione» dentro il riquadro** — un messaggio che sembra un guasto di rete e non lo è.
+>
+> **Regola.** L'origine del captcha va servita con `frame-ancestors https://novren.net` (le origini
+> del frontend, non `'none'`) e **senza** `X-Frame-Options`, che non ammette eccezioni. Tutto il resto
+> dell'host tiene `DENY`. In sviluppo questo è già risolto con un middleware per-path in
+> [vite.config.ts](../vue-app/vite.config.ts) (`devSecurityHeaders`): in produzione va replicata la
+> stessa distinzione sull'host/CDN.
+
 ---
 
 ### 9. Caselle `security@` e `abuse@` 🌐 *processo*
 
 **Cosa.** Devono esistere e avere qualcuno che legge. `/sicurezza` pubblica già
-`security@letransfer.app`.
+`security@novren.net`.
 
 **Perché.** È la prima cosa che guardano registrar e provider quando arriva un reclamo, ed è la
 differenza fra "hosting provider con un processo" e "hosting provider negligente".
@@ -195,15 +210,97 @@ rimossi, verificando prima che nessun client punti ancora lì.
 
 ## P1 — Serve per monetizzare (E3)
 
+> **Stato frontend (2026-08-13): il lato client di E3 è costruito e in attesa.** Pannello
+> abbonamento, prompt di upgrade, limiti visibili in dashboard, pagina di ritorno dal pagamento
+> e badge dei nuovi download sono implementati e passano typecheck/build/test. Sono scritti
+> contro i tre contratti della voce 13-bis: finché non esistono, la UI **degrada da sola** su
+> piano `free` senza errori a schermo — che è lo stato reale di tutti oggi, visto che
+> `loadPlan` fa fail-open. Quando gli endpoint arrivano, non c'è da toccare il frontend.
+
 ### 12. Notifiche di download ⚙️
 Per gli invii con account: notifica quando un link viene scaricato. È una delle tre cose promesse in
 cambio della registrazione nel flusso "Reclama questo invio" — oggi la promessa è sulla pagina e la
 funzione non c'è.
 
+> Il frontend nel frattempo mostra i nuovi download in dashboard confrontando `downloadCount`
+> con l'ultimo valore visto (`useDownloadActivity.ts`). È un ripiego locale, non una notifica:
+> funziona solo se l'utente apre l'app. Questa voce resta necessaria.
+
 ### 13. Tabella `Subscriptions` + webhook Stripe ⚙️🌐
 `loadPlan` legge già `SUBSCRIPTIONS_TABLE` e **fa fail-open a `free`** se la tabella non c'è: significa
 che oggi tutti sono sul piano gratuito, in silenzio. Servono la tabella (PK `userId`, attributo `plan`),
 la env, e il webhook che la scrive (checkout + webhook + portal).
+
+---
+
+### 13-bis. I tre endpoint che il frontend aspetta ⚙️
+
+**Perché sono elencati qui.** Il backend conosce il piano dell'utente e lo applica, ma **non lo
+dice a nessuno**: `loadPlan` popola `req.plan`/`req.planLimits` e li tiene per sé. Il risultato è
+che l'utente scopre il proprio limite solo sbattendoci contro, a upload iniziato. Il primo dei tre
+endpoint chiude quel buco da solo, indipendentemente dai pagamenti.
+
+#### A. `GET /api/user/plan` — 🔴 il più urgente, e il più economico
+
+Autenticata, dopo `loadPlan`. Restituisce ciò che il middleware ha già in mano:
+
+```jsonc
+200 → {
+  "plan": "free" | "pro" | "business",
+  "limits": { "maxFileBytes": 2000000000, "maxExpiryHours": 168 },
+  "subscription": {                        // opzionale, assente finché non c'è Stripe
+    "status": "active" | "trialing" | "past_due" | "canceled" | "none",
+    "currentPeriodEnd": "2026-09-13T00:00:00.000Z",   // opzionale
+    "cancelAtPeriodEnd": false                         // opzionale
+  }
+}
+```
+
+`limits` è opzionale: se manca, il client usa i default del piano. **Non richiede Stripe né la
+tabella `Subscriptions`**: finché non ci sono, risponde `free` con i cap delle env, ed è già
+sufficiente a far smettere la UI di indovinare.
+
+⚠️ `maxFileBytes` in **byte**, non in GB: il client non deve moltiplicare per una costante che
+il backend potrebbe interpretare diversamente. Oggi il frontend assume `1 GB = 10⁹` — se
+`PLAN_*_MAX_FILE_GB` è calcolato in GiB (1024³), questo endpoint risolve l'ambiguità alla radice.
+
+#### B. `POST /api/billing/checkout`
+
+```jsonc
+body → { "plan": "pro" | "business", "interval": "month" | "year" }
+200  → { "url": "https://checkout.stripe.com/..." }   // il client ci fa redirect pieno
+```
+
+`success_url` e `cancel_url` li costruisce **il backend**, puntando a:
+
+```
+${FRONTEND_URL}/app/abbonamento/esito?stato=successo
+${FRONTEND_URL}/app/abbonamento/esito?stato=annullato
+```
+
+⚠️ Quel path è cablato lato client in `useBilling.ts` (`BILLING_RETURN_PATH`) e nel router: se lo
+cambi, vanno cambiati insieme.
+
+#### C. `POST /api/billing/portal`
+
+```jsonc
+body → {}
+200  → { "url": "https://billing.stripe.com/..." }    // Stripe Billing Portal
+```
+
+Per cambiare piano, aggiornare la carta e disdire. Evita di doverli implementare a mano.
+
+#### Convenzioni comuni
+
+- **404 o 501 = "non ancora attivo".** Il client li tratta come assenza di funzionalità e lo dice
+  all'utente con parole sue, senza mostrare errori. Qualunque altro codice viene letto come guasto
+  vero. Quindi: se accendi gli endpoint a metà, meglio `501` che `500`.
+- La pagina di ritorno **ricontrolla `GET /api/user/plan` a intervalli crescenti per ~14s**, perché
+  il webhook Stripe è asincrono e il piano nuovo non è visibile subito. Se entro quel tempo il piano
+  non cambia, il client dice "ci stiamo ancora lavorando" invece di dichiarare un fallimento. Serve
+  quindi che il webhook scriva la tabella **prima possibile**, non a fine giornata.
+
+---
 
 ### 14. Invio email delle condivisioni ⚙️
 Design completo in [EMAIL_NOTIFICHE.md](EMAIL_NOTIFICHE.md): `services/email.js`, env `RESEND_API_KEY`
@@ -264,8 +361,16 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 | 9 | `security@` / `abuse@` | processo | ✅ | ❓ da confermare |
 | 10 | `FRONTEND_URL`, CORS R2 prod, hostname Turnstile, origine captcha | config | ✅ | ⏳ al dominio |
 | 11 | Stack Lambda orfani da spegnere | pulizia | 🟡 costo + superficie d'attacco | ✅ fatto (rimossi) |
-| 12-15 | Notifiche download, `Subscriptions`+Stripe, email, usage | codice | ❌ serve per vendere | ❌ P1 (rimandato) |
+| **13-bis A** | **`GET /api/user/plan`** | codice | 🟡 non blocca, ma oggi la UI indovina | ❌ **da fare — il più economico dei tre** |
+| 13-bis B/C | `POST /api/billing/checkout` · `/portal` | codice | ❌ serve per vendere | ❌ dipende dalla voce 13 |
+| 12, 14, 15 | Notifiche download, email, contatore usage | codice | ❌ serve per vendere | ❌ P1 (rimandato) |
+| 13 | Tabella `Subscriptions` + webhook Stripe | codice | ❌ serve per vendere | ❌ P1 (rimandato) |
 | 16 | Nome file cifrato | codice | ❌ alza la promessa | ❌ P2 (rimandato) |
+
+> **Su 13-bis A.** È l'unica voce di questo blocco che **non dipende da Stripe né dalla tabella
+> `Subscriptions`**: restituisce quello che `loadPlan` ha già in `req`. Vale la pena staccarla dalle
+> altre e farla subito — è mezz'ora di lavoro e toglie di mezzo l'unico punto in cui il frontend
+> oggi tira a indovinare i limiti dell'utente.
 
 > ⚠️ Manca ancora **il deploy**: le voci 4 e 5 sono in `routes/guest.js` ma non ancora in produzione
 > (`git push` + `fly deploy`). Fino al deploy, in prod restano come prima.

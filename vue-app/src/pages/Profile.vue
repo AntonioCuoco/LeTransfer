@@ -11,6 +11,7 @@ import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
 import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
+import { useDownloadActivity } from '@/src/composables/useDownloadActivity'
 import type { DynamoDBFile, TableFile, SharedFile } from '@/src/types'
 
 const fileTypeOptions = [
@@ -27,6 +28,7 @@ const { files: dynamoFiles, isLoading: hookLoading, loadFiles: loadFilesFromDyna
 const { sharedFiles, isLoadingShared, getSharedWithMe, downloadSharedFile } = useShareFile()
 const { links: sharedLinks, isLoading: isLinksLoading, fetchLinks, revokeLink, regenerateLink, updateLink, deleteLink } = useSharedLinks()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
+const { markSeen: markDownloadsSeen } = useDownloadActivity()
 
 const isSetupRequired = ref(false)
 const securitySetupVisible = ref(false)
@@ -173,6 +175,15 @@ onMounted(async () => {
   const status = await getRecoveryKeyStatus()
   isSetupRequired.value = !status?.hasRecoveryKey
 })
+
+// Questa è la pagina in cui i download si guardano davvero (la tabella dei link li mostra
+// uno per uno), quindi è qui che il badge "+N nuovi" della dashboard va azzerato. Farlo
+// alla sola apertura della dashboard lo avrebbe spento prima che l'utente vedesse quali link.
+watch(sharedLinks, (list) => {
+  if (list.length > 0) {
+    markDownloadsSeen(list.reduce((sum, link) => sum + (link.downloadCount || 0), 0))
+  }
+}, { immediate: true })
 </script>
 
 <template>

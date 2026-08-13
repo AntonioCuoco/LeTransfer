@@ -4,6 +4,7 @@ import { useSettings } from '@/src/composables/useSettings'
 import { notify } from '@/src/utils/notify'
 import GeneralSection from '@/src/components/settings/GeneralSection.vue'
 import NotificationSection from '@/src/components/settings/NotificationSection.vue'
+import SubscriptionSection from '@/src/components/settings/SubscriptionSection.vue'
 import IntegrationSettings from '@/src/components/settings/IntegrationSettings.vue'
 import MyKeyFingerprint from '@/src/components/settings/MyKeyFingerprint.vue'
 
@@ -40,7 +41,7 @@ const handleReset = () => {
           <i class="pi pi-cog text-primary text-2xl" />
           Impostazioni
         </h1>
-        <p class="mt-1 mb-0 text-base text-haze-400">Personalizza la tua esperienza LeTransfer</p>
+        <p class="mt-1 mb-0 text-base text-haze-400">Personalizza la tua esperienza Novren</p>
       </div>
       <div class="flex items-center gap-3">
         <Button icon="pi pi-undo" label="Ripristina" severity="secondary" outlined :disabled="isSaving" @click="handleReset" />
@@ -59,7 +60,8 @@ const handleReset = () => {
       <TabList>
         <Tab value="1">Generali &amp; Sicurezza</Tab>
         <Tab value="2">Notifiche</Tab>
-        <Tab value="3">Integrazioni</Tab>
+        <Tab value="3">Abbonamento</Tab>
+        <Tab value="4">Integrazioni</Tab>
       </TabList>
       <TabPanels>
         <TabPanel value="1">
@@ -67,7 +69,8 @@ const handleReset = () => {
           <div class="mt-6"><MyKeyFingerprint /></div>
         </TabPanel>
         <TabPanel value="2"><NotificationSection /></TabPanel>
-        <TabPanel value="3"><IntegrationSettings /></TabPanel>
+        <TabPanel value="3"><SubscriptionSection /></TabPanel>
+        <TabPanel value="4"><IntegrationSettings /></TabPanel>
       </TabPanels>
     </Tabs>
   </div>

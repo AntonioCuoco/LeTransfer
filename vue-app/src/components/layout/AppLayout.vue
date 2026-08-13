@@ -4,10 +4,19 @@ import { RouterView } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import UploadQueueManager from '@/src/components/UploadQueueManager.vue'
 import AppSecurityPrompt from '@/src/components/AppSecurityPrompt.vue'
+import UpgradeDialog from '@/src/components/billing/UpgradeDialog.vue'
+import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
 import { useTokenManager } from '@/src/composables/useTokenManager'
 import { redeemPendingClaim } from '@/src/composables/usePendingClaim'
 
 useTokenManager()
+
+const {
+  isOpen: isUpgradeOpen,
+  offendingBytes: upgradeBytes,
+  reason: upgradeReason,
+  close: closeUpgrade,
+} = useUpgradePrompt()
 
 // Un invio guest "reclamato" viene adottato qui, all'ingresso nell'area autenticata:
 // è l'unico punto comune a tutti i percorsi di accesso (password, registrazione, Google).
@@ -22,5 +31,13 @@ onMounted(() => { void redeemPendingClaim() })
     </main>
     <UploadQueueManager />
     <AppSecurityPrompt />
+    <!-- Montato qui una volta sola: chi incontra un limite sta in profondità e non ha
+         un posto sensato dove aprire una finestra. Vedi useUpgradePrompt. -->
+    <UpgradeDialog
+      :visible="isUpgradeOpen"
+      :file-bytes="upgradeBytes"
+      :reason="upgradeReason"
+      @update:visible="(v: boolean) => { if (!v) closeUpgrade() }"
+    />
   </div>
 </template>

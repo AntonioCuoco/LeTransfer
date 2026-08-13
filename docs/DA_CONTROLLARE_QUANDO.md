@@ -13,6 +13,21 @@ Riferimenti: [MIGRATION_S3_TO_R2.md](MIGRATION_S3_TO_R2.md) · [BACKEND_WORKORDE
 
 Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio. Al primo dominio vero:
 
+> **I domini decisi (2026-08-13): `novren.net` e `novren.it`.**
+>
+> `novren.net` è il **principale**: è quello che va in `FRONTEND_URL`, quindi è il dominio con cui
+> nascono i link `/share/:token` e su cui vive `security@`. `novren.it` è **secondario**: va
+> autorizzato ovunque si dichiarino le origini, ma non genera link.
+>
+> ⚠️ La distinzione conta. `FRONTEND_URL` accetta **un solo valore**, e quel valore decide il dominio
+> dei link che gli utenti si scambiano — link che poi vivono per settimane. Le liste di origini
+> (CORS, CSP `frame-ancestors`, `ALLOWED_PARENTS` del captcha, hostname Turnstile) invece devono
+> contenere **entrambi**, incluse le varianti `www`: per il browser `novren.net` e `www.novren.net`
+> sono due origini distinte, e una richiesta dalla seconda verrebbe respinta dalla whitelist.
+>
+> Se un giorno il `.it` deve solo redirigere al `.net`, allora niente di tutto questo serve per il
+> `.it` — ma va deciso **prima**, perché un redirect e un'origine autorizzata sono due cose diverse.
+
 - [ ] **`TRUST_PROXY_HOPS`** — decidi 1 vs 2 in base a **come passa il traffico** (NON conta il registrar dove compri il dominio):
   - dominio **dritto a Fly** o Cloudflare **"DNS only" (grigio)** → resta **1** (default, non tocchi niente)
   - dominio **dietro proxy Cloudflare "Proxied" (arancione)** → `fly secrets set TRUST_PROXY_HOPS=2`
@@ -22,8 +37,9 @@ Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio.
 - [ ] **`FRONTEND_URL`** (env su Fly) — impostala all'origin di produzione del frontend. Serve a due cose:
   build degli URL `/share/:token` **e** whitelist CORS del backend ([app.js](../app.js)).
 
-- [ ] **CORS del bucket R2** — aggiungi l'origin di produzione del frontend alla CORS policy del bucket
-  (oggi ci sono solo gli origin di dev). Metodi `GET/PUT/HEAD`, expose `ETag`.
+- [ ] **CORS del bucket R2** — aggiungi **tutte e quattro** le origini di produzione alla CORS policy del
+  bucket (`https://novren.net`, `https://www.novren.net`, `https://novren.it`, `https://www.novren.it`);
+  oggi ci sono solo gli origin di dev. Metodi `GET/PUT/HEAD`, expose `ETag`.
 
 - [ ] **CSP sull'host del frontend** → policy completa e motivata in **[PAGINE_CRITICHE.md](PAGINE_CRITICHE.md)**.
   In sintesi: `connect-src` deve includere l'host storage R2 (`<account>.r2.cloudflarestorage.com`, o il
@@ -32,12 +48,12 @@ Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio.
     un iframe cross-origin ([public/captcha.html](../vue-app/public/captcha.html)): la pagina che genera le
     chiavi resta su `script-src 'self'`. Riammettere quel dominio annullerebbe l'isolamento.
 
-- [ ] **Origine dedicata per il captcha** — pubblica `captcha.html` su un sottodominio (es. `captcha.letransfer.app`)
+- [ ] **Origine dedicata per il captcha** — pubblica `captcha.html` su un sottodominio (es. `captcha.novren.net`)
   e imposta `VITE_CAPTCHA_ORIGIN` di produzione. Deve essere un'**origine diversa** da quella dell'app,
   altrimenti l'isolamento non esiste. Aggiorna anche `ALLOWED_PARENTS` dentro `captcha.html` con il dominio reale.
 
 - [ ] **Turnstile — hostnames del widget** — nel dashboard Cloudflare aggiungi alla lista Hostnames
-  l'**origine del captcha** (`captcha.letransfer.app`), non quella dell'app: è lì che il widget viene
+  l'**origine del captcha** (`captcha.novren.net`), non quella dell'app: è lì che il widget viene
   renderizzato. Solo hostname, **senza porta né schema**.
   - 💡 In sviluppo aggiungi anche `localhost` **e** `127.0.0.1`: senza, il widget riceve `401` da Cloudflare.
 
@@ -98,7 +114,7 @@ Oggi il backend gira su `*.fly.dev` (solo proxy Fly = 1 hop) e non c'è dominio.
 | Env | Quando impostarla | Default se assente |
 |---|---|---|
 | `TRUST_PROXY_HOPS` | dominio dietro Cloudflare proxy → `2` | `1` (solo Fly) |
-| `FRONTEND_URL` | dominio frontend di produzione | `https://letransfer.app` |
+| `FRONTEND_URL` | dominio frontend di produzione | `https://novren.net` |
 | `TURNSTILE_SECRET` | quando il frontend invia il token | assente → captcha **disattivato** (fail-open) |
 | `SUBSCRIPTIONS_TABLE` | quando vendi i piani | assente → tutti `free` |
 | `GUEST_*`, `ABUSE_AUTO_QUARANTINE_THRESHOLD` | per tarare l'anti-abuso | default sensati in [config/constants.js](../config/constants.js) |
