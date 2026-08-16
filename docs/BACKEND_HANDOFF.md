@@ -175,6 +175,28 @@ libreria da CDN, QR generato in locale. L'unica origine esterna è **Cloudflare 
 
 ### 9. Caselle `security@` e `abuse@` 🌐 *processo*
 
+> **Stato (2026-08-13).** Posta attiva su **Zoho Mail** (piano Mail Lite, data center EU),
+> casella principale `antonio@novren.net`. DNS verificati e propagati: `MX` → `mx.zoho.eu`,
+> `SPF` → `include:zohomail.eu`, `DKIM` → selettore `zmail`.
+>
+> ✅ **`security@novren.net` esiste** come alias. È l'indirizzo pubblicato nel footer e su
+> `/sicurezza`, quindi la promessa fatta agli utenti è mantenuta.
+>
+> ⚠️ **`abuse@` è rifiutato da Zoho come alias** (nome di ruolo riservato). Non è urgente —
+> non è pubblicato da nessuna parte nel frontend — ma **serve prima di aprire il canale
+> pubblico**: è il primo indirizzo che registrar e provider cercano quando ricevono un
+> reclamo, e trovarlo assente è la differenza fra "hosting con un processo" e "negligente".
+> Alternative da provare, in ordine: un **Group** Zoho, oppure il **catch-all** del dominio.
+> Se nessuna funziona, va risolto cambiando il modo di ricevere quella singola casella —
+> non con un nome diverso, perché è la convenzione (RFC 2142) a valere, non l'indirizzo.
+>
+> ⚠️ **Il `DMARC` era un residuo di GoDaddy** (`rua=mailto:dmarc_rua@onsecureserver.net`),
+> importato con la zona: i rapporti finivano a un'infrastruttura non più nostra. Da sostituire
+> con `v=DMARC1; p=quarantine; rua=mailto:antonio@novren.net; fo=1`.
+> 🚨 È in `p=quarantine`, cioè **applicato**: quando si accenderà Resend (voce 14) le sue email
+> falliranno il DMARC e finiranno in spam se non si **estende** l'SPF e non si aggiunge il suo
+> DKIM. L'SPF va esteso, mai sovrascritto — un solo record `TXT` con più `include:`.
+
 **Cosa.** Devono esistere e avere qualcuno che legge. `/sicurezza` pubblica già
 `security@novren.net`.
 
@@ -358,7 +380,7 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 | 6 | `TURNSTILE_SECRET` | config | ✅ | ✅ settato |
 | 7 | Cutover R2 | infra | ✅ costo egress | ✅ fatto (incl. `R2_JURISDICTION=eu`) |
 | 8 | Dominio + CSP + HTTPS | infra | ✅ | ⏳ al dominio |
-| 9 | `security@` / `abuse@` | processo | ✅ | ❓ da confermare |
+| 9 | `security@` / `abuse@` | processo | ✅ | 🟡 `security@` ✅ (Zoho) · `abuse@` da risolvere · DMARC da correggere |
 | 10 | `FRONTEND_URL`, CORS R2 prod, hostname Turnstile, origine captcha | config | ✅ | ⏳ al dominio |
 | 11 | Stack Lambda orfani da spegnere | pulizia | 🟡 costo + superficie d'attacco | ✅ fatto (rimossi) |
 | **13-bis A** | **`GET /api/user/plan`** | codice | 🟡 non blocca, ma oggi la UI indovina | ❌ **da fare — il più economico dei tre** |
