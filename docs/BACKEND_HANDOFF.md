@@ -374,14 +374,14 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 |---|---|---|---|---|
 | 1 | Lifecycle `uploads/guest/` | infra | ✅ promessa non mantenuta | ✅ fatto (regola R2) |
 | 2 | TTL DynamoDB | infra | ✅ idem | ✅ fatto |
-| 3 | `TRUST_PROXY_HOPS` | config | ✅ falsa sicurezza | ⏳ al dominio (default 1) |
+| 3 | `TRUST_PROXY_HOPS` | config | ✅ falsa sicurezza | ✅ `1` è corretto: il backend risponde su `novrenbackend.fly.dev`, **senza proxy Cloudflare davanti** — un solo hop. ⚠️ Diventa `2` il giorno che passa dietro `api.novren.net` proxato |
 | 4 | Turnstile + dedup + soglia su `report` | codice | ✅ difetto raggiungibile | ✅ **fatto** |
 | 5 | Appello quarantena | codice | 🟡 fortemente consigliato | ✅ **fatto** |
 | 6 | `TURNSTILE_SECRET` | config | ✅ | ✅ settato |
 | 7 | Cutover R2 | infra | ✅ costo egress | ✅ fatto (incl. `R2_JURISDICTION=eu`) |
-| 8 | Dominio + CSP + HTTPS | infra | ✅ | ⏳ al dominio |
+| 8 | Dominio + CSP + HTTPS | infra | ✅ | ✅ fatto (2026-08-16): `novren.net` su Cloudflare Pages, CSP autoritativa in `public/_headers` con l'eccezione `frame-ancestors` sul captcha, HTTPS ovunque |
 | 9 | `security@` / `abuse@` | processo | ✅ | 🟡 `security@` ✅ (Zoho) · `abuse@` da risolvere · DMARC da correggere |
-| 10 | `FRONTEND_URL`, CORS R2 prod, hostname Turnstile, origine captcha | config | ✅ | ⏳ al dominio |
+| 10 | `FRONTEND_URL`, CORS R2 prod, hostname Turnstile, origine captcha | config | ✅ | ✅ fatto (2026-08-16): `FRONTEND_URL` su Fly, CORS R2 con `ETag` esposto, hostname Turnstile su `captcha.novren.net`, origine captcha dedicata |
 | 11 | Stack Lambda orfani da spegnere | pulizia | 🟡 costo + superficie d'attacco | ✅ fatto (rimossi) |
 | **13-bis A** | **`GET /api/user/plan`** | codice | 🟡 non blocca, ma oggi la UI indovina | ❌ **da fare — il più economico dei tre** |
 | 13-bis B/C | `POST /api/billing/checkout` · `/portal` | codice | ❌ serve per vendere | ❌ dipende dalla voce 13 |
@@ -394,8 +394,15 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 > altre e farla subito — è mezz'ora di lavoro e toglie di mezzo l'unico punto in cui il frontend
 > oggi tira a indovinare i limiti dell'utente.
 
-> ⚠️ Manca ancora **il deploy**: le voci 4 e 5 sono in `routes/guest.js` ma non ancora in produzione
-> (`git push` + `fly deploy`). Fino al deploy, in prod restano come prima.
+> 🚨 **Il canale pubblico è VIVO (2026-08-16).** Frontend su `novren.net`, backend su
+> `novrenbackend.fly.dev`, `POST /api/guest/upload/init` risponde `403` senza token Turnstile —
+> cioè la rotta è montata e il captcha applica. Da questo momento **chiunque conosca il dominio
+> può caricare un file e generare un link pubblico**.
+>
+> Cambia l'urgenza di una voce sola, ma è quella che conta: **`abuse@` non esiste ancora**
+> (voce 9). Finché il canale era spento era una raccomandazione; ora è l'indirizzo che
+> registrar e provider cercheranno al primo reclamo per un contenuto caricato tramite noi.
+> È l'unico P0 rimasto aperto.
 
 *Creato il 2026-08-02. Riletto e completato lo stesso giorno incrociando tutte le docs backend:
 la prima versione ne copriva solo una parte.*
