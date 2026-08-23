@@ -55,24 +55,30 @@ workflow si attiva sui tag `v*`.
 ### Il flusso normale
 
 ```powershell
-# 1. committa il lavoro (npm version pretende il working tree pulito)
 git add -A
 git commit -m "descrizione di cosa cambia"
-
-# 2. incrementa la versione e crea il tag — il numero NON lo scrivi tu
-cd vue-app
-npm version patch -m "release %s"      # correzioni      0.1.0 -> 0.1.1
-# npm version minor -m "release %s"    # funzionalità    0.1.0 -> 0.2.0
-# npm version major -m "release %s"    # versione grossa 0.1.0 -> 1.0.0
-cd ..
-
-# 3. manda commit E tag insieme
+git tag -a v0.1.1 -m "release 0.1.1"
 git push --follow-tags
 ```
 
-`npm version` legge la versione da `package.json`, la incrementa, la riscrive, committa e
-crea il tag. Così `package.json` e il tag non possono divergere — cosa che invece succede
-scrivendo `git tag` a mano.
+Il numero lo scegli tu: guarda l'ultimo con `git tag -l --sort=-v:refname` e incrementa.
+
+- **terza cifra** (`0.1.1` → `0.1.2`): correzioni
+- **seconda** (`0.1.1` → `0.2.0`): funzionalità nuove
+- **prima** (`1.0.0`): quando decidi che il prodotto è quello
+
+⚠️ **Il `-a` è obbligatorio.** Crea un tag *annotato*: `--follow-tags` manda solo quelli.
+Con `git tag v0.1.1` (senza `-a`) il tag resta in locale, il push dice
+*"Everything up-to-date"* e non parte niente — senza spiegare perché.
+
+> **Perché non `npm version`.** Fa tre cose in una (incrementa, committa, tagga) e se una
+> fallisce — tipicamente perché il working tree non era pulito — ti lascia a metà: la
+> versione cambiata, nessun commit, nessun tag, e nessun messaggio che lo dica. È già
+> successo due volte. Due comandi espliciti non hanno stati intermedi.
+>
+> La `version` in `package.json` non la usa nessuno: il progetto non viene pubblicato su
+> npm, e il manifesto della build si basa sul commit, non su quel campo. Tenerla allineata
+> è igiene, non un requisito — se resta indietro non si rompe niente.
 
 ### Cosa fa la pipeline
 
@@ -175,7 +181,7 @@ rollback qui sopra.
 |---|---|
 | Sto sviluppando | `npm run dev` |
 | Ho finito una modifica | `npm test` + `npx vue-tsc --noEmit` |
-| Voglio pubblicare | `npm version patch -m "release %s"` + `git push --follow-tags` |
+| Voglio pubblicare | `git tag -a vX.Y.Z -m "release X.Y.Z"` + `git push --follow-tags` |
 | Voglio sapere a che versione sono | `git tag -l --sort=-v:refname \| Select-Object -First 1` |
 | Il sito è rotto | Rollback dal pannello Pages |
 | Ho cambiato una variabile d'ambiente | Ricostruire, sempre |
