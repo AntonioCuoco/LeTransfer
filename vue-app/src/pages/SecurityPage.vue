@@ -14,6 +14,18 @@ import { usePageEnter } from '@/src/composables/useMotion'
 
 const router = useRouter()
 
+/**
+ * Quale build stai guardando.
+ *
+ * `VITE_BUILD_COMMIT` viene iniettato dalla pipeline che costruisce E pubblica il sito
+ * (.github/workflows/reproducible-build.yml). In sviluppo non c'è, e allora la sezione
+ * di verifica non si mostra: meglio tacere che invitare a verificare qualcosa che non
+ * proviene da una build tracciata.
+ */
+const buildCommit = import.meta.env.VITE_BUILD_COMMIT as string | undefined
+const shortCommit = buildCommit ? buildCommit.slice(0, 12) : null
+const RELEASES_URL = 'https://github.com/AntonioCuoco/LeTransfer/releases'
+
 const primitives = [
   { what: 'Contenuto dei file', how: 'AES-256-GCM', note: 'chiave per trasferimento, generata nel browser' },
   { what: 'Blocchi', how: 'IV a 96 bit per blocco + tag 128 bit', note: 'AAD = indice, blocca riordino e sostituzione' },
@@ -117,10 +129,52 @@ const { root: head } = usePageEnter()
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Audit crittografico indipendente</dt>
           <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">non ancora</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Build riproducibili del client</dt>
-          <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">in lavorazione</dd>
+          <dd v-if="shortCommit" class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì · verificabile</dd>
+          <dd v-else class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">in lavorazione</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Crittografia post-quantistica</dt>
           <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">in roadmap</dd>
         </dl>
+      </section>
+
+      <!-- Verifica della build: l'unico modo per non doverci credere sulla parola.
+           Compare SOLO se la pagina proviene da una build della pipeline (§ script). -->
+      <section v-if="shortCommit" v-reveal class="mt-[clamp(48px,7vh,84px)] rounded-[18px] border border-white/10 bg-white/[0.03] p-6 md:p-8">
+        <p class="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.18em] text-[#37e7c4]">Verificabile</p>
+        <h2 class="mb-3 text-[clamp(1.25rem,2.4vw,1.6rem)] font-bold tracking-[-0.02em]">Controlla il codice che stai eseguendo.</h2>
+        <p class="mb-5 max-w-[62ch] leading-relaxed text-[#b9ace2]">
+          Sopra abbiamo scritto che la cifratura avviene nel codice che ti mandiamo noi, e che è il limite
+          strutturale di ogni end-to-end nel browser. Questa è la contromisura: la pagina che stai leggendo
+          è stata costruita <em class="not-italic text-[#F2ECFF]">e pubblicata</em> dalla stessa pipeline,
+          senza passaggi manuali in mezzo. Puoi ricostruirla e confrontare i byte.
+        </p>
+
+        <dl class="mb-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 font-mono text-[0.76rem]">
+          <dt class="text-[#8d7fb8]">commit</dt>
+          <dd class="m-0 break-all text-[#F2ECFF]">{{ shortCommit }}</dd>
+          <dt class="text-[#8d7fb8]">manifesto</dt>
+          <dd class="m-0">
+            <a :href="RELEASES_URL" target="_blank" rel="noopener noreferrer" class="text-[#37e7c4] underline decoration-dotted underline-offset-2">
+              SHA256SUMS.txt nelle release
+            </a>
+          </dd>
+        </dl>
+
+        <p class="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-[#8d7fb8]">Come si verifica</p>
+        <pre class="overflow-x-auto rounded-[12px] border border-white/10 bg-black/30 p-4 font-mono text-[0.74rem] leading-relaxed text-[#d9cffa]"><code>git clone https://github.com/AntonioCuoco/LeTransfer &amp;&amp; cd LeTransfer
+git checkout {{ shortCommit }}
+cd vue-app &amp;&amp; npm ci &amp;&amp; VITE_BUILD_COMMIT={{ buildCommit }} npm run build
+cd dist &amp;&amp; find . -type f -print0 | sort -z | xargs -0 sha256sum</code></pre>
+
+        <p class="mt-4 max-w-[62ch] text-[0.88rem] leading-relaxed text-[#8d7fb8]">
+          L'elenco che ottieni deve combaciare con il manifesto allegato alla release. Se non combacia,
+          i byte serviti non vengono da questo sorgente — ed è esattamente ciò che questo meccanismo
+          esiste per rendere visibile.
+        </p>
+        <p class="mt-3 max-w-[62ch] text-[0.88rem] leading-relaxed text-[#c0a878]">
+          Onestà sui limiti: il tuo browser non confronta nulla da solo. Questo rende una manomissione
+          <em class="not-italic">rilevabile da chi controlla</em>, non impedita a te nel momento in cui
+          apri la pagina. È la cosa più forte disponibile oggi per un'app web, non una garanzia assoluta.
+        </p>
       </section>
 
       <!-- Disclosure -->

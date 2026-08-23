@@ -21,13 +21,19 @@ on:
     paths: ['vue-app/**', '.github/workflows/reproducible-build.yml']
 
 permissions:
-  contents: read
+  contents: write      # serve a creare la release con SHA256SUMS.txt
   id-token: write      # attestazione di provenienza
   attestations: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # A livello di JOB, non di step. Il controllo di determinismo lancia una seconda
+    # build da un altro step: con una env di step le due build vedrebbero valori
+    # diversi e il confronto fallirebbe per un motivo che non c'entra nulla con la
+    # riproducibilità. Serve alla pagina /sicurezza per dire QUALE build stai usando.
+    env:
+      VITE_BUILD_COMMIT: ${{ github.sha }}
     defaults:
       run:
         working-directory: vue-app
@@ -106,3 +112,56 @@ jobs:
           path: |
             vue-app/dist
             vue-app/SHA256SUMS.txt
+
+      # ── Pubblicazione ────────────────────────────────────────────────────────
+      #
+      # 🚨 SOLO SUI TAG. Il workflow gira anche sulle pull request, dove deve
+      #    costruire e verificare ma NON pubblicare: senza questa condizione ogni PR
+      #    aperta finirebbe in produzione.
+      #
+      # L'ordine dei due step che seguono non è casuale: si pubblica **la stessa
+      # cartella `dist/` di cui è appena stato calcolato il manifesto**. È questo che
+      # rende vera la promessa di verificabilità — fra ciò che dichiariamo e ciò che
+      # serviamo non si inserisce nessun passaggio, nessuna ricostruzione, nessun
+      # portatile. Deployare a mano con `wrangler pages deploy` riaprirebbe quel buco:
+      # pubblicheresti byte di cui nessuno ha l'hash.
+
+      - name: Deploy su Cloudflare Pages
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: vue-app
+          # `--branch` decide produzione vs preview: senza, da un tag wrangler non
+          # saprebbe quale dei due, e finirebbe su un URL di anteprima.
+          command: pages deploy dist --project-name=novren --branch=master
+
+      # Il manifesto va dove qualcuno può trovarlo. Un file dentro un artifact di CI
+      # è visibile solo a chi ha accesso al repo; una release è pubblica, ed è quella
+      # che la pagina /sicurezza indica a chi vuole verificare.
+      - name: Pubblica la release con il manifesto
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: vue-app/SHA256SUMS.txt
+          body: |
+            Build verificabile del client Novren.
+
+            - commit: `${{ github.sha }}`
+            - runner: `ubuntu-24.04`, Node da `vue-app/.nvmrc`
+
+            `SHA256SUMS.txt` elenca l'impronta SHA-256 di ogni file pubblicato su
+            https://novren.net — gli stessi byte che questa pipeline ha costruito e
+            deployato, senza passaggi intermedi.
+
+            **Per verificare**, dal repository al tag corrispondente:
+
+            ```
+            cd vue-app && npm ci && npm run build
+            cd dist && find . -type f -print0 | sort -z | xargs -0 sha256sum
+            ```
+
+            L'elenco deve combaciare con quello allegato. Se non combacia, i byte
+            serviti non sono quelli di questo sorgente — ed è esattamente ciò che
+            questo meccanismo esiste per rendere visibile.
