@@ -85,7 +85,7 @@ jobs:
       - name: Genera il manifesto degli hash
         run: |
           {
-            echo "# LeTransfer — manifesto della build"
+            echo "# Novren — manifesto della build"
             echo ""
             echo "commit:   ${{ github.sha }}"
             echo "ref:      ${{ github.ref_name }}"
@@ -95,7 +95,10 @@ jobs:
             echo ""
             echo "## SHA-256 degli asset"
             echo ""
-            cd dist && find . -type f -print0 | sort -z | xargs -0 sha256sum
+            # Subshell: senza le parentesi il `cd` sopravvive alla graffa e il resto
+            # dello script gira dentro dist/ — il `cat` qui sotto cercherebbe il file
+            # nella cartella sbagliata e fallirebbe, pur avendolo scritto bene.
+            ( cd dist && find . -type f -print0 | sort -z | xargs -0 sha256sum )
           } > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
