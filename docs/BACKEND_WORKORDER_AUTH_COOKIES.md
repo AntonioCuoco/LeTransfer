@@ -1,5 +1,22 @@
 # Backend — Work order: token di sessione fuori dalla portata di JavaScript
 
+> ## ⏸️ NON INIZIATO — rinviato consapevolmente il 2026-08-16
+>
+> **Non è lavoro in corso.** Il difetto che descrive è reale e tuttora presente (`js-cookie` in
+> 17 file), ma la decisione presa è di **rimandarlo al momento in cui il prodotto apre davvero
+> al pubblico**. Le ragioni, per non doverle ricostruire:
+>
+> - La **CSP di produzione è attiva** dal 2026-08-16 ed è stretta (`script-src 'self'`, niente
+>   `unsafe-inline`, nessun `eval` nel bundle, nessuna libreria da CDN, Turnstile isolato su
+>   un'altra origine). È la difesa che *impedisce* la XSS; questo lavoro **limita il danno**
+>   quando quella fallisce. Primo strato prima del secondo.
+> - Non protegge comunque le **chiavi E2E**, che stanno in IndexedDB (vedi §1).
+> - Oggi non ci sono utenti reali: sta proteggendo sessioni che non esistono.
+>
+> **Quando riprenderlo:** prima di aprire al pubblico. È anche il momento più economico —
+> il rollout a taglio netto del §6 funziona solo finché non ci sono sessioni da migrare.
+> Il prerequisito bloccante (§0, sottodominio API) è **già soddisfatto**.
+
 > **Cos'è.** La specifica operativa per spostare l'autenticazione Cognito dal browser al backend
 > Express, mettendo il **refresh token in un cookie `httpOnly`**. Pensato per essere passato al
 > **repo Express (Fly.io)** e implementato così com'è.
@@ -29,6 +46,17 @@ Le uniche due strade:
 
 **Decisione da prendere per prima**: assegnare al backend un sottodominio del dominio del frontend.
 Senza questo passo, il resto del documento non è implementabile come scritto.
+
+> ✅ **FATTO il 2026-08-16.** Scelta l'opzione A: l'API risponde su **`api.novren.net`**
+> (record `A`/`AAAA` verso gli IP Fly, **DNS only**, certificato Fly emesso). Il frontend è su
+> `novren.net`: stesso sito, quindi un cookie `SameSite=Lax` viaggia.
+> Aggiornati di conseguenza `VITE_API_URL` e `connect-src` in `vue-app/public/_headers`.
+>
+> ⚠️ I record sono **grigi** (non proxati), quindi `TRUST_PROXY_HOPS` resta `1`. Se un domani
+> passano ad arancione, va portato a `2` — altrimenti il rate limit conta l'IP del proxy.
+>
+> ⚠️ Anche l'altro prerequisito è soddisfatto: la **CSP di produzione è attiva** dal 2026-08-16.
+> L'ordine consigliato in §1 (prima la CSP, poi i cookie) è quindi rispettato.
 
 > Corollario: i cookie vanno impostati **host-only** (nessun attributo `Domain=.novren.net`).
 > Un cookie su tutto il dominio verrebbe inviato anche a `captcha.novren.net`, cioè proprio
@@ -147,8 +175,8 @@ Oggi l'app client è **pubblico** (nessun secret) perché girava nel browser. Sp
 
 Il prodotto non è ancora pubblico → **taglio netto**, niente doppio supporto. In ordine:
 
-1. Sottodominio API + certificato (§0) — *senza questo, gli altri passi non si possono testare*
-2. Endpoint `/api/auth/*` sul backend + client Cognito confidenziale
+1. ✅ **Fatto (2026-08-16)** — Sottodominio API + certificato (§0)
+2. Endpoint `/api/auth/*` sul backend + client Cognito confidenziale ⬅️ **il prossimo**
 3. Frontend su `useAuth`, rimozione dell'SDK
 4. Disattivazione di `USER_PASSWORD_AUTH` sul client pubblico
 5. Invalidazione delle sessioni esistenti (i vecchi cookie non saranno più letti: gli utenti rifanno login)

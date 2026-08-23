@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { notify } from '@/src/utils/notify'
 import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
+import { usePlan } from '@/src/composables/usePlan'
+import { formatRetention } from '@/src/types/plan'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVerifiedKeys'
 import { keyThumbprint } from '@/src/crypto/fingerprint'
@@ -26,6 +28,18 @@ const { shareFile, isSharing } = useShareFile()
 const { createLink, isCreating } = useSharedLinks()
 const encryptionStore = useEncryptionStore()
 const { checkRecipient, getVerified } = useVerifiedKeys()
+const { limits: planLimits, load: loadPlan } = usePlan()
+
+/**
+ * Il tetto di durata del link è quello del **piano**, non un numero fisso.
+ *
+ * Prima qui c'era `:max="720"` scritto a mano — cioè i 30 giorni del piano Pro. Un utente
+ * Free poteva quindi chiedere 30 giorni, e il server riclampava in silenzio a 7
+ * (BACKEND_API_DOCS §5-ter: `POST /api/shared-links` fa il clamp sul cap del piano).
+ * Nessuno glielo diceva: il link scadeva quattro volte prima del previsto, e chi l'aveva
+ * ricevuto trovava una pagina morta senza spiegazione.
+ */
+const maxExpiryHours = computed(() => planLimits.value.maxExpiryHours)
 
 const email = ref('')
 const emailError = ref('')
@@ -51,7 +65,17 @@ const resetState = () => {
   useMaxDownloads.value = false
 }
 
-watch(() => props.visible, (v) => { if (!v) resetState() })
+watch(() => props.visible, (v) => {
+  if (v) {
+    // Il piano serve prima che l'utente scelga la scadenza, non dopo.
+    void loadPlan()
+    // Se il default supera il tetto del piano, si abbassa: meglio partire da un valore
+    // che il server accetterà davvero.
+    if (expiresInHours.value > maxExpiryHours.value) expiresInHours.value = maxExpiryHours.value
+  } else {
+    resetState()
+  }
+})
 
 const validateEmail = (val: string) => {
   if (!val.trim()) { emailError.value = 'Email obbligatoria'; return false }
@@ -214,7 +238,7 @@ const handleCopyLink = () => {
               @blur="validateEmail(email)"
             />
           </div>
-          <p v-if="emailError" class="text-[#F4743B] mt-1 text-sm">{{ emailError }}</p>
+          <p v-if="emailError" class="mt-1 text-sm text-crit-400">{{ emailError }}</p>
         </div>
         <div class="bg-black/25 border border-white/10 rounded-xl p-4">
           <p class="text-haze-400 text-sm m-0">
@@ -252,17 +276,25 @@ const handleCopyLink = () => {
           </div>
           <Password v-if="usePassword" v-model="password" placeholder="Inserisci password" :feedback="false" toggle-mask fluid />
 
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i class="pi pi-clock text-primary" />
-              <span class="text-haze-200 text-sm">Scadenza (ore)</span>
+          <div>
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i class="pi pi-clock text-primary" />
+                <span class="text-haze-200 text-sm">Scadenza (ore)</span>
+              </div>
+              <InputNumber v-model="expiresInHours" :min="1" :max="maxExpiryHours" :input-class="'w-20 text-center'" />
             </div>
-            <InputNumber v-model="expiresInHours" :min="1" :max="720" :input-class="'w-20 text-center'" />
+            <!-- Il tetto scritto accanto al campo, non scoperto dopo che il link è nato. -->
+            <p class="m-0 mt-1.5 text-right font-mono text-[0.68rem] text-haze-400">
+              il tuo piano arriva a {{ formatRetention(maxExpiryHours) }}
+            </p>
           </div>
 
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
-              <span class="text-brand-400">📥</span>
+              <!-- Icona del set, non un'emoji: qui accanto ci sono `pi pi-lock` e `pi pi-clock`,
+                   e un glifo di sistema fra loro stona per peso, allineamento e resa fra OS. -->
+              <i class="pi pi-download text-primary" />
               <span class="text-haze-200 text-sm">Limite download</span>
             </div>
             <ToggleSwitch v-model="useMaxDownloads" />

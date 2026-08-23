@@ -23,7 +23,7 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cognito-idp.eu-central-1.amazonaws.com https://eu-central-1rkwgxhzif.auth.eu-central-1.amazoncognito.com https://novrenbackend.fly.dev https://bb89a06a2f888c6d9ad7cc004340611e.eu.r2.cloudflarestorage.com; frame-src https://captcha.novren.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cognito-idp.eu-central-1.amazonaws.com https://eu-central-1rkwgxhzif.auth.eu-central-1.amazoncognito.com https://api.novren.net https://bb89a06a2f888c6d9ad7cc004340611e.eu.r2.cloudflarestorage.com; frame-src https://captcha.novren.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
 # ── Già compilati (2026-08-13) ───────────────────────────────────────────────
 #   cognito-idp.eu-central-1.amazonaws.com    L'SDK Cognito chiama qui per login,
@@ -33,11 +33,15 @@
 #       codice con i token: senza, il login Google si ferma a metà, dopo che
 #       l'utente ha già dato il consenso.
 #   frame-src https://captcha.novren.net      L'origine isolata del widget.
-#   novrenbackend.fly.dev                     L'Express su Fly. ⚠️ In `connect-src` va
-#       l'ORIGINE (schema+host), senza `/api`; in VITE_API_URL invece il path `/api` ci
-#       vuole. I due valori vanno cambiati sempre in coppia, e con un nuovo build.
-#       Quando l'API passerà a `api.novren.net` (necessario per i cookie httpOnly —
-#       BACKEND_WORKORDER_AUTH_COOKIES), qui va aggiornato insieme a .env.production.
+#   api.novren.net                            L'Express su Fly, dietro un sottodominio del
+#       frontend (A/AAAA verso gli IP Fly, **DNS only**). ⚠️ In `connect-src` va l'ORIGINE
+#       (schema+host), senza `/api`; in VITE_API_URL invece il path `/api` ci vuole. I due
+#       valori vanno cambiati sempre in coppia, e con un nuovo build.
+#       Il sottodominio non è estetica: i cookie `httpOnly` `SameSite=Lax` partono solo
+#       verso lo **stesso sito**, quindi con l'API su `*.fly.dev` il refresh token non
+#       sarebbe mai stato inviato. Vedi BACKEND_WORKORDER_AUTH_COOKIES §0.
+#       ⚠️ Se un giorno il record passa a **proxied** (nuvoletta arancione), gli hop
+#       diventano 2 e `TRUST_PROXY_HOPS` sul backend va portato a 2.
 #
 #   ...eu.r2.cloudflarestorage.com            Lo storage. Il browser NON manda i file al
 #       backend: riceve un URL firmato e fa la PUT/GET direttamente a R2. Senza questo host
