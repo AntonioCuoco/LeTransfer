@@ -1,91 +1,193 @@
-# LeTransfer - Secure & Modern File Sharing
+# Novren — trasferimento file cifrato end-to-end
 
-**LeTransfer** è una piattaforma di trasferimento file moderna, sicura e performante, progettata per offrire un'esperienza utente premium simile a WeTransfer, ma con funzionalità avanzate di sicurezza e gestione dei dati.
+**Novren** (nome pubblico; nel codice e nel repository l'identificatore storico resta
+`LeTransfer`) è una piattaforma di trasferimento file semplice come WeTransfer ma
+**zero-knowledge sul serio**: i file vengono cifrati nel browser e il server conserva solo
+ciphertext, senza possedere mai una chiave capace di aprirlo.
 
-Il progetto si distingue per la sua architettura **Serverless** su AWS e per l'implementazione nativa della cifratura **End-to-End (E2E)**, garantendo che i dati degli utenti rimangano privati e inaccessibili persino al server stesso.
+Il differenziatore non è la promessa, è la **verificabilità**: crittografia interamente
+client-side, build riproducibile pubblicata dalla pipeline, impronta della chiave del
+destinatario confrontabile a voce, e una pagina `/sicurezza` che dichiara anche **dove la
+promessa si ferma**.
 
----
-
-## ✨ Funzionalità Principali
-
-### 🚀 Trasferimento File Avanzato
-*   **Upload Multipart S3**: Supporto per il caricamento di file di grandi dimensioni (GB/TB) tramite upload parallelo e chunking, massimizzando la velocità e l'affidabilità.
-*   **Resumable Uploads**: I caricamenti interrotti possono essere ripresi automaticamente senza ricominciare da zero.
-*   **Gestione Concorrenza**: Sistema intelligente di code per gestire upload multipli simultanei senza saturare la banda.
-
-### 🔒 Sicurezza e Privacy (E2E)
-*   **Cifratura Client-side**: Tutti i file vengono cifrati nel browser (AES-256-GCM) prima dell'upload.
-*   **Zero-Knowledge**: Il server non possiede mai le chiavi di decifrazione dei file.
-*   **Link Sicuri**: I link pubblici contengono la chiave di cifratura nel fragment URL (`#key=...`), che non viene mai inviato al server.
-*   **Condivisione Email Sicura**: Scambio chiavi basato su RSA-OAEP per inviare file cifrati a utenti specifici.
-
-### 🛠 Gestione e Condivisione
-*   **Account Utente**: Login/Registrazione (AWS Cognito) per gestire la cronologia dei file.
-*   **Link Condivisibili Personalizzabili**: Imposta data di scadenza, password di accesso e numero massimo di download.
-*   **File Manager**: Dashboard per visualizzare, cercare e gestire tutti i file caricati e ricevuti.
-*   **Anteprima Real-time**: Preview integrata per immagini, PDF, video e audio.
-
-### 🎨 Esperienza Utente Premium
-*   **Design Geometrico**: Interfaccia utente curata ("Premium Geometric") con animazioni fluide GSAP.
-*   **Responsive**: Ottimizzato per desktop, tablet e mobile.
-*   **Feedback Immediato**: Notifiche toast, progress bar dettagliate e stati di caricamento/decifratura chiari.
+> ⚠️ **Stato.** Il frontend è in produzione su Cloudflare Pages e il backend gira su Fly.io,
+> ma il prodotto **non è ancora aperto al pubblico**: restano aperti punti di infrastruttura
+> e di prodotto (lifecycle di cancellazione sul bucket, TTL DynamoDB, endpoint di piano e
+> fatturazione, notifiche email, refresh token in cookie `httpOnly`).
 
 ---
 
-## 🏗 Tech Stack
+## 📦 Cosa contiene questo repository
+
+Solo il **frontend**. Il backend Express vive in un repository separato ed è deployato su
+Fly.io (app `novrenbackend`) dietro `api.novren.net`.
+
+```
+vue-app/            l'applicazione Vue 3 — tutto il codice di prodotto
+  src/crypto/       il nucleo crittografico e la sua specifica
+  public/           _headers (CSP), _redirects (fallback SPA), captcha.html
+docs/               documentazione di lavoro
+.github/workflows/  build riproducibile e pubblicazione sui tag
+```
+
+---
+
+## ✨ Funzionalità
+
+### 🚀 Invio
+
+- **Senza account**: dalla facciata si invia subito — chiave generata nel browser, link
+  pronto, nessuna registrazione. Protetto da rate limit per IP e **Cloudflare Turnstile**.
+- **Più file o una cartella** → **zip in streaming** (`client-zip`): l'archivio viene
+  prodotto e cifrato al volo, senza mai stare in RAM. Un solo link.
+- **Upload multipart** con caricamento parallelo a chunk, riprendibile, e code per gestire
+  più trasferimenti insieme senza saturare la banda.
+- **Claim**: un invio da guest può essere rivendicato in un account, che ne assume la
+  proprietà e ne estende la conservazione.
+
+### 🔒 Sicurezza e privacy
+
+- **AES-256-GCM** sul contenuto, formato **v2 a chunk**: IV diverso per ogni chunk e
+  `AAD = chunk-<indice>`, così un blocco riordinato o sostituito non si apre.
+- **Chiave nel fragment**: nei link pubblici la chiave sta dopo `#`, che per come è definito
+  HTTP il browser non invia al server.
+- **Condivisione utente→utente** con wrapping **RSA-OAEP 4096**; la chiave privata vive in
+  IndexedDB come `extractable: false` — nemmeno il JavaScript della pagina può esportarla.
+- **Chiave di recupero BIP39** (24 parole, 256 bit di entropia): da essa si deriva via
+  PBKDF2 la master key che cifra il backup della chiave privata. Al server vanno solo il
+  salt e un piccolo blob di verifica.
+- **Impronta del destinatario** (JWK Thumbprint, RFC 7638) con trust-on-first-use: se la
+  chiave pubblica restituita dal server cambia, l'utente lo vede.
+- **Ricevuta di privacy**: cosa è stato cifrato e cosa il server ha visto, mostrata sia a
+  chi invia sia a chi riceve.
+- Nessuna libreria crittografica di terze parti: solo **Web Crypto** della piattaforma.
+
+### 🛠 Gestione e condivisione
+
+- **Account** su AWS Cognito, incluso login Google, con cronologia dei trasferimenti.
+- **Link personalizzabili**: scadenza, password (Argon2 lato server), numero massimo di
+  download, revoca.
+- **File manager**: dashboard per cercare, gestire ed eliminare i file inviati e ricevuti,
+  con l'attività di download.
+- **Anteprima** integrata per immagini, PDF, video e audio.
+- **Piani** Free / Pro / Business, con limiti di dimensione e scadenza applicati sia
+  nell'interfaccia sia lato backend.
+
+### 🎨 Interfaccia
+
+- Pagine pubbliche `/`, `/come-funziona`, `/prezzi`, `/sicurezza`; area autenticata sotto
+  `/app`.
+- Design "Premium Geometric", animazioni GSAP, tema chiaro/scuro, font self-hosted.
+- Progresso **per-file** misurato sui byte accettati dallo storage, notifiche toast, stati
+  di cifratura e decifratura espliciti.
+
+---
+
+## 🏗 Tech stack
 
 ### Frontend (`vue-app/`)
-*   **Framework**: Vue 3 (`<script setup>`) + TypeScript + Vite
-*   **Styling**: TailwindCSS + PrimeVue (Componenti UI)
-*   **State Management**: Pinia (store) + composable personalizzati
-*   **Routing**: Vue Router (navigation guard per le route protette)
-*   **Animazioni**: GSAP (GreenSock)
-*   **Networking**: Axios (con interceptor per Auth)
-*   **Crypto**: Web Crypto API (Nativo browser)
 
-### Backend
-*   **Auth**: Amazon Cognito
-*   **Storage**: Amazon S3 (Bucket privati con presigned URLs)
-*   **Database**: Amazon DynamoDB (Metadati file e chiavi pubbliche)
-*   **Compute**: backend Node.js + Express unico (deploy su Fly.io)
-*   **Nota**: le vecchie AWS Lambda + API Gateway sono state dismesse e i loro stack rimossi — tutta la logica vive nell'Express. Il contratto completo è in [docs/BACKEND_API_DOCS.md](docs/BACKEND_API_DOCS.md)
+| Ambito | Scelta |
+|---|---|
+| Framework | Vue 3 (`<script setup>`) + TypeScript + Vite 6 |
+| UI | PrimeVue 4 (preset + PassThrough) su TailwindCSS 4 |
+| Stato | Pinia + composable dedicati |
+| Routing | Vue Router, guard `requiresAuth` sulle route `/app` |
+| Form | VeeValidate + Zod |
+| Animazioni | GSAP |
+| Rete | Axios con interceptor di auth · TanStack Query |
+| Crypto | Web Crypto API — nessuna dipendenza crittografica esterna |
+| Test | Vitest (logica e componenti) · Playwright (end-to-end) |
 
----
+### Servizi
 
-## 📚 Documentazione
-
-L'indice completo è in [**docs/README.md**](docs/README.md). I documenti da cui partire:
-
-*   [**Contratto API backend**](docs/BACKEND_API_DOCS.md): architettura, auth, modelli DynamoDB, tutti gli endpoint. È la fonte di verità quando un altro documento lo contraddice.
-*   [**Modello crittografico**](vue-app/src/crypto/README.md): primitive, formato dei file, ciclo di vita delle chiavi — mantenuto nello stesso commit del codice che descrive.
-*   [**Lavoro backend aperto**](docs/BACKEND_HANDOFF.md): cosa manca per aprire al pubblico, in ordine di priorità.
-
-Riferimento per funzionalità: [autenticazione](docs/01-autenticazione.md), [upload](docs/02-upload-file.md), [transfer manager](docs/03-transfer-manager.md), [condivisione](docs/04-condivisione-file.md), [shared links](docs/05-shared-links.md), [gestione file](docs/06-gestione-file-dynamodb.md), [profilo](docs/07-profilo-utente.md), [landing page](docs/08-landing-page.md).
+| Ambito | Scelta |
+|---|---|
+| API | Node.js + Express 5 su **Fly.io** (`api.novren.net`), repository separato |
+| Auth | AWS Cognito, con verifica vera della firma dell'access token |
+| Storage | **Cloudflare R2** (bucket EU), con switch automatico verso S3 via env |
+| Database | AWS DynamoDB — metadati file, link condivisi, chiavi pubbliche |
+| Anti-abuso | Cloudflare Turnstile su origine dedicata + rate limit per IP |
+| Hosting frontend | Cloudflare Pages |
 
 ---
 
-## 🚀 Setup Sviluppo
+## 🚀 Setup sviluppo
 
-1.  **Clona il repo**:
-    ```bash
-    git clone ...
-    cd letransfer
-    ```
+Serve **Node 22.20.0** (vedi `vue-app/.nvmrc`).
 
-2.  **Installa dipendenze**:
-    ```bash
-    npm install
-    # oppure
-    pnpm install
-    ```
+```bash
+git clone https://github.com/AntonioCuoco/LeTransfer.git
+cd LeTransfer/vue-app
+npm ci
+```
 
-3.  **Variabili d'ambiente**:
-    Copia `.env.example` in `.env` e configura i parametri (inclusi endpoint API Lambda e User Pool Cognito).
+Poi crea `vue-app/.env` — non è versionato:
 
-4.  **Avvia server di sviluppo**:
-    ```bash
-    npm run dev
-    ```
+| Variabile | A cosa serve |
+|---|---|
+| `VITE_API_URL` | Base URL del backend Express; in locale `http://localhost:3000/api` |
+| `VITE_FRONTEND_URL` | Origine dell'app, usata per costruire i link condivisibili |
+| `VITE_AWS_REGION` | Regione del User Pool Cognito |
+| `VITE_COGNITO_CLIENT_ID` | Client ID del User Pool |
+| `VITE_COGNITO_DOMAIN` | Dominio della hosted UI Cognito (OAuth Google) |
+| `VITE_COGNITO_REDIRECT_URI` | Callback OAuth (`/oauth2/callback`) |
+| `VITE_TURNSTILE_SITE_KEY` | Site key Turnstile per l'invio senza account |
+| `VITE_CAPTCHA_ORIGIN` | Origine **diversa** da quella dell'app che serve `captcha.html` |
+
+`vue-app/.env.production` è versionato e documenta i valori usati in produzione: è il
+riferimento da cui partire.
+
+⚠️ **Le `VITE_*` finiscono nel bundle al momento del build.** Cambiarne una senza
+ricostruire non ha alcun effetto — è l'errore che costa mezz'ora ogni volta.
+
+Poi, da `vue-app/`:
+
+```bash
+npm run dev     # http://localhost:5173, e anche sull'IP di LAN: serve al captcha
+```
 
 ---
-*Progetto sviluppato con ❤️ utilizzando Modern Web Technologies.*
+
+## ✅ Test e controlli
+
+Tutto da `vue-app/`:
+
+```bash
+npm test                 # Vitest, una volta sola
+npm run test:watch       # in watch
+npm run test:logica      # solo la logica, crittografia compresa
+npm run test:componenti  # solo i componenti
+npm run test:e2e         # Playwright, percorso critico
+npx vue-tsc --noEmit     # controllo dei tipi
+npm run lint             # ESLint
+```
+
+Prima di committare conviene lanciare `npm test` e `npx vue-tsc --noEmit`: sono gli stessi
+due controlli che la pipeline rilancia, e senza i quali **si rifiuta di pubblicare**.
+
+---
+
+## 📦 Build e rilascio
+
+**È il tag a pubblicare, non il push.** Il workflow si attiva sui tag `v*`:
+
+```bash
+git tag -a v0.1.2 -m "release 0.1.2"
+git push --follow-tags
+```
+
+La pipeline esegue, in ordine: install dal lockfile → type-check → test del nucleo
+crittografico → build → **seconda build e confronto degli hash** → manifesto
+`SHA256SUMS.txt` → attestazione di provenienza → deploy su Cloudflare Pages → release
+pubblica con il manifesto. Se una qualsiasi verifica fallisce, **non pubblica niente**.
+
+La doppia build non è cerimoniale: la cifratura avviene dentro il codice che serviamo noi,
+quindi l'unica difesa possibile contro una distribuzione manomessa è renderla
+**ricostruibile e confrontabile da terzi**. La pagina `/sicurezza` dichiara pubblicamente
+quale commit stai eseguendo — ed è il motivo per cui il frontend **non va mai deployato a
+mano**.
+
+---
+
+*Progetto sviluppato con ❤️ con tecnologie web moderne.*

@@ -85,21 +85,21 @@ diversi, e diversi dall'IP del proxy.
 - **verifica Turnstile** come su `init`;
 - **deduplicazione per (IP, publicToken)**: la seconda segnalazione dallo stesso IP sullo stesso link
   non incrementa il contatore;
-- **soglia relativa ai download** invece della costante `ABUSE_AUTO_QUARANTINE_THRESHOLD = 3`:
-  proposta `max(3, ceil(downloadCount × 0.05))` — 3 segnalazioni su 5 download sono un segnale,
-  3 su 5000 sono rumore o sabotaggio;
+- **soglia relativa ai download** invece di una costante: `max(ABUSE_AUTO_QUARANTINE_THRESHOLD,
+  ceil(downloadCount × ABUSE_REPORT_DOWNLOAD_RATIO))` — poche segnalazioni su pochi download sono
+  un segnale, le stesse su migliaia sono rumore o sabotaggio;
 - opzionale ma consigliato: registrare `reason` e timestamp per la revisione.
 
-**Perché.** Oggi l'endpoint è pubblico, senza captcha, e bastano **tre richieste da tre IP** per
+**Perché.** Oggi l'endpoint è pubblico, senza captcha, e basta un pugno di richieste da IP diversi per
 mettere in quarantena il link di chiunque ne conosca il token. Il frontend ha appena collegato il
 bottone di segnalazione (prima non esisteva): da questo momento la debolezza è raggiungibile.
 
-**Verifica.** 5 `report` dallo stesso IP → contatore a 1. Un `report` senza token Turnstile valido →
-`403`. Un link con 1000 download non va in quarantena con 3 segnalazioni.
+**Verifica.** Più `report` dallo stesso IP → contatore a 1. Un `report` senza token Turnstile valido →
+`403`. Un link con molti download non va in quarantena con una manciata di segnalazioni.
 
 **Stato (2026-08-12): ✅ implementato** in `routes/guest.js`. `report` ora usa `verifyTurnstile` (come
 `init`, fail-open senza secret), **dedup per (hash IP, link)** via `reporterIpHashes`, **soglia
-relativa** `max(3, ceil(downloadCount × ABUSE_REPORT_DOWNLOAD_RATIO))` (default ratio 0.05), e log capped
+relativa** `max(ABUSE_AUTO_QUARANTINE_THRESHOLD, ceil(downloadCount × ABUSE_REPORT_DOWNLOAD_RATIO))`, e log capped
 `abuseReportsLog` di `{ at, reason }` per la revisione. ⚠️ **Frontend**: quando `TURNSTILE_SECRET` è
 attivo, il bottone report deve inviare `turnstileToken` (altrimenti `403`).
 
@@ -374,7 +374,7 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 |---|---|---|---|---|
 | 1 | Lifecycle `uploads/guest/` | infra | ✅ promessa non mantenuta | ✅ fatto (regola R2) |
 | 2 | TTL DynamoDB | infra | ✅ idem | ✅ fatto |
-| 3 | `TRUST_PROXY_HOPS` | config | ✅ falsa sicurezza | ✅ `1` è corretto: il backend risponde su `novrenbackend.fly.dev`, **senza proxy Cloudflare davanti** — un solo hop. ⚠️ Diventa `2` il giorno che passa dietro `api.novren.net` proxato |
+| 3 | `TRUST_PROXY_HOPS` | config | ✅ falsa sicurezza | ✅ `1` è corretto: il backend risponde sull'host Fly diretto, **senza proxy Cloudflare davanti** — un solo hop. ⚠️ Diventa `2` il giorno che passa dietro `api.novren.net` proxato |
 | 4 | Turnstile + dedup + soglia su `report` | codice | ✅ difetto raggiungibile | ✅ **fatto** |
 | 5 | Appello quarantena | codice | 🟡 fortemente consigliato | ✅ **fatto** |
 | 6 | `TURNSTILE_SECRET` | config | ✅ | ✅ settato |
@@ -395,7 +395,7 @@ Non sono lavoro da scrivere: sono le prove che dicono se quanto sopra funziona d
 > oggi tira a indovinare i limiti dell'utente.
 
 > 🚨 **Il canale pubblico è VIVO (2026-08-16).** Frontend su `novren.net`, backend su
-> `novrenbackend.fly.dev`, `POST /api/guest/upload/init` risponde `403` senza token Turnstile —
+> l'host Fly, `POST /api/guest/upload/init` risponde `403` senza token Turnstile —
 > cioè la rotta è montata e il captcha applica. Da questo momento **chiunque conosca il dominio
 > può caricare un file e generare un link pubblico**.
 >

@@ -95,7 +95,7 @@ pauseUpload(); resumeUpload(); abortUpload()
 
 > Le chiavi di cifratura del file vengono salvate (wrapped con la master key) tramite lo **store
 > Pinia** `useEncryptionStore` (`stores/encryption.ts`), non un Context React. Vedi
-> `docs/10-e2e-encryption.md`.
+> [crypto/README.md](../vue-app/src/crypto/README.md), che è mantenuto nello stesso commit del codice.
 >
 > Per la gestione della **coda** e dei limiti di concorrenza tra più upload vedi
 > `docs/03-transfer-manager.md` (store `useTransferStore` + `UploadQueueManager.vue`).

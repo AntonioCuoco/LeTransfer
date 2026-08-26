@@ -143,7 +143,7 @@ Cosa costruire, in ordine di rapporto valore/costo:
 Quello che separa una feature da un sistema che regge è **operativo**, e oggi manca del tutto.
 
 - **Deduplicazione e peso delle segnalazioni.** ⚠️ **Difetto attuale da correggere**: la quarantena
-  scatta a `ABUSE_AUTO_QUARANTINE_THRESHOLD = 3` segnalazioni e l'endpoint `report` **non ha
+  scatta alla soglia `ABUSE_AUTO_QUARANTINE_THRESHOLD` e l'endpoint `report` **non ha
   captcha**. Chiunque conosca un link può ucciderlo con tre richieste da tre IP. Serve almeno:
   deduplicazione per (IP, token), **Turnstile anche su `report`**, e una soglia **relativa** ai
   download (3 segnalazioni su 5 download è un segnale; su 5000 è rumore o sabotaggio).

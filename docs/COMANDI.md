@@ -119,13 +119,14 @@ richiesta*. L'app resta in piedi e una funzione smette di esistere senza dirlo a
 
 ## Backend
 
-Dal repo del backend, non da questo:
+Dal repo del backend, non da questo. I comandi non hanno il flag `-a` perché il nome
+dell'app lo prendono da `fly.toml`, che sta in quella cartella.
 
 ```powershell
-fly deploy -a novrenbackend
-fly logs -a novrenbackend                    # cosa sta succedendo adesso
-fly secrets list -a novrenbackend            # quali variabili esistono (non i valori)
-fly secrets set NOME=valore -a novrenbackend # impostarne una
+fly deploy
+fly logs                    # cosa sta succedendo adesso
+fly secrets list            # quali variabili esistono (non i valori)
+fly secrets set NOME=valore # impostarne una
 ```
 
 ⚠️ Il backend gira **a consumo**. Evita di interrogarlo con sonde e `curl` ripetuti per

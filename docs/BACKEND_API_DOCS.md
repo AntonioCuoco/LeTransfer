@@ -315,7 +315,7 @@ Errori comuni: `400` file troppo grande / tipo non supportato / file assente · 
 
 Upload di file grandi a parti. Owner = `req.user.sub`; il `fileKey` è generato dal server e
 deve appartenere all'utente (prefisso `uploads/files/{sub}/`, altrimenti `403`).
-Dettaglio completo + flusso client in [`multipart-upload.md`](./multipart-upload.md).
+Il flusso lato client è descritto in [02-upload-file.md](02-upload-file.md).
 
 | Auth | Metodo | Path | Body | Risposta |
 |---|---|---|---|---|
@@ -464,7 +464,7 @@ Risposta: `{ success, message, results[], totalRecipients, totalFiles, totalShar
 
 Condivisione diretta **utente → utente** su tabella `SharesTable` (porting delle Lambda
 `dev-createShare` / `dev-getSharedFiles`). Distinta dal file-sharing via email (§4.7) e dai
-link pubblici (§4.5). Dettaglio completo in [`user-shares.md`](./user-shares.md).
+link pubblici (§4.5). Il flusso lato client è descritto in [04-condivisione-file.md](04-condivisione-file.md).
 
 | Auth | Metodo | Path | Descrizione |
 |---|---|---|---|
@@ -542,7 +542,7 @@ vs `manageTokenHash` (tempo costante), set `revokedAt` + delete immediato dell'o
 
 **`report`** — segnalazione abuso, **hardened anti-censura**: **gated da Turnstile** (come `init`),
 **deduplicato per (IP, link)** (una seconda segnalazione dallo stesso IP sullo stesso link non conta) e con
-**soglia relativa ai download** `max(ABUSE_AUTO_QUARANTINE_THRESHOLD, ceil(downloadCount × 0.05))` — così pochi
+**soglia relativa ai download** `max(ABUSE_AUTO_QUARANTINE_THRESHOLD, ceil(downloadCount × ABUSE_REPORT_DOWNLOAD_RATIO))` — così pochi
 report non abbattono un link popolare. Alla soglia va in **quarantena** (`revokedAt` + `quarantined:true`;
 oggetto **conservato** per revisione). Risposta sempre generica `202` (nessun leak sull'esistenza).
 Se `TURNSTILE_SECRET` è attivo, il client deve inviare `turnstileToken` (altrimenti `403`).
@@ -589,7 +589,7 @@ rimuove `ttl` e i marker guest → cancella l'oggetto originale.
 | `FRONTEND_URL` | `https://novren.net` | Base per URL `/share/:token` **e** origine aggiunta alla whitelist CORS. |
 | `MAX_FILE_SIZE` | 5MB | Limite immagini. |
 | `MAX_GENERIC_FILE_SIZE` | 50MB | Limite file generici (upload singolo). |
-| `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Valore reale: `dev-swiftsend-shares`. |
+| `SHARES_TABLE` | `SharesTable` | Tabella condivisioni utente→utente (§3.7). Il valore reale è impostato come env. |
 | `SUBSCRIPTIONS_TABLE` | — (unset → tutti `free`) | Tabella piani (D.1, §5-ter). Se non impostata, `loadPlan` non interroga Dynamo e tutti sono `free`. |
 | `PLAN_FREE_MAX_FILE_GB` / `PLAN_PRO_MAX_FILE_GB` / `PLAN_BUSINESS_MAX_FILE_GB` | 2 / 20 / 100 | Cap dimensione per piano (GB). |
 | `PLAN_FREE_MAX_EXPIRY_HOURS` / `PLAN_PRO_MAX_EXPIRY_HOURS` | 168 / 720 | Cap retention link per piano (ore). Business = solo ceiling assoluto. |
@@ -598,10 +598,10 @@ rimuove `ttl` e i marker guest → cancella l'oggetto originale.
 | `TURNSTILE_SECRET` | — (unset → captcha OFF) | Secret Cloudflare Turnstile. Se impostata, `init` guest richiede `turnstileToken` valido (§4.9). |
 | `GUEST_MAX_FILE_SIZE` | 2 GB | Cap dimensione invio guest (byte). Enforce reale a `complete` via `HeadObject`. |
 | `GUEST_MAX_EXPIRY` | 168 | Cap retention link guest (ore). |
-| `GUEST_RATE_MAX_INIT_PER_HOUR` / `GUEST_RATE_MAX_REQUESTS` | 20 / 300 | Rate-limit per IP: `init`/h e richieste guest/h (finestra `GUEST_RATE_WINDOW_MS`, def. 1h). |
+| `GUEST_RATE_MAX_INIT_PER_HOUR` / `GUEST_RATE_MAX_REQUESTS` | *(non pubblicato)* | Rate-limit per IP: `init`/h e richieste guest/h (finestra `GUEST_RATE_WINDOW_MS`). |
 | `GUEST_TTL_GRACE_SECONDS` | 172800 | Grazia aggiunta a `expiresAt` per il `ttl` DynamoDB del record guest. |
-| `ABUSE_AUTO_QUARANTINE_THRESHOLD` | 3 | Soglia **minima** (floor) di `report` per la quarantena di un link guest. |
-| `ABUSE_REPORT_DOWNLOAD_RATIO` | 0.05 | Fattore della soglia relativa ai download: quarantena a `max(floor, ceil(downloadCount × ratio))` report (§4.9). |
+| `ABUSE_AUTO_QUARANTINE_THRESHOLD` | *(non pubblicato)* | Soglia **minima** (floor) di `report` per la quarantena di un link guest. |
+| `ABUSE_REPORT_DOWNLOAD_RATIO` | *(non pubblicato)* | Fattore della soglia relativa ai download: quarantena a `max(floor, ceil(downloadCount × ratio))` report (§4.9). |
 | `*_TABLE` | nomi default | Override nomi tabelle DynamoDB. |
 | `NODE_ENV` | `development` | Solo logging richieste in dev. Il **dettaglio errori non è più esposto** al client in nessun ambiente (§6). |
 

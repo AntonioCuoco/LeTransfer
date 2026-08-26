@@ -236,7 +236,7 @@ GUEST_MAX_FILE_SIZE=2147483648        # 2 GB (tarabile)
 GUEST_MAX_EXPIRY=168                  # ore (7 giorni)
 GUEST_RATE_MAX_INIT_PER_HOUR=…        # per IP
 GUEST_RATE_MAX_GB_PER_DAY=…           # per IP
-ABUSE_AUTO_QUARANTINE_THRESHOLD=3
+ABUSE_AUTO_QUARANTINE_THRESHOLD=…    # non pubblicato: vedi nota
 TURNSTILE_SECRET=…
 ```
 - **IAM/token storage**: gli stessi permessi multipart già in uso (`CreateMultipartUpload`, `UploadPart`,

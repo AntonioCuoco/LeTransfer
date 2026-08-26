@@ -68,15 +68,6 @@ contratto con il backend vale sempre [BACKEND_API_DOCS.md](BACKEND_API_DOCS.md).
 6. [Gestione file (DynamoDB)](06-gestione-file-dynamodb.md) — schema dati e sincronizzazione
 7. [Profilo utente](07-profilo-utente.md)
 8. [Landing page](08-landing-page.md)
-10. [E2E encryption](10-e2e-encryption.md) — ⚠️ descrive ancora il vecchio formato a blob unico. Per
-    il formato reale (v2 a chunk) vedi [crypto/README.md §3](../vue-app/src/crypto/README.md)
-
----
-
-## Per gli utenti finali
-
-[GUIDA_UTENTE_E2E.md](GUIDA_UTENTE_E2E.md) — spiegazione della cifratura in linguaggio non tecnico.
-Le stesse cose sono in-app su `/come-funziona` e `/sicurezza`.
 
 ---
 
