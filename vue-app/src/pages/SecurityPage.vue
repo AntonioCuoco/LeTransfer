@@ -26,6 +26,18 @@ const buildCommit = import.meta.env.VITE_BUILD_COMMIT as string | undefined
 const shortCommit = buildCommit ? buildCommit.slice(0, 12) : null
 const RELEASES_URL = 'https://github.com/AntonioCuoco/LeTransfer/releases'
 
+/**
+ * L'ambiente della build ufficiale, dichiarato perché senza di esso la verifica non
+ * può riuscire: una versione diversa di Node produce byte diversi, e chi confronta
+ * concluderebbe "manomesso" trovandosi davanti a un artefatto legittimo.
+ *
+ * ⚠️ Questi due valori devono seguire il workflow: `BUILD_NODE` è `vue-app/.nvmrc`,
+ * `BUILD_RUNNER` è il `runs-on` di .github/workflows/reproducible-build.yml. Se lì
+ * cambiano e qui no, questa pagina dice una cosa falsa.
+ */
+const BUILD_NODE = '22.20.0'
+const BUILD_RUNNER = 'ubuntu-24.04 · linux x64'
+
 const primitives = [
   { what: 'Contenuto dei file', how: 'AES-256-GCM', note: 'chiave per trasferimento, generata nel browser' },
   { what: 'Blocchi', how: 'IV a 96 bit per blocco + tag 128 bit', note: 'AAD = indice, blocca riordino e sostituzione' },
@@ -151,6 +163,10 @@ const { root: head } = usePageEnter()
         <dl class="mb-5 grid grid-cols-[auto_1fr] gap-x-5 gap-y-2 font-mono text-[0.76rem]">
           <dt class="text-[#8d7fb8]">commit</dt>
           <dd class="m-0 break-all text-[#F2ECFF]">{{ shortCommit }}</dd>
+          <dt class="text-[#8d7fb8]">node</dt>
+          <dd class="m-0 text-[#F2ECFF]">{{ BUILD_NODE }}</dd>
+          <dt class="text-[#8d7fb8]">ambiente</dt>
+          <dd class="m-0 text-[#F2ECFF]">{{ BUILD_RUNNER }}</dd>
           <dt class="text-[#8d7fb8]">manifesto</dt>
           <dd class="m-0">
             <a :href="RELEASES_URL" target="_blank" rel="noopener noreferrer" class="text-[#37e7c4] underline decoration-dotted underline-offset-2">
@@ -162,13 +178,23 @@ const { root: head } = usePageEnter()
         <p class="mb-2 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-[#8d7fb8]">Come si verifica</p>
         <pre class="overflow-x-auto rounded-[12px] border border-white/10 bg-black/30 p-4 font-mono text-[0.74rem] leading-relaxed text-[#d9cffa]"><code>git clone https://github.com/AntonioCuoco/LeTransfer &amp;&amp; cd LeTransfer
 git checkout {{ shortCommit }}
-cd vue-app &amp;&amp; npm ci &amp;&amp; VITE_BUILD_COMMIT={{ buildCommit }} npm run build
-cd dist &amp;&amp; find . -type f -print0 | sort -z | xargs -0 sha256sum</code></pre>
+cd vue-app &amp;&amp; npm ci
+VITE_BUILD_COMMIT={{ buildCommit }} NODE_ENV=production npm run build
+cd dist &amp;&amp; find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum</code></pre>
 
         <p class="mt-4 max-w-[62ch] text-[0.88rem] leading-relaxed text-[#8d7fb8]">
           L'elenco che ottieni deve combaciare con il manifesto allegato alla release. Se non combacia,
           i byte serviti non vengono da questo sorgente — ed è esattamente ciò che questo meccanismo
           esiste per rendere visibile.
+        </p>
+        <p class="mt-3 max-w-[62ch] text-[0.88rem] leading-relaxed text-[#8d7fb8]">
+          Due dettagli che fanno fallire la verifica se li salti, e non per colpa nostra:
+          <code class="font-mono text-[0.82rem] text-[#d9cffa]">VITE_BUILD_COMMIT</code> non è
+          facoltativo — il commit finisce dentro il bundle, e ometterlo cambia l'impronta di circa
+          metà dei file. E la build va fatta con la versione di Node qui sopra: una diversa produce
+          byte diversi. Parti da un clone pulito, senza creare un file
+          <code class="font-mono text-[0.82rem] text-[#d9cffa]">.env</code>: la configurazione di
+          produzione è già versionata nel repository.
         </p>
         <p class="mt-3 max-w-[62ch] text-[0.88rem] leading-relaxed text-[#c0a878]">
           Onestà sui limiti: il tuo browser non confronta nulla da solo. Questo rende una manomissione

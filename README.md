@@ -190,4 +190,26 @@ mano**.
 
 ---
 
+## 📄 Licenza
+
+Il repository ha **due licenze**, ed è una scelta deliberata.
+
+| Cosa | Licenza | Perché |
+|---|---|---|
+| `vue-app/src/crypto/` | **Apache-2.0** | È il codice su cui poggiano le affermazioni di sicurezza: deve poter essere letto, verificato e riusato senza attriti |
+| Tutto il resto | **FSL-1.1-ALv2** | Puoi leggerlo, modificarlo, ricostruirlo e auto-ospitarlo; non puoi usarlo per offrire un servizio concorrente. Ogni versione diventa **Apache-2.0 due anni** dopo la pubblicazione |
+
+Il sorgente è pubblico perché la promessa del prodotto lo richiede: la pagina
+`/sicurezza` invita chiunque a ricostruire la build dal tag e confrontare gli hash, e
+senza codice leggibile quell'invito sarebbe vuoto. La FSL preserva interamente questa
+verificabilità — limita la concorrenza, non l'ispezione.
+
+Il nome **Novren**, il logo e l'identità visiva non sono coperti da nessuna delle due
+licenze: vedi [TRADEMARK.md](TRADEMARK.md).
+
+Per contribuire (serve il sign-off DCO) vedi [CONTRIBUTING.md](CONTRIBUTING.md); per
+segnalare un problema di sicurezza, [SECURITY.md](SECURITY.md).
+
+---
+
 *Progetto sviluppato con ❤️ con tecnologie web moderne.*

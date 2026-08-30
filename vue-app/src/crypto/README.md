@@ -7,6 +7,11 @@
 > ⚠️ **Questo documento e il codice cambiano insieme.** Se modifichi un file di
 > `src/crypto/`, aggiorna qui nello stesso commit. Una specifica che diverge dal codice è
 > peggio di nessuna specifica.
+>
+> 📄 **Licenza: Apache-2.0** — solo questa cartella, a differenza del resto del
+> repository (FSL-1.1-ALv2). Testo in [`LICENSE`](LICENSE). È deliberato: questo codice
+> esiste per essere letto, verificato e riusato, e una licenza restrittiva renderebbe la
+> verifica indipendente più difficile di quanto debba essere.
 
 ---
 

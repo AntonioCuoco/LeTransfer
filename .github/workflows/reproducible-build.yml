@@ -158,13 +158,23 @@ jobs:
             https://novren.net — gli stessi byte che questa pipeline ha costruito e
             deployato, senza passaggi intermedi.
 
-            **Per verificare**, dal repository al tag corrispondente:
+            **Per verificare**, su Linux x64 con la versione di Node dichiarata in
+            `vue-app/.nvmrc`, partendo da un clone pulito:
 
             ```
-            cd vue-app && npm ci && npm run build
-            cd dist && find . -type f -print0 | sort -z | xargs -0 sha256sum
+            git clone https://github.com/AntonioCuoco/LeTransfer && cd LeTransfer
+            git checkout ${{ github.ref_name }}
+            cd vue-app && npm ci
+            VITE_BUILD_COMMIT=${{ github.sha }} NODE_ENV=production npm run build
+            cd dist && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
             ```
 
             L'elenco deve combaciare con quello allegato. Se non combacia, i byte
             serviti non sono quelli di questo sorgente — ed è esattamente ciò che
             questo meccanismo esiste per rendere visibile.
+
+            ⚠️ **`VITE_BUILD_COMMIT` non è facoltativo.** Il commit viene incorporato
+            nel bundle e il suo hash si propaga ai chunk che lo importano: ometterlo
+            cambia l'impronta di circa metà dei file, e la verifica fallisce su un
+            artefatto perfettamente legittimo. Stessa cosa per la versione di Node.
+            Non creare un file `.env`: `.env.production` è versionato e basta da solo.
