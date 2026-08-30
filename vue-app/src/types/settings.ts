@@ -6,6 +6,19 @@ export interface NotificationSettings {
   linkExpiring: boolean
 }
 
+/**
+ * ⚠️ INTERRUTTORE UNICO — l'invio delle email è agganciato?
+ *
+ * Finché è `false`, la pagina impostazioni lo **dichiara apertamente**: le preferenze si
+ * possono esprimere, ma nessuna email parte. Un interruttore che finge di fare qualcosa è
+ * peggio di un interruttore assente — insegna a non fidarsi della UI.
+ *
+ * Si mette a `true` **solo quando le email arrivano davvero**, non quando esiste
+ * l'endpoint delle preferenze: sono due fatti diversi, e il secondo arriva prima.
+ * Stessa logica di `PLAN_PRICES_PROVISIONAL` in `types/plan.ts`.
+ */
+export const EMAIL_DELIVERY_LIVE = false
+
 export interface PrivacySettings {
   publicProfile: boolean
   showActivity: boolean
