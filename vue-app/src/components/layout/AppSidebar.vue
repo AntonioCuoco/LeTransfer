@@ -23,6 +23,7 @@ const { canUnlock, requestUnlock } = useSecurityPrompt()
 const navItems = [
   { path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
   { path: '/app/profile', icon: 'pi pi-folder', label: 'I tuoi file', exact: false },
+  { path: '/app/richieste', icon: 'pi pi-inbox', label: 'Richiedi file', exact: false },
   { path: '/app/settings', icon: 'pi pi-cog', label: 'Impostazioni', exact: false },
 ]
 

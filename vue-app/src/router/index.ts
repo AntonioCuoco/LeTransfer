@@ -15,6 +15,8 @@ const router = createRouter({
     { path: '/register', component: () => import('@/src/pages/RegisterPage.vue') },
     { path: '/oauth2/callback', component: () => import('@/src/pages/OAuthCallback.vue') },
     { path: '/share/:publicToken', component: () => import('@/src/pages/ShareAccessPage.vue') },
+    // Pagina pubblica: chi carica non ha un account e spesso non sa cos'è Novren.
+    { path: '/richiesta/:publicToken', component: () => import('@/src/pages/RequestUploadPage.vue') },
 
     // Protected routes (dashboard) — spostate sotto /app
     {
@@ -24,6 +26,7 @@ const router = createRouter({
       children: [
         { path: '', component: () => import('@/src/pages/Homepage.vue') },
         { path: 'profile', component: () => import('@/src/pages/Profile.vue') },
+        { path: 'richieste', component: () => import('@/src/pages/RequestsPage.vue') },
         { path: 'settings', component: () => import('@/src/pages/SettingsPage.vue') },
         // Ritorno da Stripe. Il path è cablato anche in useBilling.BILLING_RETURN_PATH,
         // che è ciò che il backend deve usare per `success_url`/`cancel_url`.
