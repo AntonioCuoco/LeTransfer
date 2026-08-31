@@ -19,8 +19,9 @@ import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 const router = useRouter()
 if (Cookies.get('accessToken')) router.replace('/app')
 
-const view = ref<'login' | 'newPassword'>('login')
+const view = ref<'login' | 'newPassword' | 'mfa'>('login')
 const session = ref('')
+const mfaCode = ref('')
 const email = ref('')
 const password = ref('')
 const newPassword = ref('')
@@ -60,17 +61,49 @@ const handleLogin = async () => {
     }))
     if (response.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
       session.value = response.Session || ''; view.value = 'newPassword'
+    } else if (response.ChallengeName === 'SOFTWARE_TOKEN_MFA') {
+      // Verifica in due passaggi attiva: Cognito non rilascia i token finché non arriva
+      // il codice. La sessione è a tempo — se scade si ricomincia dall'email.
+      session.value = response.Session || ''
+      mfaCode.value = ''
+      view.value = 'mfa'
     } else if (response.AuthenticationResult) {
-      const { AccessToken, IdToken, RefreshToken } = response.AuthenticationResult
-      if (AccessToken && IdToken && RefreshToken) {
-        setAuthCookie('accessToken', AccessToken, 1 / 24)
-        setAuthCookie('idToken', IdToken, 1 / 24)
-        setAuthCookie('refreshToken', RefreshToken, 30)
-      }
-      router.push('/app')
+      saveTokens(response.AuthenticationResult)
     }
   } catch (error) {
     Swal.fire({ title: 'Accesso non riuscito', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+  } finally {
+    isLoading.value = false
+  }
+}
+
+type AuthTokens = { AccessToken?: string; IdToken?: string; RefreshToken?: string }
+
+/** Unico punto in cui i token entrano nei cookie: login diretto e login con 2FA. */
+const saveTokens = (result: AuthTokens) => {
+  const { AccessToken, IdToken, RefreshToken } = result
+  if (AccessToken && IdToken && RefreshToken) {
+    setAuthCookie('accessToken', AccessToken, 1 / 24)
+    setAuthCookie('idToken', IdToken, 1 / 24)
+    setAuthCookie('refreshToken', RefreshToken, 30)
+  }
+  router.push('/app')
+}
+
+const handleMfa = async () => {
+  isLoading.value = true
+  try {
+    const response = await cognitoClient.send(new RespondToAuthChallengeCommand({
+      ClientId: clientId,
+      ChallengeName: ChallengeNameType.SOFTWARE_TOKEN_MFA,
+      Session: session.value,
+      ChallengeResponses: { USERNAME: email.value, SOFTWARE_TOKEN_MFA_CODE: mfaCode.value.trim() },
+    }))
+    if (response.AuthenticationResult) saveTokens(response.AuthenticationResult)
+    else throw new Error('Codice non accettato')
+  } catch (error) {
+    Swal.fire({ title: 'Codice non valido', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+    mfaCode.value = ''
   } finally {
     isLoading.value = false
   }
@@ -155,7 +188,7 @@ const confirmForgotPassword = async () => {
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
             <BrandSeal :size="19" variant="plain" />
-            {{ view === 'login' ? 'Accedi' : 'Nuova password' }}
+            {{ view === 'login' ? 'Accedi' : view === 'mfa' ? 'Verifica in due passaggi' : 'Nuova password' }}
           </div>
           <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">connessione TLS</div>
         </div>
@@ -206,6 +239,27 @@ const confirmForgotPassword = async () => {
               Crea un account →
             </button>
           </div>
+        </form>
+
+        <form v-else-if="view === 'mfa'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleMfa">
+          <p class="px-0.5 text-[0.86rem] leading-snug text-[#6a5f8c]">
+            Apri la tua app di autenticazione e inserisci il codice a sei cifre.
+          </p>
+          <FieldInput
+            v-model="mfaCode"
+            index="01"
+            label="Codice"
+            placeholder="123456"
+            autocomplete="one-time-code"
+            :disabled="isLoading"
+          />
+          <button
+            type="submit"
+            class="lt-btn"
+            :disabled="mfaCode.trim().length < 6 || isLoading"
+          >
+            Verifica e accedi
+          </button>
         </form>
 
         <form v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleChallenge">

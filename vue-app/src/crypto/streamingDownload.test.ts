@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decryptToBlob, PREVIEW_SIZE_LIMIT } from './streamingDownload'
+import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT } from './streamingDownload'
 import { generateAESKey, encryptChunkFramed } from './crypto'
 
 /**
@@ -136,5 +136,55 @@ describe('decryptToBlob — giro completo', () => {
       decryptToBlob({ url: 'https://storage.test/x', key, chunkSize: 1024, originalSize: PREVIEW_SIZE_LIMIT + 1 }),
     ).rejects.toThrow()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('decryptToStream — il chiaro come stream', () => {
+  /**
+   * È il percorso usato dall'export "scarica tutto", dove il chiaro non finisce su disco
+   * ma dentro uno zip prodotto in streaming. Deve dare **gli stessi identici byte** degli
+   * altri due percorsi: se divergesse, l'archivio esportato conterrebbe file corrotti e
+   * l'utente lo scoprirebbe solo dopo aver cancellato l'account.
+   */
+  it('produce gli stessi byte del percorso in memoria', async () => {
+    const key = await generateAESKey()
+    const chunkSize = 1024
+    const plain = bytes(chunkSize * 3 + 77)
+    mockFetch(await encryptWhole(plain, key, chunkSize))
+
+    const stream = decryptToStream({ url: 'x', key, chunkSize, originalSize: plain.byteLength })
+    const reader = stream.getReader()
+    const parts: Uint8Array[] = []
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) parts.push(value)
+    }
+
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0))
+    let offset = 0
+    for (const part of parts) { out.set(part, offset); offset += part.byteLength }
+
+    expect(out).toEqual(plain)
+  })
+
+  it('manda in errore lo stream se il file è troncato, invece di chiuderlo a metà', async () => {
+    const key = await generateAESKey()
+    const chunkSize = 1024
+    const plain = bytes(chunkSize * 3)
+    const full = await encryptWhole(plain, key, chunkSize)
+    // Uno stream che si chiude presto senza segnalare nulla è il caso pericoloso: un
+    // consumatore ingenuo scriverebbe un file parziale credendolo completo.
+    mockFetch(full.subarray(0, full.byteLength - 200))
+
+    const stream = decryptToStream({ url: 'x', key, chunkSize, originalSize: plain.byteLength })
+    const reader = stream.getReader()
+
+    await expect((async () => {
+      for (;;) {
+        const { done } = await reader.read()
+        if (done) break
+      }
+    })()).rejects.toThrow()
   })
 })

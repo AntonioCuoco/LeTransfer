@@ -23,7 +23,9 @@ declare module 'vue' {
     ConfirmPopup: typeof import('primevue/confirmpopup')['default']
     DataTable: typeof import('primevue/datatable')['default']
     DatePicker: typeof import('primevue/datepicker')['default']
+    DeleteAccountDialog: typeof import('./src/components/settings/DeleteAccountDialog.vue')['default']
     Dialog: typeof import('primevue/dialog')['default']
+    ExportDataPanel: typeof import('./src/components/settings/ExportDataPanel.vue')['default']
     FieldInput: typeof import('./src/components/ui/FieldInput.vue')['default']
     FilePreviewCard: typeof import('./src/components/LinkAccess/FilePreviewCard.vue')['default']
     FileSender: typeof import('./src/components/FileSender/FileSender.vue')['default']
@@ -74,6 +76,7 @@ declare module 'vue' {
     Toast: typeof import('primevue/toast')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']
     TransferStatusPanel: typeof import('./src/components/TransferStatusPanel.vue')['default']
+    TwoFactorPanel: typeof import('./src/components/settings/TwoFactorPanel.vue')['default']
     UpgradeDialog: typeof import('./src/components/billing/UpgradeDialog.vue')['default']
     UploadQueueManager: typeof import('./src/components/UploadQueueManager.vue')['default']
   }

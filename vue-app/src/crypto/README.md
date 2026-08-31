@@ -156,7 +156,7 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 | File | Responsabilità |
 |---|---|
 | `crypto.ts` | Primitive, formato v2 a chunk, chiavi RSA, PBKDF2, frammento del link |
-| `streamingDownload.ts` | Download + decifratura a chunk, scrittura diretta su disco dove supportata |
+| `streamingDownload.ts` | Download + decifratura a chunk. Tre destinazioni per lo stesso chiaro: **disco** (`downloadAndDecryptV2`), **memoria** (`decryptToBlob`, per le anteprime) e **stream** (`decryptToStream`, per l'export in zip). Un solo motore di decifratura (`streamDecrypt`) le alimenta tutte: interpretazioni diverse dello stesso formato sono occasioni di divergere |
 | `keyStore.ts` | Persistenza delle `CryptoKey` non estraibili in IndexedDB |
 | `recovery-key.ts` | Mnemonica BIP39 a 24 parole → master key |
 | `fingerprint.ts` | JWK Thumbprint RFC 7638 e formattazione leggibile |

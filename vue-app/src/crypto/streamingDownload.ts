@@ -205,3 +205,50 @@ export async function decryptToBlob(options: PreviewOptions): Promise<Blob> {
   await streamDecrypt(url, key, chunkSize, originalSize, (plain) => { parts.push(plain) }, onProgress)
   return new Blob(parts, mimeType ? { type: mimeType } : undefined)
 }
+
+export interface DecryptStreamOptions {
+  url: string
+  key: CryptoKey
+  chunkSize: number
+  originalSize: number
+  onProgress?: (decryptedBytes: number, totalBytes: number) => void
+}
+
+/**
+ * Decifra verso un **ReadableStream** di chiaro, senza scrivere su disco né riempire
+ * la RAM: i chunk escono man mano che arrivano.
+ *
+ * Nasce per l'export "scarica tutto", dove il chiaro non è la destinazione finale ma
+ * l'ingresso di un archivio zip prodotto anch'esso in streaming. È lo stesso motore
+ * di `downloadAndDecryptV2` e `decryptToBlob` — cambia solo dove va a finire il chiaro,
+ * ed è deliberato: tre interpretazioni diverse dello stesso formato sono tre occasioni
+ * di divergere.
+ *
+ * **Contropressione.** `pull` decifra solo quando il consumatore chiede: se lo zip è
+ * più lento della rete, la decifratura rallenta invece di accumulare in memoria.
+ */
+export function decryptToStream(options: DecryptStreamOptions): ReadableStream<Uint8Array> {
+  const { url, key, chunkSize, originalSize, onProgress } = options
+
+  let pump: Promise<void> | null = null
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      pump = streamDecrypt(
+        url,
+        key,
+        chunkSize,
+        originalSize,
+        (plain) => { controller.enqueue(new Uint8Array(plain)) },
+        onProgress,
+      )
+        .then(() => controller.close())
+        .catch((err) => controller.error(err))
+    },
+    cancel() {
+      // Il consumatore ha mollato (archivio annullato): non c'è niente da chiudere a
+      // mano, ma teniamo il riferimento perché la promise non risulti non gestita.
+      void pump
+    },
+  })
+}

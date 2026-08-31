@@ -5,6 +5,9 @@ import SettingsSection from './SettingsSection.vue'
 import SettingsInput from './SettingsInput.vue'
 import SettingsSelect from './SettingsSelect.vue'
 import RecoveryKeySetup from '@/src/components/RecoveryKeySetup.vue'
+import DeleteAccountDialog from './DeleteAccountDialog.vue'
+import ExportDataPanel from './ExportDataPanel.vue'
+import TwoFactorPanel from './TwoFactorPanel.vue'
 import { useSettings } from '@/src/composables/useSettings'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 
@@ -12,6 +15,7 @@ const { settings, updateAppearance, updateProfile, updatePassword } = useSetting
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
 
 const securityModalVisible = ref(false)
+const deleteModalVisible = ref(false)
 const isSetupRequired = ref(true)
 
 onMounted(async () => {
@@ -75,21 +79,18 @@ const onRecoveryComplete = () => {
         </p>
       </div>
 
-      <!-- Non implementate: segnate come tali, invece di offrire bottoni che non fanno nulla -->
-      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
-        <div>
-          <h4 class="m-0 font-medium text-haze-100">Verifica in due passaggi</h4>
-          <p class="m-0 mt-1 text-xs text-haze-400">Un secondo fattore per l'accesso all'account.</p>
-        </div>
-        <span class="font-mono text-[0.74rem] text-haze-400">non ancora disponibile</span>
-      </div>
+      <TwoFactorPanel :email="settings.profile.email" />
+
+      <ExportDataPanel />
 
       <div class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
         <div>
           <h4 class="m-0 font-medium text-haze-100">Elimina l'account</h4>
-          <p class="m-0 mt-1 text-xs text-haze-400">Cancellazione definitiva dell'account e dei file.</p>
+          <p class="m-0 mt-1 text-xs text-haze-400">
+            Cancellazione definitiva dell'account e dei file. Non è annullabile.
+          </p>
         </div>
-        <span class="font-mono text-[0.74rem] text-haze-400">non ancora disponibile</span>
+        <Button label="Elimina" severity="danger" outlined size="small" @click="deleteModalVisible = true" />
       </div>
     </SettingsSection>
 
@@ -103,5 +104,7 @@ const onRecoveryComplete = () => {
     >
       <RecoveryKeySetup @complete="onRecoveryComplete" @cancel="securityModalVisible = false" />
     </Dialog>
+
+    <DeleteAccountDialog v-model:visible="deleteModalVisible" />
   </div>
 </template>
