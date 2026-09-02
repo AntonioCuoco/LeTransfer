@@ -13,6 +13,10 @@ import { useSharedLinks } from '@/src/composables/useSharedLinks'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useDownloadActivity } from '@/src/composables/useDownloadActivity'
 import type { DynamoDBFile, TableFile, SharedFile } from '@/src/types'
+import { useEncryptionStore } from '@/src/stores/encryption'
+import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
+import { hasEncryptedName, resolveFileName, NAME_UNAVAILABLE } from '@/src/utils/fileNames'
+import { importKeyFromBase64, unwrapKeyWithPrivateKey } from '@/src/crypto/crypto'
 
 const fileTypeOptions = [
   { value: '', label: 'Tutti i tipi' },
@@ -80,7 +84,9 @@ const formatFileSize = (bytes: number): string => {
 const convertFilesToTableFormat = (files: DynamoDBFile[]): TableFile[] =>
   files.map((file, i) => ({
     id: file.fileId || file.s3Key || String(i),
-    name: file.fileName || file.originalName || 'File sconosciuto',
+    name: hasEncryptedName(file)
+      ? (resolvedNames.value[file.s3Key] ?? NAME_UNAVAILABLE)
+      : file.fileName || file.originalName || 'File sconosciuto',
     type: file.fileType || 'application/octet-stream',
     size: file.fileSize || 'N/A',
     status: (file.sharedWith?.length ? 'sent' : 'uploaded') as TableFile['status'],
@@ -100,11 +106,14 @@ const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] =>
       formattedSize: typeof file.fileSize === 'number' ? formatFileSize(file.fileSize) : file.fileSize,
       fileType: file.fileType, s3Key: file.s3Key, s3Url: file.s3Url, urlExpires: null,
       ownerUserId: file.ownerId, uploadedAt: file.createdAt, isReceived: true,
-      senderEmail: file.ownerEmail, senderId: file.ownerId, shareId: file.shareId, sharedAt: file.createdAt,
+      senderEmail: file.viaRequest ? (file.uploaderName || 'Nome non indicato') : file.ownerEmail,
+      senderId: file.ownerId, shareId: file.shareId, sharedAt: file.createdAt,
     }
     return {
       id: file.shareId || String(i),
-      name: file.fileName || 'File sconosciuto',
+      name: hasEncryptedName(file)
+        ? (resolvedNames.value[file.shareId] ?? NAME_UNAVAILABLE)
+        : file.fileName || 'File sconosciuto',
       type: file.fileType || 'application/octet-stream',
       size: typeof file.fileSize === 'number' ? formatFileSize(file.fileSize) : file.fileSize,
       status: 'received' as TableFile['status'],
@@ -112,7 +121,12 @@ const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] =>
       recipient: '-',
       originalFile: dynamoFile,
       isReceived: true,
-      senderEmail: file.ownerEmail || 'Utente sconosciuto',
+      // Un caricamento su richiesta non ha un mittente registrato: l'unica provenienza è
+      // il nome digitato. Dirlo così com'è vale più di "Utente sconosciuto", che nasconde
+      // un'informazione che invece abbiamo.
+      senderEmail: file.viaRequest
+        ? `${file.uploaderName || 'Nome non indicato'}${file.requestTitle ? ` — ${file.requestTitle}` : ''}`
+        : file.ownerEmail || 'Utente sconosciuto',
     }
   })
 
@@ -130,6 +144,56 @@ const loadSharedFiles = async () => {
     await getSharedWithMe()
   } catch { notify.error('Errore durante il caricamento dei file condivisi') }
 }
+
+/**
+ * Nomi dei file, risolti a parte (O2.2).
+ *
+ * Con `nameVersion: 2` il campo che arriva dal server è ciphertext, e aprirlo richiede la
+ * chiave del file — cioè un'operazione **asincrona**, mentre le funzioni che costruiscono la
+ * tabella sono sincrone. Quindi: la tabella si disegna subito con un segnaposto, e i nomi
+ * veri la raggiungono appena sono pronti.
+ *
+ * Chiave diversa per provenienza: i file propri la prendono dallo store (wrappata sulla
+ * master key), quelli ricevuti la ricavano dalla propria RSA privata — e quella non richiede
+ * nessuna chiamata di rete.
+ */
+const resolvedNames = ref<Record<string, string>>({})
+const encryptionStoreForNames = useEncryptionStore()
+const { privateKey } = useUserKeyPair()
+
+const refreshNames = async () => {
+  const next: Record<string, string> = { ...resolvedNames.value }
+
+  await Promise.all([
+    ...dynamoFiles.value.filter(hasEncryptedName).map(async (file) => {
+      if (next[file.s3Key]) return
+      const keyData = encryptionStoreForNames.isUnlocked
+        ? await encryptionStoreForNames.getKey(file.s3Key)
+        : null
+      next[file.s3Key] = await resolveFileName(
+        file,
+        keyData ? await importKeyFromBase64(keyData.key) : null,
+      )
+    }),
+    ...sharedFiles.value.filter(hasEncryptedName).map(async (file) => {
+      if (next[file.shareId]) return
+      let key: CryptoKey | null = null
+      if (file.encryptedAESKey && privateKey.value) {
+        try {
+          key = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+        } catch {
+          key = null
+        }
+      }
+      next[file.shareId] = await resolveFileName(file, key)
+    }),
+  ])
+
+  resolvedNames.value = next
+  syncAllFiles()
+}
+
+watch([dynamoFiles, sharedFiles, () => encryptionStoreForNames.isUnlocked, privateKey], refreshNames)
 
 const syncAllFiles = () => {
   const own = convertFilesToTableFormat(dynamoFiles.value)

@@ -3,7 +3,8 @@ import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
-import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64 } from '@/src/crypto/crypto'
+import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64, encryptFileName, FILENAME_VERSION } from '@/src/crypto/crypto'
+import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
 
@@ -115,12 +116,19 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     try {
       const sortedParts = [...uploadedParts.value].sort((a, b) => a.PartNumber - b.PartNumber)
       const headers = await getHeaders()
+      // Letta prima della chiamata: serve sia a cifrare il nome qui sotto, sia a salvare la
+      // chiave dopo. Era dichiarata più in basso, e usarla prima sarebbe stato un errore.
+      const currentKey = encryptionKeyRef.value
 
       await api.post<CompleteUploadResponse>('/upload/multipart/complete', {
         fileKey: finalFileKey,
         uploadId: finalUploadId,
         parts: sortedParts.map(p => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
-        fileName: fileRef?.name,
+        fileName:
+          ENCRYPT_FILENAMES && currentKey && fileRef?.name
+            ? await encryptFileName(fileRef.name, currentKey)
+            : fileRef?.name,
+        ...(ENCRYPT_FILENAMES && currentKey ? { nameVersion: FILENAME_VERSION } : {}),
         fileSize: fileRef?.size,
         fileType: fileRef?.type,
         // Metadati del formato v2: servono al download per sapere come decifrare (#6).
@@ -132,7 +140,6 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       }, { headers })
 
       // Store encryption key wrapped with master key via Pinia store
-      const currentKey = encryptionKeyRef.value
       const currentIV = encryptionIVRef.value
       state.value.encryptionKey = currentKey
       state.value.encryptionIV = currentIV
@@ -279,7 +286,9 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
 
       const headers = await getHeaders()
       const { data: initData } = await api.post<InitUploadResponse>('/upload/multipart/init', {
-        fileName: file.name,
+        // Col nome cifrato `init` non ha motivo di conoscerlo: gli serve solo ad aprire il
+        // multipart, e il nome definitivo arriva a `complete`.
+        fileName: ENCRYPT_FILENAMES ? 'file' : file.name,
         fileType: file.type,
         fileSize: totalEncryptedBytes,
         originalSize: file.size,

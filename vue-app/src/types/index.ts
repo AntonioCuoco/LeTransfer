@@ -30,6 +30,8 @@ export interface DynamoDBFile {
   formatVersion?: number
   chunkSize?: number
   originalSize?: number
+  /** O2.2 — 2 = `fileName` è ciphertext, apribile con la chiave del file. Assente/1 = in chiaro. */
+  nameVersion?: number
 }
 
 export interface SharedRecipient {
@@ -110,6 +112,14 @@ export interface SharedFile {
   formatVersion?: number
   chunkSize?: number
   originalSize?: number
+  // Arrivato da una richiesta file (O2.1): chi ha caricato non ha un account, quindi
+  // `ownerEmail` è assente per costruzione e l'unica provenienza è il nome che ha digitato.
+  // Non è verificato: va mostrato come dichiarazione, mai come identità accertata.
+  viaRequest?: boolean
+  uploaderName?: string
+  requestTitle?: string
+  /** O2.2 — 2 = `fileName` è ciphertext, apribile con la chiave del file. Assente/1 = in chiaro. */
+  nameVersion?: number
 }
 
 export interface GetSharedFilesResponse {
@@ -132,6 +142,8 @@ export interface SharedLink {
   createdAt: string
   ownerId?: string
   isEncrypted: boolean
+  /** O2.2 — 2 = `fileName` è ciphertext, apribile con la chiave del file. Assente/1 = in chiaro. */
+  nameVersion?: number
 }
 
 export interface SharedLinkAccessInfo {
@@ -147,6 +159,8 @@ export interface SharedLinkAccessInfo {
   formatVersion?: number
   chunkSize?: number
   originalSize?: number
+  /** O2.2 — 2 = `fileName` è ciphertext, apribile con la chiave del frammento. Assente/1 = in chiaro. */
+  nameVersion?: number
 }
 
 export interface SharedLinkAccessRequest {

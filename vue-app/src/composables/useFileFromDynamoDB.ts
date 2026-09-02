@@ -6,6 +6,7 @@ import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptio
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
 import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
+import { resolveFileName } from '@/src/utils/fileNames'
 
 export const useFileFromDynamoDB = () => {
   const files = ref<DynamoDBFile[]>([])
@@ -138,6 +139,13 @@ export const useFileFromDynamoDB = () => {
 
       const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
 
+      // Il nome con cui il file atterra sul disco. Con `nameVersion: 2` quello che arriva dal
+      // server è ciphertext: salvarlo così com'è darebbe all'utente un file chiamato base64.
+      const saveName = await resolveFileName(
+        file,
+        keyData ? await importKeyFromBase64(keyData.key) : null,
+      )
+
       // Formato v2 (#6): decifratura a chunk in streaming — non carica mai il file intero in RAM.
       if (keyData && file.formatVersion === 2 && file.chunkSize && file.originalSize != null) {
         if (shouldWarnLargeDownload(file.originalSize)) {
@@ -158,7 +166,7 @@ export const useFileFromDynamoDB = () => {
             key,
             chunkSize: file.chunkSize,
             originalSize: file.originalSize,
-            fileName: file.fileName,
+            fileName: saveName,
           })
           return true
         } catch (err) {
@@ -197,7 +205,7 @@ export const useFileFromDynamoDB = () => {
       const url = URL.createObjectURL(finalBlob)
       const link = document.createElement('a')
       link.href = url
-      link.download = file.fileName
+      link.download = saveName
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)

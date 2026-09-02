@@ -8,6 +8,7 @@ import {
   shouldWarnLargeDownload,
 } from '@/src/crypto/streamingDownload'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
+import { resolveFileName } from '@/src/utils/fileNames'
 import type { DynamoDBFile } from '@/src/types'
 
 /**
@@ -107,6 +108,16 @@ export function useAccountExport() {
     }
   }
 
+  /** Il nome con cui il file entra nell'archivio. */
+  async function exportName(file: DynamoDBFile): Promise<string> {
+    const keyData = await encryptionStore.getKey(file.s3Key)
+    return (
+      (await resolveFileName(file, keyData ? await importKeyFromBase64(keyData.key) : null)) ||
+      file.s3Key.split('/').pop() ||
+      'file'
+    )
+  }
+
   /** Il chiaro di un file, come stream (v2) o come Blob (v1 legacy). */
   async function plaintextOf(file: DynamoDBFile): Promise<ReadableStream<Uint8Array> | Blob | null> {
     const url = await freshUrl(file.s3Key)
@@ -159,8 +170,13 @@ export function useAccountExport() {
         continue
       }
 
+      // Il nome dentro lo zip: con `nameVersion: 2` quello del record è ciphertext, e un
+      // archivio pieno di file chiamati base64 sarebbe inutilizzabile proprio nel momento in
+      // cui serve — prima di cancellare l'account.
+      const entryName = await exportName(file)
+
       yield {
-        name: `file/${file.fileName}`,
+        name: `file/${entryName}`,
         input: plain,
         lastModified: file.uploadedAt ? new Date(file.uploadedAt) : undefined,
       }
@@ -176,6 +192,7 @@ export function useAccountExport() {
           esportatoIl: new Date().toISOString(),
           file: files.map((f) => ({
             nome: f.fileName,
+            nomeCifrato: f.nameVersion === 2 || undefined,
             dimensione: f.fileSize,
             tipo: f.fileType,
             caricatoIl: f.uploadedAt,

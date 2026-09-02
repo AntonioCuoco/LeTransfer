@@ -12,6 +12,7 @@ import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
 import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
+import { resolveFileName } from '@/src/utils/fileNames'
 import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT } from '@/src/crypto/streamingDownload'
 
 /**
@@ -67,7 +68,15 @@ const stateLabel = computed(() => {
 })
 const stateLabelClass = computed(() => (isDecrypting.value ? 'text-[#724cf9]' : 'text-[#12b89a]'))
 
-const badge = computed(() => fileBadge(linkInfo.value?.fileName || '', linkInfo.value?.fileType))
+/**
+ * Il nome da mostrare. Con `nameVersion: 2` il campo che arriva dal server è ciphertext: si
+ * apre con la chiave del frammento, che chi ha il link possiede già. Se il frammento manca —
+ * un'app di messaggistica che tronca l'URL — restano visibili dimensione e scadenza, ma non
+ * il nome: è la conseguenza voluta del non averlo mai dato al server.
+ */
+const displayName = ref('')
+
+const badge = computed(() => fileBadge(displayName.value, linkInfo.value?.fileType))
 
 // "scade tra 6 giorni" è un dato del trasferimento, non decorazione: sta nei metadati.
 const expiryLabel = computed(() => {
@@ -104,6 +113,7 @@ const loadLinkInfo = async () => {
   if (encInfo) encryptionInfo.value = encInfo
 
   const info = await getLinkInfo(publicToken.value)
+  if (info) displayName.value = await resolveFileName(info, encryptionInfo.value?.key ?? null)
   pageState.value = info ? 'access_form' : 'error'
 }
 
@@ -142,7 +152,7 @@ const handleDownload = async () => {
             key: encryptionInfo.value.key,
             chunkSize: info.chunkSize,
             originalSize: info.originalSize,
-            fileName: info.fileName || 'download',
+            fileName: displayName.value || 'download',
             onProgress: (decryptedBytes, totalBytes) => {
               decryptProgress.value = totalBytes > 0
                 ? Math.min(100, Math.round((decryptedBytes / totalBytes) * 100))
@@ -158,7 +168,7 @@ const handleDownload = async () => {
           const downloadUrl = URL.createObjectURL(decryptedBlob)
           const a = document.createElement('a')
           a.href = downloadUrl
-          a.download = linkInfo.value?.fileName || 'download'
+          a.download = displayName.value || 'download'
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
@@ -289,8 +299,8 @@ const handlePreview = () => {
               >
                 {{ badge.label }}
               </span>
-              <h2 class="min-w-0 flex-1 break-words text-[1.15rem] font-bold leading-tight tracking-[-0.02em]" :title="linkInfo.fileName">
-                {{ linkInfo.fileName }}
+              <h2 class="min-w-0 flex-1 break-words text-[1.15rem] font-bold leading-tight tracking-[-0.02em]" :title="displayName">
+                {{ displayName }}
               </h2>
             </div>
             <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[0.72rem] text-[#6a5f8c]">
@@ -320,7 +330,7 @@ const handlePreview = () => {
             />
             <FilePreviewCard
               v-else
-              :file-name="linkInfo.fileName"
+              :file-name="displayName"
               :file-type="linkInfo.fileType"
               :preview-url="previewUrl || undefined"
               :preview-supported="!!previewUrl"

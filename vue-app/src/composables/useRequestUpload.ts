@@ -8,9 +8,12 @@ import {
   wrapKeyWithPublicKey,
   importPublicKeyFromJWK,
   arrayBufferToBase64,
+  encryptFileName,
+  FILENAME_VERSION,
   FILE_FORMAT_VERSION,
 } from '@/src/crypto/crypto'
 import { jwkThumbprint } from '@/src/crypto/fingerprint'
+import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 
 /**
  * Caricamento su una richiesta file — lato di chi carica, **senza account**.
@@ -122,7 +125,7 @@ export function useRequestUpload(publicToken: string) {
       const encryptedAESKey = await wrapKeyWithPublicKey(key, publicKey)
 
       const meta = {
-        fileName: file.name,
+        fileName: ENCRYPT_FILENAMES ? await encryptFileName(file.name, key) : file.name,
         fileType: file.type || 'application/octet-stream',
         fileSize: file.size,
         originalSize: file.size,
@@ -184,6 +187,7 @@ export function useRequestUpload(publicToken: string) {
         encryptedAESKey,
         encryptionIV: arrayBufferToBase64(iv.buffer as ArrayBuffer),
         ...meta,
+        ...(ENCRYPT_FILENAMES ? { nameVersion: FILENAME_VERSION } : {}),
         formatVersion: FILE_FORMAT_VERSION,
         chunkSize: CHUNK_SIZE,
       })

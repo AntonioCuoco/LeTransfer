@@ -96,6 +96,50 @@ export async function decryptChunkFramed(framed: Uint8Array, key: CryptoKey, ind
   return decryptChunk(ciphertext, key, iv, index)
 }
 
+// ─── Nome del file cifrato — "nameVersion 2" (O2.2) ───────────────────────────────────────────
+// Il nome è spesso più rivelatore del contenuto: `Ricorso_Rossi_vs_Bianchi_udienza_12_marzo.pdf`
+// dice tutto senza che nessuno apra niente. Fino alla v1 viaggiava in chiaro ed è l'ultima cosa
+// che il server vedeva dei contenuti.
+//
+// Formato, identico nello spirito a quello dei chunk: base64 di [IV 12B][ciphertext + tag 16B].
+//
+// ⚠️ **AAD `filename`, e non un indice.** È separazione di dominio: senza, un chunk cifrato
+// potrebbe essere spacciato per un nome (o viceversa) da chi controlla lo storage, perché
+// sarebbero entrambi ciphertext valido sotto la stessa chiave. Con AAD diversi, uno scambio
+// fallisce la verifica del tag.
+const FILENAME_AAD = 'filename'
+
+/** Versione del formato del nome: assente o 1 = in chiaro (legacy), 2 = cifrato. */
+export const FILENAME_VERSION = 2
+
+export async function encryptFileName(name: string, key: CryptoKey): Promise<string> {
+  const iv = generateIV()
+  const aad = new TextEncoder().encode(FILENAME_AAD)
+  const encrypted = await crypto.subtle.encrypt(
+    { name: AES_ALGORITHM, iv, additionalData: aad },
+    key,
+    new TextEncoder().encode(name),
+  )
+  const out = new Uint8Array(CHUNK_IV_BYTES + encrypted.byteLength)
+  out.set(iv, 0)
+  out.set(new Uint8Array(encrypted), CHUNK_IV_BYTES)
+  return arrayBufferToBase64(out.buffer)
+}
+
+/** Lancia se il tag GCM non torna: nome manomesso, chiave sbagliata, o non era un nome. */
+export async function decryptFileName(blob: string, key: CryptoKey): Promise<string> {
+  const raw = new Uint8Array(base64ToArrayBuffer(blob))
+  const iv = raw.subarray(0, CHUNK_IV_BYTES)
+  const ciphertext = raw.subarray(CHUNK_IV_BYTES)
+  const aad = new TextEncoder().encode(FILENAME_AAD)
+  const decrypted = await crypto.subtle.decrypt(
+    { name: AES_ALGORITHM, iv, additionalData: aad },
+    key,
+    ciphertext,
+  )
+  return new TextDecoder().decode(decrypted)
+}
+
 export async function exportKeyToBase64(key: CryptoKey): Promise<string> {
   const rawKey = await crypto.subtle.exportKey('raw', key)
   return arrayBufferToBase64(rawKey)

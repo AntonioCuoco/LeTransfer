@@ -62,6 +62,42 @@ globale. Ogni chunk:
 - Overhead: **28 byte per chunk** (`CHUNK_OVERHEAD`). `encryptedSizeV2()` calcola la dimensione
   finale in anticipo, perché serve a dichiarare la lunghezza prima di iniziare l'upload.
 
+### 3-bis. Nome del file — `nameVersion 2`
+
+Il nome è spesso **più rivelatore del contenuto**: `Ricorso_Rossi_vs_Bianchi_udienza_12_marzo.pdf`
+dice tutto senza che nessuno apra niente. Fino alla v1 viaggiava in chiaro ed era l'ultima cosa
+dei contenuti che il server vedeva.
+
+Formato, uguale nello spirito a quello dei chunk, in base64:
+
+```
+┌──────────────┬───────────────────────────────────┐
+│  IV  12 byte │  ciphertext + tag GCM (16 byte)   │
+└──────────────┴───────────────────────────────────┘
+```
+
+- Stessa chiave del contenuto: chi può aprire il file può leggerne il nome, e nessun altro.
+- **AAD = `filename`**, non un indice. È separazione di dominio: senza, chi controlla lo
+  storage potrebbe scambiare un chunk con il campo del nome — sarebbero entrambi ciphertext
+  valido sotto la stessa chiave — e il tag non se ne accorgerebbe.
+- IV nuovo a ogni cifratura: due file omonimi non producono lo stesso blob, altrimenti
+  l'omonimia sarebbe visibile a chi guarda soltanto lo storage.
+
+Il discriminante è il campo **`nameVersion`** nel record: assente o `1` = nome in chiaro,
+`2` = cifrato. È un campo a sé e non un incremento di `formatVersion`, perché nome e contenuto
+possono evolvere separatamente: un file v2 può avere il nome in chiaro (tutti quelli caricati
+prima di O2.2) e la combinazione dev'essere rappresentabile.
+
+⚠️ **Si legge sempre, si scrive solo quando l'interruttore è acceso.** Il client sa già
+interpretare `nameVersion: 2`; la *scrittura* è dietro `ENCRYPT_FILENAMES`, che resta spenta
+finché il backend non smette di sanificare quel campo — una sanificazione su un blob cifrato
+lo distruggerebbe in modo irreversibile. Si insegna prima a leggere, poi a scrivere.
+
+Codice: `crypto.ts` → `encryptFileName` / `decryptFileName`; politica di lettura in
+`utils/fileNames.ts`.
+
+---
+
 **v1 (legacy):** un unico blob GCM con un solo IV, senza AAD. Ancora leggibile in decifratura,
 mai più prodotto in scrittura. Il discriminante è `formatVersion` nel record del trasferimento.
 
@@ -126,7 +162,8 @@ sostituzione di chiave diventa visibile all'utente.
 | Chiave del file | **No** — frammento `#` o blob wrappato RSA |
 | Chiave privata dell'utente | **No** — non estraibile, backup cifrato |
 | Chiave di recupero | **No** — solo `salt` + blob di verifica |
-| Nome del file | Sì per gli invii con account; per gli invii guest resta un'etichetta lato client |
+| Nome del file | **No** con `nameVersion: 2` — cifrato con la chiave del file (§3-bis). Sì sui record precedenti, che restano leggibili |
+| Tipo MIME del file | **Sì** — serve ad anteprime, icone e filtri. Rivela molto meno del nome, ma è un'eccezione e va contata come tale |
 | Dimensione, orario, IP | **Sì** — servono a scadenze, quote e anti-abuso |
 
 ---
@@ -155,7 +192,7 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 
 | File | Responsabilità |
 |---|---|
-| `crypto.ts` | Primitive, formato v2 a chunk, chiavi RSA, PBKDF2, frammento del link |
+| `crypto.ts` | Primitive, formato v2 a chunk, **nome del file cifrato**, chiavi RSA, PBKDF2, frammento del link |
 | `streamingDownload.ts` | Download + decifratura a chunk. Tre destinazioni per lo stesso chiaro: **disco** (`downloadAndDecryptV2`), **memoria** (`decryptToBlob`, per le anteprime) e **stream** (`decryptToStream`, per l'export in zip). Un solo motore di decifratura (`streamDecrypt`) le alimenta tutte: interpretazioni diverse dello stesso formato sono occasioni di divergere |
 | `keyStore.ts` | Persistenza delle `CryptoKey` non estraibili in IndexedDB |
 | `recovery-key.ts` | Mnemonica BIP39 a 24 parole → master key |
@@ -182,7 +219,10 @@ produce una schermata sbagliata ma **file che non si riaprono**:
 - derivazione dalla mnemonica: determinismo e dipendenza dal salt;
 - giro completo download→decifratura con stream simulato, incluso il rifiuto di uno
   stream troncato;
-- **invarianti della wordlist**: 2048 voci, nessun duplicato, ordine alfabetico.
+- **invarianti della wordlist**: 2048 voci, nessun duplicato, ordine alfabetico;
+- **nome del file**: giro completo, caratteri non latini ed emoji, IV diverso a ogni
+  cifratura, rifiuto con chiave sbagliata o nome manomesso, e **un chunk non spacciabile
+  per un nome** (la prova che l'AAD separa davvero i due domini).
 
 ⚠️ **Nota sulla wordlist.** La lista era corrotta: `"night"` compariva due volte, anche
 al posto di `"tonight"`. Poiché la generazione usa l'indice e la verifica usa

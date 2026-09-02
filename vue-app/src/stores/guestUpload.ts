@@ -9,8 +9,11 @@ import {
   encryptedSizeV2,
   createShareableKeyData,
   createKeyHash,
+  encryptFileName,
+  FILENAME_VERSION,
   FILE_FORMAT_VERSION,
 } from '@/src/crypto/crypto'
+import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import {
   planFileSlots,
   initialFileProgress,
@@ -210,7 +213,9 @@ export const useGuestUploadStore = defineStore('guestUpload', () => {
 
   async function runInit(meta: FileMeta, estimatedSize: number, options: GuestUploadOptions): Promise<InitResponse> {
     const { data } = await api.post<InitResponse>('/guest/upload/init', {
-      fileName: meta.fileName,
+      // Con i nomi cifrati `init` non ha motivo di conoscerlo: serve solo a creare il
+      // multipart, e il nome definitivo arriva a `complete`.
+      fileName: ENCRYPT_FILENAMES ? 'file' : meta.fileName,
       fileType: meta.fileType,
       fileSize: estimatedSize,
       turnstileToken: options.turnstileToken,
@@ -227,7 +232,8 @@ export const useGuestUploadStore = defineStore('guestUpload', () => {
       publicToken: init.publicToken,
       manageToken: init.manageToken,
       transferId: init.transferId,
-      fileName: meta.fileName,
+      fileName: ENCRYPT_FILENAMES ? await encryptFileName(meta.fileName, key) : meta.fileName,
+      ...(ENCRYPT_FILENAMES ? { nameVersion: FILENAME_VERSION } : {}),
       fileSize: meta.fileSize,
       fileType: meta.fileType,
       formatVersion: FILE_FORMAT_VERSION,

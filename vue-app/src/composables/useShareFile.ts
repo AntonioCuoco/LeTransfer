@@ -7,6 +7,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
 import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { notify } from '@/src/utils/notify'
+import { resolveFileName } from '@/src/utils/fileNames'
 import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
@@ -108,6 +109,10 @@ export const useShareFile = () => {
         aesKey = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
       }
 
+      // Con `nameVersion: 2` il nome è ciphertext: salvarlo così darebbe all'utente un file
+      // chiamato base64. La chiave è la stessa che apre il contenuto.
+      const saveName = (await resolveFileName(file, aesKey)) || 'download'
+
       // Formato v2 (#6): decifratura a chunk in streaming — niente file intero in RAM.
       if (aesKey && file.formatVersion === 2 && file.chunkSize && file.originalSize != null) {
         if (shouldWarnLargeDownload(file.originalSize)) {
@@ -127,7 +132,7 @@ export const useShareFile = () => {
             key: aesKey,
             chunkSize: file.chunkSize,
             originalSize: file.originalSize,
-            fileName: file.fileName || 'download',
+            fileName: saveName,
           })
           return true
         } catch (err) {
@@ -147,7 +152,7 @@ export const useShareFile = () => {
       const url = URL.createObjectURL(finalBlob)
       const a = document.createElement('a')
       a.href = url
-      a.download = file.fileName || 'download'
+      a.download = saveName
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
