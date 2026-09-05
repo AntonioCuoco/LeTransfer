@@ -7,7 +7,7 @@ import Swal from 'sweetalert2'
 import { AuthFlowType, ChallengeNameType, InitiateAuthCommand, RespondToAuthChallengeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
-import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 
@@ -187,7 +187,7 @@ const confirmForgotPassword = async () => {
       <div class="lt-card w-[min(430px,100%)] p-2.5 lg:justify-self-end">
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
-            <BrandSeal :size="19" variant="plain" />
+            <img :src="novrenIcon" alt="Novren" width="36" height="19" />
             {{ view === 'login' ? 'Accedi' : view === 'mfa' ? 'Verifica in due passaggi' : 'Nuova password' }}
           </div>
           <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">connessione TLS</div>
@@ -295,7 +295,7 @@ const confirmForgotPassword = async () => {
       :pt="{ root: '!rounded-[22px] !border-0 !bg-[#FBFAFF] !text-[#1b1140] !p-2.5', header: '!hidden', content: '!bg-transparent !p-0' }"
     >
       <div class="flex items-center gap-2.5 px-3.5 pb-3 pt-3.5 text-[1.04rem] font-bold tracking-[-0.01em]">
-        <BrandSeal :size="19" variant="plain" />
+        <img :src="novrenIcon" alt="Novren" width="36" height="19" />
         {{ forgotStep === 'email' ? 'Recupera la password' : 'Inserisci il codice' }}
       </div>
 

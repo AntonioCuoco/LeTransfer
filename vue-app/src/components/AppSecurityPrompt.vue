@@ -6,7 +6,7 @@ import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 import { deriveMasterKeyFromMnemonic } from '@/src/crypto/recovery-key'
 import { base64ToArrayBuffer } from '@/src/crypto/crypto'
-import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 
 /**
  * Sblocco del vault con la chiave di recupero (roadmap F5).
@@ -93,7 +93,7 @@ const handleCancel = () => {
   >
     <template #header>
       <div class="flex items-center gap-3">
-        <BrandSeal :size="28" variant="plain" />
+        <img :src="novrenIcon" alt="Novren" width="54" height="28" />
         <div>
           <h3 class="m-0 text-lg font-semibold text-haze-100">I tuoi file sono chiusi a chiave</h3>
           <p class="m-0 text-sm text-haze-400">Nuovo dispositivo, o sessione ripartita da zero</p>

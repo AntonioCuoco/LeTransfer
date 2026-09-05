@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import axios from 'axios'
-import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 import { clearAuthCookies } from '@/src/utils/cookieStore'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
@@ -67,7 +67,7 @@ const handleLogout = async () => {
   <aside class="fixed left-0 top-0 z-50 flex h-screen w-[72px] flex-col items-center justify-between border-r border-white/5 bg-deep-900 px-2 py-4">
     <div class="flex w-full flex-col items-center">
       <RouterLink to="/app" class="mb-8 grid h-12 w-12 place-items-center transition-transform hover:scale-105" title="Novren">
-        <BrandSeal :size="32" variant="mark" />
+        <img :src="novrenIcon" alt="Novren" width="44" height="23" />
       </RouterLink>
 
       <nav class="flex w-full flex-col items-center gap-2">

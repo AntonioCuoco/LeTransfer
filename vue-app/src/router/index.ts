@@ -47,6 +47,9 @@ const router = createRouter({
         { path: 'registro', component: () => import('@/src/pages/admin/AdminAuditPage.vue') },
       ],
     },
+
+    // Catch-all: qualsiasi path non riconosciuto mostra la 404, non una schermata vuota.
+    { path: '/:pathMatch(.*)*', component: () => import('@/src/pages/NotFoundPage.vue') },
   ],
 })
 

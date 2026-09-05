@@ -5,7 +5,7 @@ import { generateRecoveryKey, deriveMasterKeyFromMnemonic } from '@/src/crypto/r
 import { generateSalt, arrayBufferToBase64 } from '@/src/crypto/crypto'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useEncryptionStore } from '@/src/stores/encryption'
-import BrandSeal from '@/src/components/landing/BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 
 /**
  * Creazione della chiave di recupero — 24 parole (roadmap F5).
@@ -174,7 +174,7 @@ const handleConfirm = async () => {
 
     <!-- 0 · Come funziona -->
     <div v-if="currentStep === 0" class="flex flex-col items-center gap-7 text-center">
-      <BrandSeal :size="56" variant="plain" />
+      <img :src="novrenIcon" alt="Novren" width="108" height="56" />
 
       <div>
         <h3 class="m-0 text-2xl font-bold tracking-[-0.02em]">

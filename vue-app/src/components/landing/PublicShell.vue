@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import '@/src/assets/landing.css'
 import BrandSeal from './BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 import CipherField from './CipherField.vue'
 import GuestTransferPill from './GuestTransferPill.vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -81,7 +82,7 @@ defineExpose({ surge, settle, calm, stampSeal })
             class="flex items-center gap-2.5 text-[1.12rem] font-extrabold tracking-[-0.02em] text-[#1b1140]"
             @click.prevent="router.push('/')"
           >
-            <BrandSeal :size="28" variant="mark" />
+            <img :src="novrenIcon" alt="Novren" width="54" height="28" />
             Novren
           </a>
 
@@ -130,7 +131,7 @@ defineExpose({ surge, settle, calm, stampSeal })
       <div v-reveal="{ stagger: 0.05 }" class="flex flex-wrap items-start justify-between gap-x-12 gap-y-8">
         <div class="max-w-[300px]">
           <div class="mb-3 flex items-center gap-2.5 text-[1.05rem] font-extrabold tracking-[-0.02em]">
-            <BrandSeal :size="24" variant="mark" />
+            <img :src="novrenIcon" alt="Novren" width="46" height="24" />
             Novren
           </div>
           <p class="text-[0.86rem] leading-relaxed text-[#8d7fb8]">

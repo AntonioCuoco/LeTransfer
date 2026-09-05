@@ -47,32 +47,6 @@ const primitives = [
   { what: 'Trasporto', how: 'TLS 1.3', note: 'in aggiunta alla cifratura, non al posto suo' },
 ]
 
-const covered = [
-  'Chi gestisce i nostri server legge i tuoi file',
-  'Una fuga di dati dallo storage espone i contenuti',
-  'Un blocco del file viene sostituito o riordinato di nascosto',
-  'Il nome del file finisce nei nostri log (invio senza account)',
-]
-
-const notCovered = [
-  {
-    title: 'Chi ha il link, ha il file',
-    body: 'La chiave è nel link. Se lo inoltri in un gruppo, hai dato il file al gruppo. Password, scadenza e max download servono a questo.',
-  },
-  {
-    title: 'Il dispositivo compromesso',
-    body: 'Se il browser di chi invia o di chi riceve è infetto, la cifratura end-to-end non serve: i dati sono in chiaro prima e dopo il nostro pezzo di strada.',
-  },
-  {
-    title: 'I metadati minimi',
-    body: 'Vediamo dimensione, orario, indirizzo IP di chi carica e il nome del file — quest’ultimo perché la pagina di ricezione lo mostra prima di decifrare. Servono a far scadere i link e a fermare gli abusi. Non li vendiamo, ma non possiamo dire di non averli.',
-  },
-  {
-    title: 'Il codice che ti serviamo',
-    body: 'La cifratura avviene nel codice che ti mandiamo noi. Se qualcuno compromettesse la nostra distribuzione, potrebbe servirti codice ostile: è il limite strutturale di ogni E2E via browser. Il client è open-source proprio perché sia verificabile.',
-  },
-]
-
 const { root: head } = usePageEnter()
 </script>
 
@@ -100,30 +74,6 @@ const { root: head } = usePageEnter()
             <span class="text-[0.95rem] font-semibold">{{ row.what }}</span>
             <span class="font-mono text-[0.8rem] text-[#37e7c4]">{{ row.how }}</span>
             <span class="font-mono text-[0.74rem] text-[#8d7fb8]">{{ row.note }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Modello di minaccia -->
-      <section v-reveal="{ stagger: 0.08 }" class="mt-[clamp(48px,7vh,84px)] grid gap-8 md:grid-cols-2">
-        <div>
-          <h2 class="mb-1.5 text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tracking-[-0.03em]">Da cosa ti protegge</h2>
-          <p class="mb-5 text-[0.92rem] leading-relaxed text-[#8d7fb8]">Scenari coperti dal modo in cui è costruito il prodotto.</p>
-          <ul class="flex flex-col gap-3">
-            <li v-for="item in covered" :key="item" class="flex items-baseline gap-3 leading-relaxed text-[#b9ace2]">
-              <span class="font-mono text-[#37e7c4]">✓</span>{{ item }}
-            </li>
-          </ul>
-        </div>
-
-        <div class="rounded-[18px] border border-[#e0b34a]/25 bg-[#e0b34a]/[0.06] p-6">
-          <h2 class="mb-1.5 text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tracking-[-0.03em]">Da cosa non ti protegge</h2>
-          <p class="mb-5 text-[0.92rem] leading-relaxed text-[#c0a878]">Scritto da noi, prima che lo scopra qualcun altro.</p>
-          <div class="flex flex-col gap-5">
-            <div v-for="item in notCovered" :key="item.title">
-              <p class="mb-1 font-mono text-[0.78rem] uppercase tracking-[0.1em] text-[#e0b34a]">{{ item.title }}</p>
-              <p class="text-[0.92rem] leading-relaxed text-[#d9cffa]">{{ item.body }}</p>
-            </div>
           </div>
         </div>
       </section>

@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import BrandSeal from './BrandSeal.vue'
+import novrenIcon from '@/src/assets/novren-icon.png'
 import PrivacyReceipt from './PrivacyReceipt.vue'
 import QrCode from '@/src/components/ui/QrCode.vue'
 import { storeToRefs } from 'pinia'
@@ -273,7 +274,7 @@ onMounted(() => {
     <!-- Intestazione -->
     <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
       <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
-        <BrandSeal :size="19" variant="plain" />
+        <img :src="novrenIcon" alt="Novren" width="36" height="19" />
         Nuovo trasferimento
       </div>
       <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em]" :class="stateLabelClass">
