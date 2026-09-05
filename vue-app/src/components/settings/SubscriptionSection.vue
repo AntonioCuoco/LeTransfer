@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsSection from './SettingsSection.vue'
 import PlanLimitsPanel from '@/src/components/billing/PlanLimitsPanel.vue'
+import StorageUsagePanel from '@/src/components/billing/StorageUsagePanel.vue'
 import { usePlan } from '@/src/composables/usePlan'
 import {
   PLAN_CATALOG,
@@ -35,6 +36,7 @@ const others = computed(() => PLAN_ORDER.filter((id) => id !== plan.value))
       icon="pi pi-credit-card"
     >
       <PlanLimitsPanel />
+      <StorageUsagePanel />
     </SettingsSection>
 
     <SettingsSection

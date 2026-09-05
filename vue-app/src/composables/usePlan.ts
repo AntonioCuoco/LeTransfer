@@ -37,12 +37,45 @@ export interface SubscriptionInfo {
   currentPeriodEnd?: string
   /** true = resta attivo fino a fine periodo, poi torna a Free. */
   cancelAtPeriodEnd?: boolean
+  /** true → l'utente ha un cliente Stripe: si può mostrare «Gestisci abbonamento». */
+  hasBilling?: boolean
 }
 
+/** Quanto è stato usato. `tracked: false` = il conteggio non è leggibile ora. */
+export interface PlanUsage {
+  storedBytes: number
+  monthlyBytes: number
+  /** ISO: quando riparte il conteggio mensile. */
+  monthlyResetsAt: string | null
+  /**
+   * ⚠️ `false` significa **non lo sappiamo**, non «zero».
+   * Disegnare una barra vuota direbbe all'utente «hai tutto libero», che è la bugia
+   * peggiore proprio nel momento in cui potrebbe essere pieno.
+   */
+  tracked: boolean
+}
+
+/**
+ * La forma **reale** della risposta del backend.
+ *
+ * ⚠️ Qui c'era un difetto silenzioso: il client leggeva `data.plan`, `limits.maxFileBytes`
+ * e `subscription`, mentre il server manda tutto dentro `data` e usa altri nomi
+ * (`maxFileSizeBytes`, `billing`). Nessuna eccezione, nessun errore in console — solo un
+ * utente Pro trattato come Free, con `isAuthoritative` a `true` a dichiarare che il dato
+ * era certo. Un ripiego che si spaccia per verità è peggio di un ripiego dichiarato.
+ */
 interface PlanResponse {
-  plan?: PlanId
-  limits?: Partial<PlanLimits>
-  subscription?: SubscriptionInfo
+  data?: {
+    plan?: PlanId
+    limits?: {
+      maxFileSizeBytes?: number | null
+      maxExpiryHours?: number | null
+      maxStoredBytes?: number | null
+      maxMonthlyBytes?: number | null
+    }
+    usage?: Partial<PlanUsage>
+    billing?: { status?: SubscriptionInfo['status'] | null; hasBilling?: boolean }
+  }
 }
 
 // Stato condiviso a livello di modulo: il piano è uno solo per sessione, e la dashboard
@@ -50,6 +83,7 @@ interface PlanResponse {
 const plan = ref<PlanId>('free')
 const limits = ref<PlanLimits>({ ...PLAN_CATALOG.free.limits })
 const subscription = ref<SubscriptionInfo | null>(null)
+const usage = ref<PlanUsage | null>(null)
 const isAuthoritative = ref(false)
 const isLoading = ref(false)
 let inFlight: Promise<void> | null = null
@@ -68,25 +102,43 @@ async function fetchPlan(): Promise<void> {
     // L'accessToken lo inietta l'interceptor axios globale.
     const { data } = await axios.get<PlanResponse>(`${import.meta.env.VITE_API_URL}/user/plan`)
 
-    const resolved: PlanId = isPlanId(data?.plan) ? data.plan : 'free'
+    const body = data?.data
+    const resolved: PlanId = isPlanId(body?.plan) ? body.plan : 'free'
+    const fallback = PLAN_CATALOG[resolved].limits
+
     plan.value = resolved
     limits.value = {
-      // I limiti del server vincono; il catalogo copre i campi che non manda.
-      maxFileBytes: data?.limits?.maxFileBytes ?? PLAN_CATALOG[resolved].limits.maxFileBytes,
-      maxExpiryHours: data?.limits?.maxExpiryHours ?? PLAN_CATALOG[resolved].limits.maxExpiryHours,
-      // Quota e tetto mensile: il backend non li manda ancora (vedi
-      // BACKEND_WORKORDER_LIMITI_E_QUOTA.md §4.3), quindi oggi arrivano sempre dal catalogo.
-      maxStoredBytes: data?.limits?.maxStoredBytes ?? PLAN_CATALOG[resolved].limits.maxStoredBytes,
-      maxMonthlyBytes: data?.limits?.maxMonthlyBytes ?? PLAN_CATALOG[resolved].limits.maxMonthlyBytes,
+      // I limiti del server vincono; il catalogo copre solo ciò che non manda.
+      // `?? ` e non `|| `: uno `0` dal server è un limite vero, non un campo assente.
+      maxFileBytes: body?.limits?.maxFileSizeBytes ?? fallback.maxFileBytes,
+      maxExpiryHours: body?.limits?.maxExpiryHours ?? fallback.maxExpiryHours,
+      maxStoredBytes: body?.limits?.maxStoredBytes ?? fallback.maxStoredBytes,
+      maxMonthlyBytes: body?.limits?.maxMonthlyBytes ?? fallback.maxMonthlyBytes,
     }
-    subscription.value = data?.subscription ?? null
-    isAuthoritative.value = true
+
+    usage.value = body?.usage
+      ? {
+          storedBytes: body.usage.storedBytes ?? 0,
+          monthlyBytes: body.usage.monthlyBytes ?? 0,
+          monthlyResetsAt: body.usage.monthlyResetsAt ?? null,
+          tracked: body.usage.tracked ?? false,
+        }
+      : null
+
+    subscription.value = body?.billing
+      ? { status: body.billing.status ?? 'none', hasBilling: body.billing.hasBilling }
+      : null
+
+    // Autorevole solo se il server ha davvero detto qualcosa. Una risposta vuota o di
+    // forma inattesa è un ripiego, e va dichiarata come tale.
+    isAuthoritative.value = !!body?.plan
   } catch {
     // Endpoint assente, sessione scaduta o rete giù: si resta su Free.
     // Non è un errore da mostrare — è lo stato reale di chiunque oggi.
     plan.value = 'free'
     limits.value = { ...PLAN_CATALOG.free.limits }
     subscription.value = null
+    usage.value = null
     isAuthoritative.value = false
   } finally {
     isLoading.value = false
@@ -120,15 +172,62 @@ export function usePlan() {
     return bytes > limits.value.maxFileBytes
   }
 
+  /** Spazio ancora libero, o `null` se il conteggio non è noto. */
+  const storedRemaining = computed(() =>
+    usage.value?.tracked ? Math.max(0, limits.value.maxStoredBytes - usage.value.storedBytes) : null,
+  )
+
+  /** Volume ancora disponibile questo mese, o `null` se il conteggio non è noto. */
+  const monthlyRemaining = computed(() =>
+    usage.value?.tracked ? Math.max(0, limits.value.maxMonthlyBytes - usage.value.monthlyBytes) : null,
+  )
+
+  const storedPercent = computed(() =>
+    usage.value?.tracked && limits.value.maxStoredBytes > 0
+      ? Math.min(100, Math.round((usage.value.storedBytes / limits.value.maxStoredBytes) * 100))
+      : null,
+  )
+
+  const monthlyPercent = computed(() =>
+    usage.value?.tracked && limits.value.maxMonthlyBytes > 0
+      ? Math.min(100, Math.round((usage.value.monthlyBytes / limits.value.maxMonthlyBytes) * 100))
+      : null,
+  )
+
+  /**
+   * Il motivo per cui un file di questa dimensione **non passerebbe**, o `null` se passa.
+   *
+   * È la versione preventiva dei tre `413`: la stessa domanda che il server farà, fatta
+   * prima di far aspettare l'utente. Il server resta l'autorità — qui si evita solo di
+   * scoprire il limite a upload iniziato.
+   *
+   * ⚠️ Restituisce `null` anche quando il conteggio non è noto (`tracked: false`): senza
+   * dati non si blocca nulla, si lascia decidere al server.
+   */
+  function blockingLimitFor(bytes: number): 'file' | 'quota' | 'monthly' | null {
+    if (exceedsFileLimit(bytes)) return 'file'
+    const stored = storedRemaining.value
+    if (stored !== null && bytes > stored) return 'quota'
+    const monthly = monthlyRemaining.value
+    if (monthly !== null && bytes > monthly) return 'monthly'
+    return null
+  }
+
   return {
     plan: readonly(plan),
     limits: readonly(limits),
+    usage: readonly(usage),
     subscription: readonly(subscription),
     isAuthoritative: readonly(isAuthoritative),
     isLoading: readonly(isLoading),
     entry,
     isPaid,
+    storedRemaining,
+    monthlyRemaining,
+    storedPercent,
+    monthlyPercent,
     load,
     exceedsFileLimit,
+    blockingLimitFor,
   }
 }

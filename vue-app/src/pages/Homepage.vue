@@ -37,7 +37,15 @@ const router = useRouter()
 const store = useTransferStore()
 const { isUploading, loadFiles } = useFileFromDynamoDB()
 const { links, fetchLinks } = useSharedLinks()
-const { plan, limits, isAuthoritative, load: loadPlan, exceedsFileLimit } = usePlan()
+const {
+  plan,
+  limits,
+  isAuthoritative,
+  load: loadPlan,
+  blockingLimitFor,
+  storedRemaining,
+  monthlyRemaining,
+} = usePlan()
 const { promptForFileSize } = useUpgradePrompt()
 const { newSince } = useDownloadActivity()
 
@@ -100,11 +108,31 @@ const handleFilesConfirm = (files: File[]) => {
   previewModalVisible.value = false
   previewFiles.value = []
 
-  // Pre-controllo del cap per file. Il server è comunque l'autorità (`413` a init e
-  // ricontrollo reale a complete), ma far partire un upload da 30 GB destinato a essere
-  // rifiutato è tempo dell'utente buttato: qui i file fuori misura non entrano in coda.
-  const tooBig = files.filter((f) => exceedsFileLimit(f.size))
-  const accepted = files.filter((f) => !exceedsFileLimit(f.size))
+  // Pre-controllo dei limiti del piano. Il server è comunque l'autorità (`413` a init e
+  // ricontrollo reale a complete), ma far partire un upload destinato a essere rifiutato è
+  // tempo dell'utente buttato: qui i file che non passerebbero non entrano in coda.
+  //
+  // Sono **tre** limiti, non uno, e vogliono risposte diverse: il file troppo grande si
+  // risolve con un piano superiore, lo spazio pieno liberando, il tetto mensile aspettando.
+  // Dirli tutti "troppo grande" manderebbe a comprare la cosa sbagliata.
+  const accepted: File[] = []
+  const tooBig: File[] = []
+  const noRoom: File[] = []
+  const noMonthly: File[] = []
+
+  // Il controllo è cumulativo: dieci file da 2 GB stanno nella quota uno per uno, non
+  // insieme. Senza questo, la coda partirebbe e si romperebbe a metà.
+  let plannedBytes = 0
+  for (const file of files) {
+    switch (blockingLimitFor(file.size + plannedBytes)) {
+      case 'file': tooBig.push(file); break
+      case 'quota': noRoom.push(file); break
+      case 'monthly': noMonthly.push(file); break
+      default:
+        accepted.push(file)
+        plannedBytes += file.size
+    }
+  }
 
   accepted.forEach((f) => store.addUpload(f))
   if (accepted.length > 0) {
@@ -114,6 +142,21 @@ const handleFilesConfirm = (files: File[]) => {
   if (tooBig.length > 0) {
     // Si propone il piano in base al file più grande: è quello che detta il fabbisogno.
     promptForFileSize(Math.max(...tooBig.map((f) => f.size)))
+  } else if (noRoom.length > 0) {
+    const free = storedRemaining.value
+    notify.warning(
+      free !== null
+        ? `Spazio insufficiente: ne restano ${formatBytes(free)}. Libera spazio eliminando qualche file, oppure passa a un piano più capiente.`
+        : 'Spazio insufficiente per questi file. Libera spazio eliminando qualcosa.',
+    )
+  } else if (noMonthly.length > 0) {
+    // Nessun prompt di acquisto: il volume torna da solo il mese prossimo.
+    const free = monthlyRemaining.value
+    notify.warning(
+      free !== null
+        ? `Volume del mese quasi esaurito: ne restano ${formatBytes(free)}. Il conteggio riparte a inizio mese.`
+        : 'Hai esaurito il volume di trasferimento di questo mese.',
+    )
   }
 }
 

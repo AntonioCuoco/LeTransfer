@@ -66,6 +66,7 @@ declare module 'vue' {
     SharedLinksTable: typeof import('./src/components/SharedLinksTable.vue')['default']
     ShareFileModal: typeof import('./src/components/ShareFileModal.vue')['default']
     StatCard: typeof import('./src/components/ui/StatCard.vue')['default']
+    StorageUsagePanel: typeof import('./src/components/billing/StorageUsagePanel.vue')['default']
     SubscriptionSection: typeof import('./src/components/settings/SubscriptionSection.vue')['default']
     Tab: typeof import('primevue/tab')['default']
     TabList: typeof import('primevue/tablist')['default']
