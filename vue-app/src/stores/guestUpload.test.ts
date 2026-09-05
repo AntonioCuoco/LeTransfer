@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
+import {
+  decryptFileName,
+  importKeyFromBase64,
+  parseKeyFromHash,
+  FILENAME_VERSION,
+} from '@/src/crypto/crypto'
 
 /**
  * Test dell'orchestrazione dell'invio senza account (roadmap F1.2).
@@ -168,8 +174,7 @@ describe('invio di più file (zip in streaming)', () => {
     ])
 
     expect(store.status).toBe('done')
-    const complete = apiPost.mock.calls.find(([url]) => url === '/guest/upload/complete')![1] as { fileName: string; fileType: string }
-    expect(complete.fileName).toBe('trasferimento.zip')
+    expect(await completedName(apiPost, store.result!.shareUrl)).toBe('trasferimento.zip')
 
     expect(store.fileProgress.map((entry) => entry.name)).toEqual(['uno.txt', 'due.txt'])
     expect(store.fileProgress.every((entry) => entry.status === 'done' && entry.percent === 100)).toBe(true)
@@ -194,10 +199,32 @@ describe('invio di più file (zip in streaming)', () => {
     const withPath = new File(['x'], 'foto/mare/uno.jpg')
     await store.upload([withPath, new File(['y'], 'foto/mare/due.jpg')])
 
-    const complete = apiPost.mock.calls.find(([url]) => url === '/guest/upload/complete')![1] as { fileName: string }
-    expect(complete.fileName).toBe('foto.zip')
+    expect(await completedName(apiPost, store.result!.shareUrl)).toBe('foto.zip')
   })
 })
+
+/**
+ * Il nome dell'archivio come lo riceve il server, riportato in chiaro.
+ *
+ * Da O2.2 `complete` porta `fileName` **cifrato** con la chiave del file (`nameVersion: 2`).
+ * Asserire sul nome in chiaro non si può più — ma nemmeno rinunciare ad asserire: si prende
+ * la chiave dal frammento del link, che è l'unico posto dove vive, e si decifra. Verifica
+ * l'intera catena invece del solo valore, che è di più di quanto facesse il test di prima.
+ */
+async function completedName(
+  post: ReturnType<typeof vi.fn>,
+  shareUrl: string,
+): Promise<string> {
+  const body = post.mock.calls.find(([url]) => url === '/guest/upload/complete')![1] as {
+    fileName: string
+    nameVersion?: number
+  }
+  if (body.nameVersion !== FILENAME_VERSION) return body.fileName
+
+  const parsed = parseKeyFromHash(new URL(shareUrl).hash)
+  if (!parsed) throw new Error('chiave assente dal frammento')
+  return decryptFileName(body.fileName, await importKeyFromBase64(parsed.key))
+}
 
 describe('errori e resilienza', () => {
   it('riprova una parte che fallisce invece di buttare via il trasferimento', async () => {

@@ -74,6 +74,10 @@ async function fetchPlan(): Promise<void> {
       // I limiti del server vincono; il catalogo copre i campi che non manda.
       maxFileBytes: data?.limits?.maxFileBytes ?? PLAN_CATALOG[resolved].limits.maxFileBytes,
       maxExpiryHours: data?.limits?.maxExpiryHours ?? PLAN_CATALOG[resolved].limits.maxExpiryHours,
+      // Quota e tetto mensile: il backend non li manda ancora (vedi
+      // BACKEND_WORKORDER_LIMITI_E_QUOTA.md §4.3), quindi oggi arrivano sempre dal catalogo.
+      maxStoredBytes: data?.limits?.maxStoredBytes ?? PLAN_CATALOG[resolved].limits.maxStoredBytes,
+      maxMonthlyBytes: data?.limits?.maxMonthlyBytes ?? PLAN_CATALOG[resolved].limits.maxMonthlyBytes,
     }
     subscription.value = data?.subscription ?? null
     isAuthoritative.value = true

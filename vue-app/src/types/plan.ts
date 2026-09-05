@@ -26,6 +26,17 @@ export interface PlanLimits {
   maxFileBytes: number
   /** Durata massima di un link, in ore. */
   maxExpiryHours: number
+  /**
+   * Quota archiviata: quanto si può tenere **contemporaneamente**. Raggiunta, non si carica
+   * più finché l'utente non libera — nessun file viene mai cancellato in automatico.
+   */
+  maxStoredBytes: number
+  /**
+   * Tetto mensile: quanto può **transitare** in un mese. Serve accanto alla quota, non al
+   * posto suo: chi carica → condivide → cancella → ricarica non supera mai la quota, ma
+   * senza questo farebbe passare volume illimitato.
+   */
+  maxMonthlyBytes: number
 }
 
 export interface PlanCatalogEntry {
@@ -40,9 +51,15 @@ export interface PlanCatalogEntry {
 }
 
 /**
- * ⚠️ PREZZI SEGNAPOSTO — da decidere prima della messa in vendita.
- * Finché questo è `true` la UI lo dichiara apertamente e il checkout resta chiuso:
- * meglio un percorso d'acquisto spento che uno che incassa la cifra sbagliata.
+ * ⚠️ Il checkout è ancora chiuso, ma **non più perché i prezzi sono provvisori**.
+ *
+ * I prezzi sono stati decisi il 2026-09-03 (Free €0, Pro €9) e i numeri qui sotto sono
+ * definitivi. Questo flag resta `true` per un motivo diverso: **i prodotti su Stripe non
+ * esistono ancora**. Gli endpoint backend ci sono (`/api/billing/checkout|portal|webhook`),
+ * quindi senza questo gate il pulsante partirebbe davvero e fallirebbe contro un prezzo
+ * inesistente — un errore molto peggio di un pulsante spento.
+ *
+ * Si mette a `false` quando i prodotti e i price ID su Stripe sono creati e collegati.
  */
 export const PLAN_PRICES_PROVISIONAL = true
 
@@ -52,7 +69,12 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     name: 'Free',
     tagline: 'Per mandare qualcosa, adesso.',
     monthlyEur: 0,
-    limits: { maxFileBytes: 2 * GB, maxExpiryHours: 168 },
+    limits: {
+      maxFileBytes: 2 * GB,
+      maxExpiryHours: 168,
+      maxStoredBytes: 10 * GB,
+      maxMonthlyBytes: 10 * GB,
+    },
     features: [
       'Invio senza account',
       'Cifratura end-to-end',
@@ -64,8 +86,13 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     id: 'pro',
     name: 'Pro',
     tagline: 'Per chi manda file di lavoro tutti i giorni.',
-    monthlyEur: 4,
-    limits: { maxFileBytes: 20 * GB, maxExpiryHours: 720 },
+    monthlyEur: 9,
+    limits: {
+      maxFileBytes: 20 * GB,
+      maxExpiryHours: 720,
+      maxStoredBytes: 200 * GB,
+      maxMonthlyBytes: 200 * GB,
+    },
     features: [
       'Tutto di Free',
       'Storico e gestione dei link',
@@ -74,12 +101,29 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     ],
     featured: true,
   },
+  /**
+   * ⚠️ **Non a listino** — vedi `PLAN_ORDER`, che non lo include.
+   *
+   * Rimandato deliberatamente il 2026-09-03: senza team, SSO e audit log (roadmap O4.3),
+   * "Business" sarebbe solo "Pro con più spazio", cioè un piano senza un compratore chiaro.
+   * La voce resta qui perché il backend conosce ancora il piano `business` e i suoi limiti:
+   * togliere il tipo farebbe rumore ovunque per nulla, e quando i team arriveranno basterà
+   * rimetterlo in `PLAN_ORDER`.
+   *
+   * I numeri sotto sono **segnaposto**: il prezzo andrà rifatto insieme alle funzionalità
+   * da team, non ereditato da qui.
+   */
   business: {
     id: 'business',
     name: 'Business',
     tagline: 'Per team che scambiano materiale pesante.',
-    monthlyEur: 12,
-    limits: { maxFileBytes: 100 * GB, maxExpiryHours: 8760 },
+    monthlyEur: null,
+    limits: {
+      maxFileBytes: 100 * GB,
+      maxExpiryHours: 8760,
+      maxStoredBytes: 1000 * GB,
+      maxMonthlyBytes: 1000 * GB,
+    },
     features: [
       'Tutto di Pro',
       'Più utenti sotto un’unica fatturazione',
@@ -89,8 +133,12 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
   },
 }
 
-/** L'ordine in cui i piani si presentano e si confrontano. */
-export const PLAN_ORDER: PlanId[] = ['free', 'pro', 'business']
+/**
+ * L'ordine in cui i piani si presentano e si confrontano — **solo quelli a listino**.
+ * `business` è fuori di proposito (vedi il catalogo): finché non ci sono i team non va né
+ * mostrato né proposto come upgrade.
+ */
+export const PLAN_ORDER: PlanId[] = ['free', 'pro']
 
 /** Il piano successivo, o `null` se si è già in cima. Serve ai prompt di upgrade. */
 export function nextPlanAfter(plan: PlanId): PlanId | null {

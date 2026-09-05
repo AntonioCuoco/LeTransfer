@@ -5,6 +5,7 @@ import { notify } from '@/src/utils/notify'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
 import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64, encryptFileName, FILENAME_VERSION } from '@/src/crypto/crypto'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
+import { parsePlanLimitError } from '@/src/utils/planLimitError'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
 
@@ -28,7 +29,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   }
 
   const encryptionStore = useEncryptionStore()
-  const { promptForFileSize } = useUpgradePrompt()
+  const { promptForFileSize, promptWithReason } = useUpgradePrompt()
 
   const state = ref<MultipartUploadState>({
     status: 'idle',
@@ -87,16 +88,21 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   }
 
   const handleError = (error: Error) => {
-    // Il `413` è l'unico errore che ha una risposta utile: il file supera il cap del piano
-    // (BACKEND_API_DOCS §5-ter — rifiuto a `init` sulla dimensione dichiarata, e ricontrollo
-    // reale a `complete` via HeadObject). Prima finiva in "Errore durante l'upload del file",
-    // che è vero e inservibile: l'utente non sapeva né perché né quanto poteva caricare.
-    const response = (error as { response?: { status?: number; data?: { errorCode?: string } } }).response
-    const isTooLarge = response?.status === 413 || response?.data?.errorCode === 'FILE_TOO_LARGE'
+    // Il `413` è l'unico errore che ha una risposta utile — ma sono **tre** motivi diversi
+    // (file troppo grande, spazio pieno, tetto mensile esaurito) e vogliono tre risposte
+    // diverse: solo il primo si risolve comprando un piano con file più grandi. Vedi
+    // `utils/planLimitError.ts` per il perché confonderli è peggio di un errore generico.
+    const limit = parsePlanLimitError(error)
 
-    if (isTooLarge) {
-      notify.warning('Il file supera il limite del tuo piano.')
-      if (fileRef) promptForFileSize(fileRef.size)
+    if (limit) {
+      notify.warning(limit.message)
+
+      if (limit.suggestsUpgrade) {
+        // Per il cap per file il dialogo sa già proporre il piano più piccolo che basta;
+        // per la quota il file non c'entra, quindi si passa dal percorso con motivazione.
+        if (limit.code === 'FILE_TOO_LARGE' && fileRef) promptForFileSize(fileRef.size)
+        else promptWithReason(limit.message)
+      }
     } else {
       notify.error("Errore durante l'upload del file")
     }
