@@ -11,11 +11,13 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminLayout: typeof import('./src/components/layout/AdminLayout.vue')['default']
     AppLayout: typeof import('./src/components/layout/AppLayout.vue')['default']
     AppSecurityPrompt: typeof import('./src/components/AppSecurityPrompt.vue')['default']
     AppSidebar: typeof import('./src/components/layout/AppSidebar.vue')['default']
     BrandSeal: typeof import('./src/components/landing/BrandSeal.vue')['default']
     Button: typeof import('primevue/button')['default']
+    Checkbox: typeof import('primevue/checkbox')['default']
     Chip: typeof import('primevue/chip')['default']
     CipherField: typeof import('./src/components/landing/CipherField.vue')['default']
     Column: typeof import('primevue/column')['default']
@@ -73,6 +75,7 @@ declare module 'vue' {
     TabPanel: typeof import('primevue/tabpanel')['default']
     TabPanels: typeof import('primevue/tabpanels')['default']
     Tabs: typeof import('primevue/tabs')['default']
+    Tag: typeof import('primevue/tag')['default']
     Textarea: typeof import('primevue/textarea')['default']
     Toast: typeof import('primevue/toast')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']

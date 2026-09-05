@@ -33,6 +33,20 @@ const router = createRouter({
         { path: 'abbonamento/esito', component: () => import('@/src/pages/BillingReturnPage.vue') },
       ],
     },
+    // Pannello di amministrazione — richiede sessione (guardia server-side su AdminLayout).
+    {
+      path: '/admin',
+      component: () => import('@/src/components/layout/AdminLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', redirect: '/admin/moderazione' },
+        { path: 'moderazione', component: () => import('@/src/pages/admin/AdminModerationPage.vue') },
+        { path: 'utenti', component: () => import('@/src/pages/admin/AdminUsersPage.vue') },
+        { path: 'utenti/:userId', component: () => import('@/src/pages/admin/AdminUserDetailPage.vue') },
+        { path: 'metriche', component: () => import('@/src/pages/admin/AdminMetricsPage.vue') },
+        { path: 'registro', component: () => import('@/src/pages/admin/AdminAuditPage.vue') },
+      ],
+    },
   ],
 })
 
