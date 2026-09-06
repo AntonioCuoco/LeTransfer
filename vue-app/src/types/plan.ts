@@ -7,13 +7,22 @@
  * `POST /api/shared-links` — BACKEND_API_DOCS §5-ter). Qui vivono solo per poterli
  * *mostrare* prima che l'utente ci sbatta contro.
  *
- * Finché non esiste `GET /api/user/plan` (vedi usePlan.ts) questi valori sono anche il
- * fallback. Sono i default dichiarati dalle env del backend:
- *   PLAN_FREE_MAX_FILE_GB=2   PLAN_PRO_MAX_FILE_GB=20   PLAN_BUSINESS_MAX_FILE_GB=100
- *   PLAN_FREE_MAX_EXPIRY_HOURS=168   PLAN_PRO_MAX_EXPIRY_HOURS=720
- *   ABSOLUTE_MAX_EXPIRY_HOURS=8760 (ceiling, vale per Business)
+ * `GET /api/user/plan` **esiste** (vedi usePlan.ts) ed è la fonte autorevole: questi valori
+ * sono il fallback finché quella risposta non arriva, e servono a mostrare i piani a chi non
+ * ha ancora un account. Rispecchiano i default dichiarati in `config/constants.js`, che in
+ * produzione non sono sovrascritti da nessuna env (verificato il 2026-09-06):
+ *   PLAN_FREE_MAX_FILE_GB=2       PLAN_PRO_MAX_FILE_GB=20
+ *   PLAN_FREE_MAX_EXPIRY_HOURS=168  PLAN_PRO_MAX_EXPIRY_HOURS=720
+ *   PLAN_FREE_MAX_STORED_GB=10    PLAN_PRO_MAX_STORED_GB=200
+ *   PLAN_FREE_MAX_MONTHLY_GB=10   PLAN_PRO_MAX_MONTHLY_GB=200
  * Se qualcuno cambia quelle env senza toccare questo file, la UI mente. È il motivo per
  * cui il controllo lato client è **avvisi**, mai l'ultima parola: chi decide è il `413`.
+ *
+ * ⚠️ I numeri di `business` qui sotto **non** rispecchiano il backend (600 GB lì, 1000 qui).
+ * Non è un difetto da correggere adesso: il piano è fuori listino (`PLAN_ORDER`), non
+ * comprabile e non mostrato, e quando tornerà il prezzo e i limiti andranno rifatti insieme
+ * alle funzionalità da team. Allineare due segnaposto darebbe solo l'impressione che siano
+ * decisi.
  */
 
 export type PlanId = 'free' | 'pro' | 'business'
