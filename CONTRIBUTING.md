@@ -82,6 +82,9 @@ npm run lint             # ESLint
 Sono gli stessi controlli che la pipeline rilancia, e senza i quali **si rifiuta di
 pubblicare**. Scoprirlo in locale costa trenta secondi.
 
+Su *cosa* merita un test, dove va messo e le regole di manutenzione della suite —
+comprese le due trappole dei test sul backend — vedi **[TESTING.md](TESTING.md)**.
+
 Per modifiche non banali, apri prima una issue e parliamone: è più veloce scoprire lì che
 una strada non ci convince, piuttosto che dopo che l'hai percorsa.
 
