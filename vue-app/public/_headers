@@ -108,6 +108,15 @@
 # Nota sulla CSP del captcha: è volutamente più stretta di quella dell'app.
 # `default-src 'none'` e poi solo ciò che serve a Turnstile. Questa pagina non deve
 # poter fare nient'altro — è la ragione per cui è separata.
+#
+# 🚨 Niente `<script>` inline in captcha.html: `script-src` non ha 'unsafe-inline' e
+#    il browser lo blocca. La logica sta in `captcha.js`, coperto da `'self'`.
+#    In dev non te ne accorgi (Vite manda solo `frame-ancestors`), in prod sì.
+#    Verificato in produzione il 2026-09-12: «blocked an inline script», captcha:40.
+
+# Non ha hash nel nome: deve rivalidare, o dopo un deploy l'iframe gira col JS vecchio.
+/captcha.js
+  Cache-Control: public, max-age=0, must-revalidate
 
 
 # ── Cache ────────────────────────────────────────────────────────────────────
