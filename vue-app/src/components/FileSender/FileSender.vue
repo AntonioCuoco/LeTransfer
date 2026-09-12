@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { notify } from '@/src/utils/notify'
 import Swal from 'sweetalert2'
 import axios from 'axios'
+import { notifyApiError } from '@/src/utils/apiError'
 import Cookies from 'js-cookie'
 import { useFileDragAndDrop } from '@/src/composables/useFileDragAndDrop'
 import type { DynamoDBFile, ShareLinkData } from '@/src/types'
@@ -42,7 +43,9 @@ const loadS3Files = async () => {
       params: { page: 1, limit: 100 },
     })
     s3Files.value = data.files || []
-  } catch { /* silently ignore */ } finally {
+  } catch (err) {
+    notifyApiError(err, 'File non caricati', 'Non siamo riusciti a caricare i tuoi file.')
+  } finally {
     isLoadingS3Files.value = false
   }
 }
@@ -121,8 +124,8 @@ const handleSend = async () => {
     recipientEmails.value = []
     customMessage.value = ''
     emit('fileSent')
-  } catch {
-    notify.error("Errore durante l'invio")
+  } catch (err) {
+    notifyApiError(err, 'Invio non riuscito', "Errore durante l'invio")
   } finally {
     isLoading.value = false
   }

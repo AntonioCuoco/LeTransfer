@@ -4,6 +4,24 @@ import { setAuthCookie, clearAuthCookies } from './cookieStore'
 import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId } from './cognitoClient'
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * Chiamata PUBBLICA (link guest): niente token Cognito in uscita, niente refresh né
+     * redirect a /login su 401.
+     *
+     * Serve perché per quegli endpoint un 401 non vuol dire "sessione scaduta" ma "password
+     * del link sbagliata" o "sessione del link scaduta": senza il flag, chi sbagliava la
+     * password veniva buttato sulla pagina di login. E il token dell'utente loggato, se
+     * attaccato, sovrascriveva il `Bearer` della sessione del link.
+     *
+     * Non si esclude per URL: `/shared-links` ospita anche gli endpoint autenticati del
+     * proprietario (elenco, revoca, modifica).
+     */
+    skipAuth?: boolean
+  }
+}
+
 let isRefreshing = false
 let failedQueue: Array<{ resolve: (value: string | null) => void; reject: (error: unknown) => void }> = []
 
@@ -41,6 +59,7 @@ const doRefreshToken = async (): Promise<string | null> => {
 
 export const setupRequestInterceptor = () => {
   axios.interceptors.request.use((config) => {
+    if (config.skipAuth) return config
     const accessToken = Cookies.get('accessToken')
     if (accessToken && config.headers) {
       config.headers.Authorization = `Bearer ${accessToken}`
@@ -54,6 +73,8 @@ export const setupResponseInterceptor = () => {
     (response: AxiosResponse) => response,
     async (error: AxiosError) => {
       const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+
+      if (original?.skipAuth) return Promise.reject(error)
 
       if (error.response?.status === 401 && !original._retry) {
         if (isRefreshing) {

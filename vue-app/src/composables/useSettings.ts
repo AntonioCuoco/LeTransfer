@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
+import { apiErrorMessage } from '@/src/utils/apiError'
 import type {
   UserSettings,
   NotificationSettings,
@@ -184,8 +185,18 @@ export const useSettings = () => {
       try {
         await axios.put(PREFS_ENDPOINT, settings.value.notifications)
         preferencesAreAuthoritative.value = true
-      } catch {
+      } catch (err) {
         preferencesAreAuthoritative.value = false
+        // 404/501 = endpoint che non c'è ancora, non un errore. Il resto sì: la preferenza
+        // resta solo qui, e il server continuerà a mandare le email come prima.
+        const status = (err as { response?: { status?: number } }).response?.status
+        if (status !== 404 && status !== 501) {
+          notify.warning(
+            apiErrorMessage(err) ??
+              'Salvate su questo browser, ma le preferenze email non sono arrivate al server.',
+            'Notifiche non sincronizzate',
+          )
+        }
       }
 
       // I campi password non sopravvivono al salvataggio: restano solo il tempo del form.
@@ -193,7 +204,7 @@ export const useSettings = () => {
       originalSettings.value = clone(settings.value)
       notify.success('Impostazioni salvate con successo')
     } catch {
-      notify.error('Errore durante il salvataggio delle impostazioni')
+      notify.error('Errore durante il salvataggio delle impostazioni', 'Impostazioni non salvate')
       throw new Error('Save failed')
     } finally {
       isSaving.value = false

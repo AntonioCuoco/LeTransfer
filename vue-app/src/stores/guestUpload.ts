@@ -14,6 +14,7 @@ import {
   FILE_FORMAT_VERSION,
 } from '@/src/crypto/crypto'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
+import { apiErrorMessage } from '@/src/utils/apiError'
 import {
   planFileSlots,
   initialFileProgress,
@@ -172,6 +173,10 @@ export const useGuestUploadStore = defineStore('guestUpload', () => {
   }
 
   function messageForError(error: unknown): string {
+    // Il testo del server vince; i casi sotto sono il ripiego quando manda solo un codice.
+    const fromServer = apiErrorMessage(error)
+    if (fromServer) return fromServer
+
     const axiosError = error as { response?: { status?: number; data?: { errorCode?: string } } }
     const httpStatus = axiosError.response?.status
     const errorCode = axiosError.response?.data?.errorCode

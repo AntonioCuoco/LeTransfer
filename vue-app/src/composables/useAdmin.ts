@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { notifyApiError } from '@/src/utils/apiError'
 
 /**
  * Pannello di amministrazione — lo strato dati (roadmap O1.4).
@@ -81,6 +82,8 @@ export function useAdminAudit() {
         params: { limit, ...(targetId ? { targetId } : {}) },
       })
       entries.value = data?.data?.items ?? []
+    } catch (error) {
+      notifyApiError(error, 'Registro non caricato', 'Non siamo riusciti a caricare il registro.')
     } finally {
       isLoading.value = false
     }
@@ -120,6 +123,8 @@ export function useAdminAccountStates() {
       }>(admin('/accounts/states'))
       items.value = data?.data?.items ?? []
       cacheInfo.value = data?.data?.cache ?? null
+    } catch (error) {
+      notifyApiError(error, 'Stati non caricati', 'Non siamo riusciti a caricare gli stati degli account.')
     } finally {
       isLoading.value = false
     }

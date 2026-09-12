@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { apiErrorMessage } from '@/src/utils/apiError'
 
 /**
  * Le due leve anti-abuso del canale senza account: **segnalare** e **revocare**.
@@ -38,6 +39,8 @@ export type ReportReason = (typeof REPORT_REASONS)[number]['value']
 export function useGuestModeration() {
   const isReporting = ref(false)
   const isRevoking = ref(false)
+  /** Il testo del server sull'ultima revoca fallita, se ne ha mandato uno. */
+  const revokeError = ref<string | null>(null)
 
   // Istanza dedicata: il canale guest è no-auth e non deve ereditare interceptor.
   const api = axios.create({ baseURL: API_BASE_URL })
@@ -64,15 +67,17 @@ export function useGuestModeration() {
   async function revokeTransfer(publicToken: string, manageToken: string): Promise<boolean> {
     if (isRevoking.value) return false
     isRevoking.value = true
+    revokeError.value = null
     try {
       await api.post(`/guest/${publicToken}/revoke`, { manageToken })
       return true
-    } catch {
+    } catch (error) {
+      revokeError.value = apiErrorMessage(error)
       return false
     } finally {
       isRevoking.value = false
     }
   }
 
-  return { isReporting, isRevoking, reportLink, revokeTransfer }
+  return { isReporting, isRevoking, revokeError, reportLink, revokeTransfer }
 }

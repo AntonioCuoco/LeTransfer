@@ -49,7 +49,7 @@ const copyLabel = ref('Copia')
 const claimLabel = ref('Reclama questo invio →')
 const revoked = ref(false)
 
-const { isRevoking, revokeTransfer } = useGuestModeration()
+const { isRevoking, revokeError, revokeTransfer } = useGuestModeration()
 
 /**
  * Controllo strutturale locale, prima della cifratura (F1.5). Non è un anti-abuso —
@@ -223,7 +223,7 @@ async function revokeCurrent() {
     revoked.value = true
     notify.success('Invio revocato: il link non funziona più.')
   } else {
-    notify.error('Non è stato possibile revocare l’invio. Riprova.')
+    notify.error(revokeError.value ?? 'Non è stato possibile revocare l’invio. Riprova.', 'Revoca non riuscita')
   }
 }
 
@@ -256,7 +256,7 @@ watch(status, (current) => {
   if (current === 'done') {
     emit('done')
   } else if (current === 'error') {
-    notify.error(errorMessage.value || 'Invio non riuscito')
+    notify.error(errorMessage.value || 'Qualcosa è andato storto durante l’invio.', 'Invio non riuscito')
     emit('reset')
     reset()
   }

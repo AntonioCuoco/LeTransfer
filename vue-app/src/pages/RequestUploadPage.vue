@@ -6,6 +6,7 @@ import PrivacyReceipt from '@/src/components/landing/PrivacyReceipt.vue'
 import { useRequestUpload } from '@/src/composables/useRequestUpload'
 import { fingerprintGroups } from '@/src/crypto/fingerprint'
 import { useTurnstile } from '@/src/composables/useTurnstile'
+import { notify } from '@/src/utils/notify'
 
 /**
  * Pagina pubblica di caricamento su una richiesta — `/richiesta/:publicToken`.
@@ -74,6 +75,9 @@ async function send() {
   // Un token Turnstile si consuma: senza il refresh, il secondo file della stessa
   // sessione partirebbe con un token già speso e verrebbe respinto.
   if (turnstileEnabled) refreshTurnstile()
+  // Il messaggio resta anche sotto il modulo: il toast sparisce, e chi carica potrebbe
+  // doverlo rileggere per capire cosa fare.
+  if (!ok) notify.error(errorMessage.value ?? 'Il caricamento non è riuscito. Riprova.', 'Caricamento non riuscito')
   if (ok) {
     sent.value += 1
     file.value = null

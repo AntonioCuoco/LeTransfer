@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import type { WrappedKeyData, GetFileKeysResponse } from '@/src/types'
 
 export const useFileKeysAPI = () => {
@@ -18,9 +18,7 @@ export const useFileKeysAPI = () => {
       await axios.post(`${import.meta.env.VITE_API_URL}/user/file-keys`, data)
       return true
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      notify.error('Errore nel salvataggio della chiave di cifratura del file')
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Chiave non salvata', 'Errore nel salvataggio della chiave di cifratura del file')
       return false
     } finally {
       isLoading.value = false
@@ -37,10 +35,9 @@ export const useFileKeysAPI = () => {
       )
       return data.data
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { message?: string } }; message?: string }
+      const e = err as { response?: { status?: number } }
       if (e.response?.status === 404) return null
-      notify.error('Errore nel recupero della chiave di cifratura del file')
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Chiave non recuperata', 'Errore nel recupero della chiave di cifratura del file')
       return null
     } finally {
       isLoading.value = false
@@ -55,9 +52,7 @@ export const useFileKeysAPI = () => {
       const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/file-keys`)
       return (data as GetFileKeysResponse).keys || []
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      notify.error('Errore nel recupero delle chiavi di cifratura')
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Chiavi non recuperate', 'Errore nel recupero delle chiavi di cifratura')
       return []
     } finally {
       isLoading.value = false
@@ -74,9 +69,7 @@ export const useFileKeysAPI = () => {
       )
       return true
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      notify.error("Errore nell'eliminazione della chiave di cifratura")
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Chiave non eliminata', "Errore nell'eliminazione della chiave di cifratura")
       return false
     } finally {
       isLoading.value = false

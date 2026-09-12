@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
+import { notifyApiError } from '@/src/utils/apiError'
 
 /**
  * Metriche (roadmap O1.4 fase 3).
@@ -81,6 +82,8 @@ export function useAdminMetrics() {
     try {
       const { data } = await axios.get<{ data?: MetricsOverview }>(admin('/overview'))
       overview.value = data?.data ?? null
+    } catch (error) {
+      notifyApiError(error, 'Metriche non caricate', 'Non siamo riusciti a caricare la panoramica.')
     } finally {
       isLoadingOverview.value = false
     }
@@ -96,7 +99,8 @@ export function useAdminMetrics() {
         params: { metric, from, to },
       })
       return data?.data ?? null
-    } catch {
+    } catch (error) {
+      notifyApiError(error, 'Andamento non caricato', 'Non siamo riusciti a caricare l’andamento nel tempo.')
       return null
     }
   }

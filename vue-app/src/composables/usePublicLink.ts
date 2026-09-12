@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import type { SharedLinkAccessInfo, SharedLinkAccessRequest, SharedLinkAccessResponse, SharedLinkFileResponse, SharedLinkError } from '@/src/types'
+import { apiErrorMessage } from '@/src/utils/apiError'
 
 export type LinkStatus = 'loading' | 'valid' | 'expired' | 'revoked' | 'not_found' | 'download_limit' | 'error'
 
@@ -30,7 +31,7 @@ export const usePublicLink = () => {
     error.value = null
     linkStatus.value = 'loading'
     try {
-      const { data } = await axios.get<{ success: boolean; data: SharedLinkAccessInfo }>(`${API_BASE_URL}/shared-links/${publicToken}`)
+      const { data } = await axios.get<{ success: boolean; data: SharedLinkAccessInfo }>(`${API_BASE_URL}/shared-links/${publicToken}`, { skipAuth: true })
       if (data.success && data.data) {
         linkInfo.value = data.data
         linkStatus.value = 'valid'
@@ -49,7 +50,7 @@ export const usePublicLink = () => {
       } else if (e.response?.status === 410) {
         linkStatus.value = 'expired'; error.value = 'Link scaduto o revocato'
       } else {
-        linkStatus.value = 'error'; error.value = e.message || 'Errore durante il recupero delle informazioni'
+        linkStatus.value = 'error'; error.value = apiErrorMessage(err) ?? 'Errore durante il recupero delle informazioni'
       }
       return null
     } finally {
@@ -61,7 +62,7 @@ export const usePublicLink = () => {
     isLoading.value = true
     error.value = null
     try {
-      const { data } = await axios.post<{ success: boolean; data: SharedLinkAccessResponse }>(`${API_BASE_URL}/shared-links/${publicToken}/access`, request)
+      const { data } = await axios.post<{ success: boolean; data: SharedLinkAccessResponse }>(`${API_BASE_URL}/shared-links/${publicToken}/access`, request, { skipAuth: true })
       if (data.success && data.data) {
         sessionToken.value = data.data.sessionToken
         sessionExpiresAt.value = data.data.expiresAt
@@ -71,9 +72,7 @@ export const usePublicLink = () => {
       return null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
-      if (e.response?.status === 401) error.value = 'Password non corretta'
-      else if (e.response?.data?.message) error.value = e.response.data.message
-      else error.value = e.message || "Errore durante l'autenticazione"
+      error.value = apiErrorMessage(err) ?? (e.response?.status === 401 ? 'Password non corretta' : "Errore durante l'autenticazione")
       return null
     } finally {
       isLoading.value = false
@@ -88,6 +87,7 @@ export const usePublicLink = () => {
       const { data } = await axios.get<SharedLinkFileResponse>(`${API_BASE_URL}/shared-links/${publicToken}/file`, {
         params: { action },
         headers: { Authorization: `Bearer ${sessionToken.value}` },
+        skipAuth: true,
       })
       if (data.success && data.data?.url) return data.data.url
       error.value = 'Risposta non valida dal server'
@@ -95,10 +95,10 @@ export const usePublicLink = () => {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
       if (e.response?.status === 401) {
-        error.value = "Sessione scaduta. Effettua nuovamente l'accesso."
+        error.value = apiErrorMessage(err) ?? "Sessione scaduta. Effettua nuovamente l'accesso."
         sessionToken.value = null; sessionExpiresAt.value = null
       } else {
-        error.value = e.response?.data?.message || e.message || 'Errore durante il download'
+        error.value = apiErrorMessage(err) ?? 'Errore durante il download'
       }
       return null
     } finally {

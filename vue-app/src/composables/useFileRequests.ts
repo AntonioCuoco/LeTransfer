@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 
 /**
  * Richieste file — lato di chi le apre (roadmap O2.1).
@@ -83,6 +84,7 @@ export function useFileRequests() {
       // 404/501 = la funzione non è ancora accesa lato server. Non è un errore dell'utente
       // e non va mostrato come tale, come per i piani e le notifiche.
       if (status === 404 || status === 501) isAvailable.value = false
+      else notifyApiError(error, 'Richieste non caricate', 'Non siamo riusciti a caricare le richieste.')
       requests.value = []
     } finally {
       isLoading.value = false
@@ -102,7 +104,7 @@ export function useFileRequests() {
         isAvailable.value = false
         notify.info('Le richieste file non sono ancora attive su questo ambiente.')
       } else {
-        notify.error('Non siamo riusciti a creare la richiesta.')
+        notifyApiError(error, 'Richiesta non creata', 'Non siamo riusciti a creare la richiesta.')
       }
       return null
     } finally {
@@ -117,8 +119,8 @@ export function useFileRequests() {
         r.requestId === requestId ? { ...r, closedAt: new Date().toISOString() } : r,
       )
       return true
-    } catch {
-      notify.error('Non siamo riusciti a chiudere la richiesta.')
+    } catch (error) {
+      notifyApiError(error, 'Richiesta non chiusa', 'Non siamo riusciti a chiudere la richiesta.')
       return false
     }
   }
@@ -128,8 +130,8 @@ export function useFileRequests() {
       await axios.delete(`${API_BASE_URL}/requests/${requestId}`)
       requests.value = requests.value.filter((r) => r.requestId !== requestId)
       return true
-    } catch {
-      notify.error('Non siamo riusciti a eliminare la richiesta.')
+    } catch (error) {
+      notifyApiError(error, 'Richiesta non eliminata', 'Non siamo riusciti a eliminare la richiesta.')
       return false
     }
   }

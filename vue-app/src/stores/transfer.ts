@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, watch, shallowRef } from 'vue'
 import type { TransferItem, TransferControl, TransferStatus, TransferProgress } from '@/src/types/transfer'
 import axios from 'axios'
-import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 
 const LIMITS = {
   uploadLarge: { files: 3, parts: 2 },
@@ -68,7 +68,7 @@ class DownloadRunner {
       if (axios.isCancel(err) || (err instanceof Error && err.name === 'AbortError')) {
         this.updateTransfer(this.transfer.id, { status: 'cancelled' })
       } else {
-        notify.error('Errore durante il download del file')
+        notifyApiError(err, 'Download non riuscito', 'Errore durante il download del file')
         this.updateTransfer(this.transfer.id, { status: 'error', error: err as Error })
       }
     }

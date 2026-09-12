@@ -101,7 +101,7 @@ const extractEncryptionKey = async (): Promise<EncryptionInfo | null> => {
     const iv = importIVFromBase64(keyData.iv)
     return { key, iv }
   } catch {
-    notify.error('Impossibile importare la chiave di cifratura')
+    notify.error('Impossibile importare la chiave di cifratura', 'Link incompleto')
     return null
   }
 }
@@ -122,12 +122,16 @@ onMounted(loadLinkInfo)
 const handleAccessSubmit = async (visitorName: string, password?: string) => {
   if (!publicToken.value) return
   const response = await accessLink(publicToken.value, { visitorName, password })
-  if (response) {
-    pageState.value = 'authenticated'
-    if (response.previewSupported && !encryptionInfo.value) {
-      const url = await downloadFile(publicToken.value, 'preview')
-      if (url) previewUrl.value = url
-    }
+  if (!response) {
+    // Si resta qui: il toast avvisa, il riquadro nel form tiene il messaggio visibile.
+    notify.error(error.value || 'Accesso non riuscito', 'Accesso negato')
+    return
+  }
+  pageState.value = 'authenticated'
+  if (response.previewSupported && !encryptionInfo.value) {
+    const url = await downloadFile(publicToken.value, 'preview')
+    if (url) previewUrl.value = url
+    else notify.error(error.value || 'Anteprima non disponibile.', 'Anteprima non disponibile')
   }
 }
 
@@ -135,6 +139,9 @@ const handleDownload = async () => {
   if (!publicToken.value) return
   isDownloading.value = true
   const url = await downloadFile(publicToken.value, 'download')
+  // Limite di download raggiunto, link scaduto nel frattempo, sessione finita: prima il
+  // pulsante semplicemente non faceva niente, senza dire perché.
+  if (!url) notify.error(error.value || 'Download non riuscito.', 'Download non disponibile')
   if (url) {
     if (encryptionInfo.value) {
       isDecrypting.value = true
@@ -145,7 +152,7 @@ const handleDownload = async () => {
         // Formato v2 (#6): decifratura a chunk in streaming — niente file intero in RAM.
         if (info?.formatVersion === 2 && info.chunkSize && info.originalSize != null) {
           if (shouldWarnLargeDownload(info.originalSize)) {
-            notify.error('Su questo browser i file oltre ~2 GB potrebbero non scaricarsi: per file di queste dimensioni usa Chrome o Edge.')
+            notify.warning('Su questo browser i file oltre ~2 GB potrebbero non scaricarsi: per file di queste dimensioni usa Chrome o Edge.', 'File molto grande')
           }
           await downloadAndDecryptV2({
             url,
@@ -177,7 +184,7 @@ const handleDownload = async () => {
         }
       } catch (err) {
         shell.value?.calm()
-        if (!(err instanceof DownloadCancelled)) notify.error('Errore durante la decifratura del file')
+        if (!(err instanceof DownloadCancelled)) notify.error('Errore durante la decifratura del file', 'Decifratura non riuscita')
       } finally {
         isDecrypting.value = false
       }
@@ -221,7 +228,10 @@ const buildLocalPreview = async () => {
   isPreviewing.value = true
   try {
     const url = await downloadFile(publicToken.value, 'preview')
-    if (!url) return
+    if (!url) {
+      notify.error(error.value || 'Non è stato possibile scaricare il file per l’anteprima.', 'Anteprima non disponibile')
+      return
+    }
     const blob = await decryptToBlob({
       url,
       key: encryptionInfo.value.key,
@@ -233,7 +243,7 @@ const buildLocalPreview = async () => {
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = URL.createObjectURL(blob)
   } catch {
-    notify.error('Non è stato possibile generare l’anteprima. Il download resta disponibile.')
+    notify.error('Non è stato possibile generare l’anteprima. Il download resta disponibile.', 'Anteprima non disponibile')
   } finally {
     isPreviewing.value = false
   }
@@ -270,99 +280,104 @@ const handlePreview = () => {
         </p>
       </div>
 
-      <!-- La stessa carta chiara del widget d'invio -->
-      <div class="lt-card w-[min(460px,100%)] p-2.5 lg:justify-self-end">
-        <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
-          <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
-            <BrandSeal :size="19" :variant="isDone ? 'check' : 'plain'" />
-            {{ isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
-          </div>
-          <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em]" :class="stateLabelClass">
-            {{ stateLabel }}
-          </div>
-        </div>
-
-        <!-- In attesa delle info del link -->
-        <div v-if="pageState === 'loading' || !linkInfo" class="px-4 pb-5 pt-2">
-          <div class="h-3 w-2/3 animate-pulse rounded-full bg-[#ece5fa]" />
-          <div class="mt-2.5 h-3 w-1/3 animate-pulse rounded-full bg-[#f2edfc]" />
-          <p class="mt-4 font-mono text-[0.72rem] text-[#6a5f8c]">Verifico il link…</p>
-        </div>
-
-        <template v-else>
-          <!-- Identità del file: il nome è la cosa più grande della carta -->
-          <div class="px-2.5">
-            <div class="flex items-start gap-2.5">
-              <span
-                class="mt-0.5 flex-none rounded-md px-1.5 py-1 font-mono text-[0.58rem] font-extrabold tracking-[0.03em] text-white"
-                :style="{ background: badge.color }"
-              >
-                {{ badge.label }}
-              </span>
-              <h2 class="min-w-0 flex-1 break-words text-[1.15rem] font-bold leading-tight tracking-[-0.02em]" :title="displayName">
-                {{ displayName }}
-              </h2>
+      <!-- Carta e segnalazione nello stesso contenitore: sono un'unica colonna. Da
+           fratelli diretti della griglia, il link finiva in una terza cella, cioè in una
+           nuova riga sotto la colonna narrativa, sospeso nel vuoto. -->
+      <div class="w-[min(460px,100%)] lg:justify-self-end">
+        <!-- La stessa carta chiara del widget d'invio -->
+        <div class="lt-card w-full p-2.5">
+          <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
+            <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
+              <BrandSeal :size="19" :variant="isDone ? 'check' : 'plain'" />
+              {{ isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
             </div>
-            <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[0.72rem] text-[#6a5f8c]">
-              <span class="font-bold text-[#1b1140]">{{ linkInfo.fileSize }}</span>
-              <span class="text-[#cdbff0]">·</span>
-              <span class="truncate">{{ linkInfo.fileType }}</span>
-              <template v-if="expiryLabel">
-                <span class="text-[#cdbff0]">·</span>
-                <span>{{ expiryLabel }}</span>
-              </template>
-              <template v-if="linkInfo.isPasswordProtected">
-                <span class="text-[#cdbff0]">·</span>
-                <span>protetto da password</span>
-              </template>
+            <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em]" :class="stateLabelClass">
+              {{ stateLabel }}
             </div>
           </div>
 
-          <div class="lt-rule my-3" />
+          <!-- In attesa delle info del link -->
+          <div v-if="pageState === 'loading' || !linkInfo" class="px-4 pb-5 pt-2">
+            <div class="h-3 w-2/3 animate-pulse rounded-full bg-[#ece5fa]" />
+            <div class="mt-2.5 h-3 w-1/3 animate-pulse rounded-full bg-[#f2edfc]" />
+            <p class="mt-4 font-mono text-[0.72rem] text-[#6a5f8c]">Verifico il link…</p>
+          </div>
 
-          <div class="px-2.5 pb-2.5">
-            <LinkAccessForm
-              v-if="pageState === 'access_form'"
-              :is-password-protected="linkInfo.isPasswordProtected"
-              :is-loading="isLoading"
-              :error="error"
-              @submit="handleAccessSubmit"
-            />
-            <FilePreviewCard
-              v-else
-              :file-name="displayName"
-              :file-type="linkInfo.fileType"
-              :preview-url="previewUrl || undefined"
-              :preview-supported="!!previewUrl"
-              :is-downloading="isDownloading"
-              :is-decrypting="isDecrypting"
-              :decrypt-progress="decryptProgress"
-              :is-done="isDone"
-              :can-build-preview="canPreviewLocally"
-              :is-building-preview="isPreviewing"
-              :on-download="handleDownload"
-              :on-preview="handlePreview"
-              :on-build-preview="buildLocalPreview"
-            />
-
-            <!-- La ricevuta: dopo la decifratura è un fatto, prima è una promessa -->
-            <div v-if="encryptionInfo" class="pt-3">
-              <PrivacyReceipt v-if="isDone" variant="receive" />
-              <div v-else class="flex items-center gap-2 px-1.5 font-mono text-[0.7rem] text-[#6a5f8c]">
-                <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 flex-none" fill="none" stroke="#12b89a" stroke-width="2">
-                  <rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                </svg>
-                si decifra nel tuo browser · la chiave è nel link
+          <template v-else>
+            <!-- Identità del file: il nome è la cosa più grande della carta -->
+            <div class="px-2.5">
+              <div class="flex items-start gap-2.5">
+                <span
+                  class="mt-0.5 flex-none rounded-md px-1.5 py-1 font-mono text-[0.58rem] font-extrabold tracking-[0.03em] text-white"
+                  :style="{ background: badge.color }"
+                >
+                  {{ badge.label }}
+                </span>
+                <h2 class="min-w-0 flex-1 break-words text-[1.15rem] font-bold leading-tight tracking-[-0.02em]" :title="displayName">
+                  {{ displayName }}
+                </h2>
+              </div>
+              <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[0.72rem] text-[#6a5f8c]">
+                <span class="font-bold text-[#1b1140]">{{ linkInfo.fileSize }}</span>
+                <span class="text-[#cdbff0]">·</span>
+                <span class="truncate">{{ linkInfo.fileType }}</span>
+                <template v-if="expiryLabel">
+                  <span class="text-[#cdbff0]">·</span>
+                  <span>{{ expiryLabel }}</span>
+                </template>
+                <template v-if="linkInfo.isPasswordProtected">
+                  <span class="text-[#cdbff0]">·</span>
+                  <span>protetto da password</span>
+                </template>
               </div>
             </div>
-          </div>
-        </template>
-      </div>
 
-      <!-- Sotto la carta, non dentro: è la leva anti-abuso, non un'azione del flusso.
-           Noi il file non possiamo guardarlo — chi lo riceve sì, ed è l'unico controllo
-           di contenuto compatibile con lo zero-knowledge. -->
-      <ReportLinkDialog v-if="publicToken" :public-token="publicToken" class="mt-3.5" />
+            <div class="lt-rule my-3" />
+
+            <div class="px-2.5 pb-2.5">
+              <LinkAccessForm
+                v-if="pageState === 'access_form'"
+                :is-password-protected="linkInfo.isPasswordProtected"
+                :is-loading="isLoading"
+                :error="error"
+                @submit="handleAccessSubmit"
+              />
+              <FilePreviewCard
+                v-else
+                :file-name="displayName"
+                :file-type="linkInfo.fileType"
+                :preview-url="previewUrl || undefined"
+                :preview-supported="!!previewUrl"
+                :is-downloading="isDownloading"
+                :is-decrypting="isDecrypting"
+                :decrypt-progress="decryptProgress"
+                :is-done="isDone"
+                :can-build-preview="canPreviewLocally"
+                :is-building-preview="isPreviewing"
+                :on-download="handleDownload"
+                :on-preview="handlePreview"
+                :on-build-preview="buildLocalPreview"
+              />
+
+              <!-- La ricevuta: dopo la decifratura è un fatto, prima è una promessa -->
+              <div v-if="encryptionInfo" class="pt-3">
+                <PrivacyReceipt v-if="isDone" variant="receive" />
+                <div v-else class="flex items-center gap-2 px-1.5 font-mono text-[0.7rem] text-[#6a5f8c]">
+                  <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 flex-none" fill="none" stroke="#12b89a" stroke-width="2">
+                    <rect x="4" y="10" width="16" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                  </svg>
+                  si decifra nel tuo browser · la chiave è nel link
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Sotto la carta, non dentro: è la leva anti-abuso, non un'azione del flusso.
+             Noi il file non possiamo guardarlo — chi lo riceve sì, ed è l'unico controllo
+             di contenuto compatibile con lo zero-knowledge. -->
+        <ReportLinkDialog v-if="publicToken" :public-token="publicToken" class="mt-3.5" />
+      </div>
     </div>
 
     <template #footer>

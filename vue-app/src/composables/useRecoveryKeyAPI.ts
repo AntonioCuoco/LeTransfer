@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import type { SetupRecoveryKeyRequest, UserRecoveryKeyStatus } from '@/src/types'
 
 export const useRecoveryKeyAPI = () => {
@@ -19,9 +19,7 @@ export const useRecoveryKeyAPI = () => {
       await axios.post(`${import.meta.env.VITE_API_URL}/user/recovery-key/setup`, data)
       return true
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      notify.error('Errore durante la configurazione della chiave di ripristino')
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Chiave di recupero non attivata', 'Errore durante la configurazione della chiave di ripristino')
       return false
     } finally {
       isLoading.value = false
@@ -37,9 +35,7 @@ export const useRecoveryKeyAPI = () => {
       const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/recovery-key/status`)
       return data
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      notify.error('Errore nel recupero dello stato della chiave di ripristino')
-      error.value = e.response?.data?.message || e.message || null
+      error.value = notifyApiError(err, 'Stato non verificato', 'Errore nel recupero dello stato della chiave di ripristino')
       return null
     } finally {
       isLoading.value = false

@@ -15,6 +15,7 @@ import {
 import { jwkThumbprint } from '@/src/crypto/fingerprint'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { parsePlanLimitError } from '@/src/utils/planLimitError'
+import { apiErrorMessage } from '@/src/utils/apiError'
 
 /**
  * Caricamento su una richiesta file — lato di chi carica, **senza account**.
@@ -204,8 +205,10 @@ export function useRequestUpload(publicToken: string) {
       // carica è un estraneo senza account. Quindi niente numeri: dirgli quanto spazio ha
       // libero l'avvocato che gli ha mandato il link sarebbe raccontare lo stato di un
       // account altrui a chi passava di lì. Gli si dice che non è colpa sua e cosa fare.
+      // Per lo stesso motivo sui limiti NON si usa il messaggio del server, che quei numeri
+      // può contenerli: vale solo per gli altri casi.
       if (httpStatus === 410) {
-        errorMessage.value = 'Questa richiesta non accetta più caricamenti.'
+        errorMessage.value = apiErrorMessage(error) ?? 'Questa richiesta non accetta più caricamenti.'
       } else if (limit?.code === 'QUOTA_EXCEEDED' || limit?.code === 'MONTHLY_LIMIT_EXCEEDED') {
         errorMessage.value =
           'Chi ha aperto questa richiesta non ha spazio sufficiente per ricevere il file. ' +
@@ -213,7 +216,7 @@ export function useRequestUpload(publicToken: string) {
       } else if (limit) {
         errorMessage.value = 'Il file supera la dimensione ammessa da questa richiesta.'
       } else {
-        errorMessage.value = 'Il caricamento non è riuscito. Riprova.'
+        errorMessage.value = apiErrorMessage(error) ?? 'Il caricamento non è riuscito. Riprova.'
       }
       status.value = 'error'
       return false

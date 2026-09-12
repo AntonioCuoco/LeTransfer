@@ -42,6 +42,8 @@ async function run() {
         ? 'Non ci sono file da esportare.'
         : 'Archivio creato.',
     )
+  } else if (phase.value === 'error') {
+    notify.error(errorMessage.value ?? 'Non siamo riusciti a creare l’archivio.', 'Esportazione non riuscita')
   }
 }
 </script>

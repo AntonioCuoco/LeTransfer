@@ -9,6 +9,7 @@ import {
 } from '@/src/crypto/streamingDownload'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
+import { apiErrorMessage } from '@/src/utils/apiError'
 import type { DynamoDBFile } from '@/src/types'
 
 /**
@@ -284,8 +285,12 @@ export function useAccountExport() {
         phase.value = 'idle'
         return
       }
+      // Prima il testo del server; poi il nostro, se l'errore l'abbiamo lanciato noi
+      // (es. «Archivio non disponibile»). Mai quello tecnico di axios.
+      const isHttp = (err as { isAxiosError?: boolean }).isAxiosError === true
       errorMessage.value =
-        (err as { message?: string }).message ?? 'Non siamo riusciti a creare l’archivio.'
+        apiErrorMessage(err) ??
+        (!isHttp && err instanceof Error && err.message ? err.message : 'Non siamo riusciti a creare l’archivio.')
       phase.value = 'error'
     } finally {
       currentFile.value = null

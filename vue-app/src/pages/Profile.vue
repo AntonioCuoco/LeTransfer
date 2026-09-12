@@ -214,8 +214,8 @@ const handleDeleteFile = async (fileId: string) => {
   const file = dynamoFiles.value.find(f => f.fileId === fileId || f.s3Key === fileId)
   if (!file) { notify.error('File non trovato'); return }
   await deleteFileFromDynamo(file.fileId, file.s3Key, {
+    // L'errore lo mostra già deleteFile, con il messaggio del server.
     onSuccess: () => { notify.success('File eliminato con successo'); loadFiles(currentPage.value) },
-    onError: () => notify.error("Errore durante l'eliminazione"),
   })
 }
 

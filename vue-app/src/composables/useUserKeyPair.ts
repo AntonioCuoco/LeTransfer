@@ -1,7 +1,7 @@
 import { ref, shallowRef, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import {
   generateRSAKeyPair, exportPublicKeyToJWK, importPublicKeyFromJWK,
   exportPrivateKeyToJWK, importPrivateKeyFromJWK,
@@ -104,7 +104,7 @@ export const useUserKeyPair = () => {
     try {
       await axios.post(`${API_BASE_URL}/user/public-key`, { publicKeyJWK: await exportPublicKeyToJWK(pubKey) }, { headers: getHeaders() })
       return true
-    } catch { notify.error("Errore nell'invio della chiave pubblica al server"); return false }
+    } catch (err) { notifyApiError(err, 'Chiave pubblica non inviata', "Errore nell'invio della chiave pubblica al server"); return false }
   }
 
   const checkServerBackup = async (): Promise<KeyPairBackup | null> => {
@@ -147,7 +147,10 @@ export const useUserKeyPair = () => {
       exportablePrivateKey.value = extractablePriv
       pendingRestore.value = null
       return true
-    } catch { error.value = 'Impossibile ripristinare le chiavi dal backup'; return false }
+    } catch (err) {
+      error.value = notifyApiError(err, 'Chiavi non ripristinate', 'Impossibile ripristinare le chiavi dal backup')
+      return false
+    }
   }
 
   const initializeKeyPair = async () => {
@@ -171,9 +174,8 @@ export const useUserKeyPair = () => {
       privateKey.value = nonExtractablePriv
       exportablePrivateKey.value = keyPair.privateKey
       ensureServerBackup() // se sbloccato fa subito il backup; altrimenti lo fa il watcher allo sblocco
-    } catch {
-      notify.error('Impossibile inizializzare le chiavi di cifratura')
-      error.value = 'Impossibile inizializzare le chiavi di cifratura'
+    } catch (err) {
+      error.value = notifyApiError(err, 'Chiavi non pronte', 'Impossibile inizializzare le chiavi di cifratura')
     } finally {
       isInitializing.value = false
     }
@@ -192,7 +194,7 @@ export const useUserKeyPair = () => {
       const { data } = await axios.get(`${API_BASE_URL}/user/by-email/${encodeURIComponent(email)}/public-key`, { headers: getHeaders() })
       if (data.success && data.data?.publicKeyJWK) return await importPublicKeyFromJWK(data.data.publicKeyJWK)
       return null
-    } catch { notify.error(`Impossibile recuperare la chiave pubblica per ${email}`); return null }
+    } catch (err) { notifyApiError(err, 'Destinatario non raggiungibile', `Impossibile recuperare la chiave pubblica per ${email}`); return null }
   }
 
   const exportPublicKeyJWK = async (): Promise<JsonWebKey | null> => {

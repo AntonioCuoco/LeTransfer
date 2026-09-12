@@ -7,6 +7,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
 import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import { resolveFileName } from '@/src/utils/fileNames'
 import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
 
@@ -60,15 +61,15 @@ export const useShareFile = () => {
       Swal.fire({ title: 'Condiviso!', text: `File condiviso con successo con ${targetEmail}`, icon: 'success', timer: 2000, showConfirmButton: false })
       return data
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { message?: string } }; message?: string }
-      let msg = 'Errore durante la condivisione del file'
-      if (e.response?.status === 404) msg = "Utente non trovato. Verifica che l'email sia corretta."
-      else if (e.response?.status === 400) msg = e.response?.data?.message || 'Non puoi inviare un file a te stesso.'
-      else if (e.response?.data?.message) msg = e.response.data.message
-      else if (e.message) msg = e.message
+      const e = err as { response?: { status?: number }; isAxiosError?: boolean; message?: string }
+      let fallback = 'Errore durante la condivisione del file'
+      if (e.response?.status === 404) fallback = "Utente non trovato. Verifica che l'email sia corretta."
+      else if (e.response?.status === 400) fallback = 'Non puoi inviare un file a te stesso.'
+      // Gli errori lanciati qui sopra (es. destinatario senza E2E) hanno già un testo per l'utente.
+      else if (!e.isAxiosError && e.message) fallback = e.message
+      const msg = notifyApiError(err, 'Condivisione non riuscita', fallback)
       shareError.value = msg
       options?.onError?.(new Error(msg))
-      Swal.fire({ title: 'Errore!', text: msg, icon: 'error' })
       return null
     } finally {
       isSharing.value = false
@@ -86,8 +87,7 @@ export const useShareFile = () => {
       sharedFiles.value = files
       return files
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      shareError.value = e.response?.data?.message || e.message || 'Errore durante il caricamento dei file condivisi'
+      shareError.value = notifyApiError(err, 'File ricevuti non caricati', 'Errore durante il caricamento dei file condivisi')
       return []
     } finally {
       isLoadingShared.value = false
@@ -143,6 +143,7 @@ export const useShareFile = () => {
 
       // --- Formato v1 (legacy): intero blob con un unico IV ---
       const res = await fetch(file.s3Url)
+      if (!res.ok) throw new Error('Il file non è più disponibile per il download.')
       let finalBlob = await res.blob()
       if (aesKey && file.encryptionIV) {
         const iv = importIVFromBase64(file.encryptionIV)
@@ -160,7 +161,7 @@ export const useShareFile = () => {
       return true
     } catch (err: unknown) {
       const e = err as { message?: string }
-      notify.error(e.message || 'Errore durante il download del file condiviso')
+      notify.error(e.message || 'Errore durante il download del file condiviso', 'Download non riuscito')
       return false
     }
   }

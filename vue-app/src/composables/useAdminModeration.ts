@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 
 /**
  * Moderazione (roadmap O1.4 fase 1) — è la parte che blocca l'apertura al pubblico.
@@ -56,6 +57,8 @@ export function useAdminModeration() {
         { params: { state } },
       )
       reports.value = data?.data?.items ?? []
+    } catch (error) {
+      notifyApiError(error, 'Segnalazioni non caricate', 'Non siamo riusciti a caricare le segnalazioni.')
     } finally {
       isLoading.value = false
     }
@@ -68,6 +71,8 @@ export function useAdminModeration() {
         admin('/appeals'),
       )
       appeals.value = data?.data?.items ?? []
+    } catch (error) {
+      notifyApiError(error, 'Appelli non caricati', 'Non siamo riusciti a caricare gli appelli.')
     } finally {
       isLoading.value = false
     }
@@ -86,7 +91,7 @@ export function useAdminModeration() {
       notify.success('Link revocato e oggetto cancellato.')
       return true
     } catch (error) {
-      notify.error(errorMessageOf(error, 'Revoca non riuscita.'))
+      notifyApiError(error, 'Link non revocato', 'Revoca non riuscita.')
       return false
     } finally {
       isActing.value = false
@@ -111,12 +116,14 @@ export function useAdminModeration() {
       return true
     } catch (error) {
       // ALREADY_PURGED: l'oggetto era già stato cancellato da una revoca precedente.
-      const code = (error as { response?: { data?: { errorCode?: string; error?: string } } }).response?.data
-      if (code?.errorCode === 'ALREADY_PURGED') {
-        notify.error(code.error ?? 'Il file è già stato cancellato definitivamente: non è ripristinabile.')
-      } else {
-        notify.error(errorMessageOf(error, 'Ripristino non riuscito.'))
-      }
+      const code = (error as { response?: { data?: { errorCode?: string } } }).response?.data?.errorCode
+      notifyApiError(
+        error,
+        'Ripristino non riuscito',
+        code === 'ALREADY_PURGED'
+          ? 'Il file è già stato cancellato definitivamente: non è ripristinabile.'
+          : 'Ripristino non riuscito.',
+      )
       return false
     } finally {
       isActing.value = false
@@ -124,9 +131,4 @@ export function useAdminModeration() {
   }
 
   return { reports, appeals, isLoading, isActing, loadReports, loadAppeals, revoke, restore }
-}
-
-function errorMessageOf(error: unknown, fallback: string): string {
-  const msg = (error as { response?: { data?: { error?: string } } }).response?.data?.error
-  return msg ?? fallback
 }

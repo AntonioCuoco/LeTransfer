@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
-import Swal from 'sweetalert2'
+import { notifyApiError } from '@/src/utils/apiError'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -22,10 +22,7 @@ export const usePresignedUrl = () => {
       })
       return data.url
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      const msg = e.response?.data?.message || e.message || 'Errore nella generazione del link'
-      error.value = msg
-      Swal.fire({ title: 'Errore!', text: msg, icon: 'error' })
+      error.value = notifyApiError(err, 'Link non generato', 'Errore nella generazione del link')
       return null
     } finally {
       isLoading.value = false

@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import type { AuditEntry } from './useAdmin'
 
 /**
@@ -100,6 +101,8 @@ export function useAdminUsers() {
       )
       items.value = useCursor ? [...items.value, ...(data?.data?.items ?? [])] : data?.data?.items ?? []
       cursor.value = data?.data?.cursor ?? null
+    } catch (error) {
+      notifyApiError(error, 'Ricerca non riuscita', 'Non siamo riusciti a caricare gli utenti.')
     } finally {
       isLoading.value = false
     }
@@ -117,8 +120,11 @@ export function useAdminUsers() {
       return !!detail.value
     } catch (error) {
       const status = (error as { response?: { status?: number } }).response?.status
-      if (status === 404) notify.error('Utente non trovato.')
-      else notify.error('Non siamo riusciti a caricare la scheda.')
+      notifyApiError(
+        error,
+        'Scheda non caricata',
+        status === 404 ? 'Utente non trovato.' : 'Non siamo riusciti a caricare la scheda.',
+      )
       return false
     } finally {
       isLoading.value = false
@@ -136,7 +142,7 @@ export function useAdminUsers() {
       notify.success(note ? `${successMsg} ${note}.` : successMsg)
       return data?.data ?? null
     } catch (error) {
-      notify.error(errorMessageOf(error, 'Operazione non riuscita.'))
+      notifyApiError(error, 'Azione non riuscita', 'Operazione non riuscita.')
       return null
     } finally {
       isActing.value = false
@@ -171,7 +177,7 @@ export function useAdminUsers() {
       notify.success(`Piano ${plan} regalato per ${days} giorni.`)
       return true
     } catch (error) {
-      notify.error(errorMessageOf(error, 'Assegnazione non riuscita.'))
+      notifyApiError(error, 'Piano non assegnato', 'Assegnazione non riuscita.')
       return false
     } finally {
       isActing.value = false
@@ -189,7 +195,7 @@ export function useAdminUsers() {
       notify.success(note ? `Piano regalato tolto. ${note}.` : 'Piano regalato tolto: torna a Free.')
       return true
     } catch (error) {
-      notify.error(errorMessageOf(error, 'Revoca del piano non riuscita.'))
+      notifyApiError(error, 'Piano non revocato', 'Revoca del piano non riuscita.')
       return false
     } finally {
       isActing.value = false
@@ -215,7 +221,11 @@ export function useAdminUsers() {
       return data?.data ?? null
     } catch (error) {
       const status = (error as { response?: { status?: number } }).response?.status
-      notify.error(status === 409 ? 'Esiste già un utente con questa email.' : errorMessageOf(error, 'Creazione non riuscita.'))
+      notifyApiError(
+        error,
+        'Utente non creato',
+        status === 409 ? 'Esiste già un utente con questa email.' : 'Creazione non riuscita.',
+      )
       return null
     } finally {
       isActing.value = false
@@ -239,9 +249,4 @@ export function useAdminUsers() {
     revokePlan,
     createUser,
   }
-}
-
-function errorMessageOf(error: unknown, fallback: string): string {
-  const msg = (error as { response?: { data?: { error?: string } } }).response?.data?.error
-  return msg ?? fallback
 }

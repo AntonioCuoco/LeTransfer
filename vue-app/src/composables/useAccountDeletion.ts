@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { AUTH_COOKIES } from '@/src/utils/cookieStore'
+import { apiErrorMessage } from '@/src/utils/apiError'
 
 /**
  * Cancellazione dell'account (GDPR art. 17).
@@ -85,9 +86,9 @@ export interface DeletionPreview {
 export type DeletionOutcome =
   | { status: 'deleted' }
   | { status: 'confirmation_sent'; email?: string }
-  | { status: 'wrong_password' }
+  | { status: 'wrong_password'; message?: string }
   | { status: 'unavailable' }
-  | { status: 'error' }
+  | { status: 'error'; message?: string }
 
 /**
  * Cancella ogni traccia locale. Va chiamata **dopo** la conferma del server: è
@@ -197,11 +198,13 @@ export function useAccountDeletion() {
       return { status: 'deleted' }
     } catch (error) {
       const status = (error as { response?: { status?: number } }).response?.status
-      if (status === 401 || status === 403) return { status: 'wrong_password' }
+      // Il testo del server, se c'è, lo mostra il dialogo; altrimenti usa il suo.
+      const message = apiErrorMessage(error) ?? undefined
+      if (status === 401 || status === 403) return { status: 'wrong_password', message }
       // 404/501 = il backend non ha ancora l'endpoint. Non è un errore dell'utente e non
       // va mostrato come tale: è una capacità che manca, e va detta con quelle parole.
       if (status === 404 || status === 501) return { status: 'unavailable' }
-      return { status: 'error' }
+      return { status: 'error', message }
     } finally {
       isDeleting.value = false
     }

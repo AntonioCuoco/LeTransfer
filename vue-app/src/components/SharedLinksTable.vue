@@ -118,8 +118,8 @@ const handleSaveSettings = async () => {
   if (newExpiry.value) updates.expiresAt = newExpiry.value.toISOString()
   const success = await props.onUpdate(currentLink.value.id, updates)
   updating.value = false
+  // Sull'errore niente toast qui: lo mostra già updateLink, con il messaggio del server.
   if (success) { notify.success('Impostazioni aggiornate'); settingsModalVisible.value = false }
-  else notify.error("Errore durante l'aggiornamento")
 }
 
 // Conferma ancorata al pulsante cliccato (ConfirmPopup group="popup")

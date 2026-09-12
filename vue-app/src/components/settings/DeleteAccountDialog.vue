@@ -64,16 +64,16 @@ async function confirm() {
       break
 
     case 'wrong_password':
-      notify.error('Password non corretta.')
+      notify.error(outcome.message ?? 'Password non corretta.', 'Cancellazione non avviata')
       password.value = ''
       break
 
     case 'unavailable':
-      notify.info('La cancellazione automatica non è ancora attiva. Scrivici e la eseguiamo noi.')
+      notify.info('La cancellazione automatica non è ancora attiva. Scrivici e la eseguiamo noi.', 'Non ancora disponibile')
       break
 
     default:
-      notify.error('Non siamo riusciti a completare la richiesta. Riprova.')
+      notify.error(outcome.message ?? 'Non siamo riusciti a completare la richiesta. Riprova.', 'Cancellazione non riuscita')
   }
 }
 

@@ -2,6 +2,8 @@ import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import Swal from 'sweetalert2'
+import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
@@ -43,8 +45,7 @@ export const useFileFromDynamoDB = () => {
       hasMore.value = data.hasMore || false
       return { files: data.files || [], count: data.count || 0, nextKey: data.nextKey || null, hasMore: data.hasMore || false }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      error.value = e.response?.data?.message || e.message || 'Errore durante il caricamento dei file'
+      error.value = notifyApiError(err, 'File non caricati', 'Errore durante il caricamento dei file')
       return null
     } finally {
       isLoading.value = false
@@ -68,8 +69,7 @@ export const useFileFromDynamoDB = () => {
       hasMore.value = data.hasMore || false
       return { files: data.files || [], count: data.count || 0, nextKey: data.nextKey || null, hasMore: data.hasMore || false }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      error.value = e.response?.data?.message || e.message || 'Errore durante il caricamento dei file'
+      error.value = notifyApiError(err, 'File non caricati', 'Errore durante il caricamento dei file')
       return null
     } finally {
       isLoading.value = false
@@ -97,11 +97,9 @@ export const useFileFromDynamoDB = () => {
       if (options?.onSuccess && presignedData.file) options.onSuccess(presignedData.file)
       return presignedData.key
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      const msg = e.response?.data?.message || e.message || "Errore durante l'upload del file"
+      const msg = notifyApiError(err, 'Caricamento non riuscito', "Errore durante l'upload del file")
       error.value = msg
       options?.onError?.(new Error(msg))
-      Swal.fire({ title: 'Errore!', text: msg, icon: 'error' })
       return null
     } finally {
       isUploading.value = false
@@ -121,11 +119,9 @@ export const useFileFromDynamoDB = () => {
       options?.onSuccess?.()
       return true
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string }
-      const msg = e.response?.data?.message || e.message || "Errore durante l'eliminazione del file"
+      const msg = notifyApiError(err, 'Eliminazione non riuscita', "Errore durante l'eliminazione del file")
       error.value = msg
       options?.onError?.(new Error(msg))
-      Swal.fire({ title: 'Errore!', text: msg, icon: 'error' })
       return false
     } finally {
       isDeleting.value = false
@@ -171,13 +167,16 @@ export const useFileFromDynamoDB = () => {
           return true
         } catch (err) {
           if (err instanceof DownloadCancelled) return false
-          Swal.fire({ title: 'Errore Decifratura!', text: 'Impossibile decifrare il file.', icon: 'error' })
+          notify.error('Impossibile decifrare il file.', 'Decifratura non riuscita')
           return false
         }
       }
 
       // --- Formato v1 (legacy): intero blob con un unico IV ---
       const response = await fetch(downloadUrl)
+      // `fetch` non fallisce su 403/404: senza questo un URL scaduto finiva nella decifratura
+      // e l'errore mostrato era «impossibile decifrare», che manda a cercare il guasto sbagliato.
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const blob = await response.blob()
       let finalBlob = blob
 
@@ -187,7 +186,7 @@ export const useFileFromDynamoDB = () => {
           const iv = importIVFromBase64(keyData.iv)
           finalBlob = await decryptFile(blob, key, iv)
         } catch {
-          Swal.fire({ title: 'Errore Decifratura!', text: 'Impossibile decifrare il file.', icon: 'error' })
+          notify.error('Impossibile decifrare il file.', 'Decifratura non riuscita')
           return false
         }
       } else if (file.isEncrypted) {
@@ -211,8 +210,8 @@ export const useFileFromDynamoDB = () => {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
       return true
-    } catch {
-      Swal.fire({ title: 'Errore!', text: 'Errore durante il download del file', icon: 'error' })
+    } catch (err) {
+      notifyApiError(err, 'Download non riuscito', 'Errore durante il download del file')
       return false
     }
   }
@@ -224,8 +223,7 @@ export const useFileFromDynamoDB = () => {
       )
       return { url: data.url, fileName: file.fileName, fileSize: file.fileSize, uploadDate: file.uploadedAt, expiresIn: '1 ora', fileType: file.fileType }
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } } }
-      Swal.fire({ title: 'Errore', text: e.response?.data?.message || 'Impossibile creare il link', icon: 'error' })
+      notifyApiError(err, 'Link non creato', 'Impossibile creare il link')
       return null
     }
   }

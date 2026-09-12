@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
+import { apiErrorMessage } from '@/src/utils/apiError'
 
 /**
  * "Reclama questo invio" (roadmap F3) — il ponte tra un invio guest e un account.
@@ -96,7 +97,17 @@ export async function redeemPendingClaim(): Promise<boolean> {
     if (status === 400 || status === 403 || status === 404) {
       // Risposta definitiva: già adottato, scaduto o token non valido. Non ritentare.
       clearPendingClaim()
-      notify.info('L’ultimo invio senza account non è più reclamabile: il link è scaduto o già adottato.')
+      notify.info(
+        apiErrorMessage(error) ?? 'L’ultimo invio senza account non è più reclamabile: il link è scaduto o già adottato.',
+        'Invio non reclamabile',
+      )
+    } else {
+      // Transitorio (rete, 5xx): il claim resta in coda e si ritenta al prossimo ingresso.
+      notify.warning(
+        apiErrorMessage(error) ??
+          'Non siamo riusciti a collegare l’ultimo invio al tuo account. Riproveremo al prossimo accesso.',
+        'Invio non ancora reclamato',
+      )
     }
     return false
   }

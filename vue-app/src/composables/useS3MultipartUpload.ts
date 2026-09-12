@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
+import { notifyApiError } from '@/src/utils/apiError'
 import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
 import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64, encryptFileName, FILENAME_VERSION } from '@/src/crypto/crypto'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
@@ -95,7 +96,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     const limit = parsePlanLimitError(error)
 
     if (limit) {
-      notify.warning(limit.message)
+      notify.warning(limit.message, 'Limite del piano')
 
       if (limit.suggestsUpgrade) {
         // Per il cap per file il dialogo sa già proporre il piano più piccolo che basta;
@@ -104,7 +105,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
         else promptWithReason(limit.message)
       }
     } else {
-      notify.error("Errore durante l'upload del file")
+      notifyApiError(error, 'Caricamento non riuscito', "Errore durante l'upload del file")
     }
 
     state.value.status = 'error'
@@ -230,12 +231,12 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       partsQueue.value = queue
 
       if (!currentUploadId || !currentFileKey) {
-        notify.error("Errore interno durante l'upload")
+        notify.error("Errore interno durante l'upload", 'Caricamento non riuscito')
         return
       }
 
       activeUploads++
-      uploadPart(part, currentUploadId, currentFileKey).catch(async () => {
+      uploadPart(part, currentUploadId, currentFileKey).catch(async (err) => {
         activeUploads--
         const newProgress = { ...activePartsProgress.value }
         delete newProgress[part.partNumber]
@@ -246,7 +247,9 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
           partsQueue.value = [part, ...partsQueue.value]
           processQueue(context)
         } else {
-          handleError(new Error(`Failed to upload part ${part.partNumber} after retries`))
+          // L'errore originale, non uno nuovo: è quello che porta la risposta del server
+          // (limite di piano, messaggio) fino al toast.
+          handleError(err)
         }
       })
     }
