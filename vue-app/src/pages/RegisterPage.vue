@@ -4,12 +4,14 @@ import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie } from '@/src/utils/cookieStore'
 import Swal from 'sweetalert2'
-import { AuthFlowType, SignUpCommand, ConfirmSignUpCommand, InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
+import { SignUpCommand, type AuthenticationResultType } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
+import { passwordRules, PASSWORD_MIN_LENGTH } from '@/src/utils/passwordPolicy'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import BrandSeal from '@/src/components/landing/BrandSeal.vue'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
+import ConfirmEmailForm from '@/src/components/auth/ConfirmEmailForm.vue'
 
 /**
  * Registrazione — stessa carta chiara delle altre superfici pubbliche.
@@ -26,7 +28,6 @@ const name = ref('')
 const surname = ref('')
 const email = ref('')
 const password = ref('')
-const confirmCode = ref('')
 const isLoading = ref(false)
 
 const nameError = ref('')
@@ -35,13 +36,8 @@ const emailError = ref('')
 const passwordError = ref('')
 
 // Criteri password mostrati mentre si scrive, non dopo il rifiuto del server.
-const rules = computed(() => [
-  { label: '8+ caratteri', ok: password.value.length >= 8 },
-  { label: 'una maiuscola', ok: /[A-Z]/.test(password.value) },
-  { label: 'una minuscola', ok: /[a-z]/.test(password.value) },
-  { label: 'un numero', ok: /\d/.test(password.value) },
-  { label: 'un simbolo', ok: /[^A-Za-z0-9]/.test(password.value) },
-])
+// Vengono da utils/passwordPolicy.ts, allineato alla policy vera del User Pool.
+const rules = computed(() => passwordRules(password.value))
 
 const canSubmit = computed(
   () => !!name.value && !!surname.value && !!email.value && rules.value.every((rule) => rule.ok) && !isLoading.value,
@@ -51,7 +47,7 @@ const validate = () => {
   nameError.value = name.value ? '' : 'Nome obbligatorio'
   surnameError.value = surname.value ? '' : 'Cognome obbligatorio'
   emailError.value = !email.value ? 'Email obbligatoria' : (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value) ? 'Formato email non valido' : '')
-  passwordError.value = !password.value ? 'Password obbligatoria' : (password.value.length < 8 ? 'Min 8 caratteri' : '')
+  passwordError.value = !password.value ? 'Password obbligatoria' : (password.value.length < PASSWORD_MIN_LENGTH ? `Min ${PASSWORD_MIN_LENGTH} caratteri` : '')
   return !nameError.value && !surnameError.value && !emailError.value && !passwordError.value
 }
 
@@ -72,39 +68,43 @@ const handleRegister = async () => {
       view.value = 'confirm'
     }
   } catch (error) {
-    Swal.fire({ title: 'Registrazione non riuscita', text: handleCognitoError(error), icon: 'error' })
+    // Email già registrata: può essere un account mai confermato. Da qui NON si rimanda il
+    // codice — non abbiamo prova che la casella sia di chi scrive. Il login verifica la
+    // password e poi apre la conferma con un codice nuovo.
+    if ((error as { name?: string }).name === 'UsernameExistsException') {
+      void Swal.fire({
+        title: 'Email già registrata',
+        // Il messaggio di Cognito, più cosa fare: può essere un account mai confermato.
+        text: `${handleCognitoError(error)} Se non l’hai mai confermato, accedi: ti mandiamo un nuovo codice.`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'Vai all’accesso',
+        cancelButtonText: 'Chiudi',
+      }).then((choice) => {
+        if (choice.isConfirmed) router.push({ path: '/login', query: { email: email.value } })
+      })
+    } else {
+      Swal.fire({ title: 'Registrazione non riuscita', text: handleCognitoError(error), icon: 'error' })
+    }
   } finally {
     isLoading.value = false
   }
 }
 
-const handleConfirm = async () => {
-  isLoading.value = true
-  try {
-    const confirmResponse = await cognitoClient.send(new ConfirmSignUpCommand({
-      ClientId: clientId, Username: email.value, ConfirmationCode: confirmCode.value,
-    }))
-    if (confirmResponse.$metadata.httpStatusCode === 200) {
-      const loginResponse = await cognitoClient.send(new InitiateAuthCommand({
-        AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
-        AuthParameters: { USERNAME: email.value, PASSWORD: password.value },
-        ClientId: clientId,
-      }))
-      if (loginResponse.AuthenticationResult) {
-        const { AccessToken, IdToken, RefreshToken } = loginResponse.AuthenticationResult
-        if (AccessToken && IdToken && RefreshToken) {
-          setAuthCookie('accessToken', AccessToken, 1 / 24)
-          setAuthCookie('idToken', IdToken, 1 / 24)
-          setAuthCookie('refreshToken', RefreshToken, 30)
-        }
-        router.push('/app')
-      }
-    }
-  } catch (error) {
-    Swal.fire({ title: 'Errore', text: handleCognitoError(error), icon: 'error' })
-  } finally {
-    isLoading.value = false
+/**
+ * Codice confermato (vedi ConfirmEmailForm). Con i token si entra; senza — login automatico
+ * non riuscito, raro — l'account è comunque attivo e basta accedere.
+ */
+const onConfirmed = (tokens: AuthenticationResultType | null) => {
+  if (tokens?.AccessToken && tokens.IdToken && tokens.RefreshToken) {
+    setAuthCookie('accessToken', tokens.AccessToken, 1 / 24)
+    setAuthCookie('idToken', tokens.IdToken, 1 / 24)
+    setAuthCookie('refreshToken', tokens.RefreshToken, 30)
+    router.push('/app')
+    return
   }
+  Swal.fire({ title: 'Email confermata', text: 'Ora accedi con la tua password.', icon: 'success' })
+  router.push({ path: '/login', query: { email: email.value } })
 }
 </script>
 
@@ -196,7 +196,7 @@ const handleConfirm = async () => {
             <span class="h-px flex-1 bg-[#f0ebfa]" />
           </div>
 
-          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Errore', text: err, icon: 'error' })" />
+          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Accesso con Google non avviato', text: err, icon: 'error' })" />
 
           <div class="pt-1 text-center text-[0.82rem] text-[#6a5f8c]">
             Hai già un account?
@@ -204,30 +204,14 @@ const handleConfirm = async () => {
           </div>
         </form>
 
-        <form v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleConfirm">
-          <p class="px-0.5 text-[0.86rem] leading-snug text-[#6a5f8c]">
-            Abbiamo mandato un codice a <b class="font-mono text-[0.82rem] text-[#1b1140]">{{ email }}</b>.
-            Incollalo qui e sei dentro.
-          </p>
-          <FieldInput
-            v-model="confirmCode"
-            label="Codice di verifica"
-            mono
-            placeholder="123456"
-            autocomplete="one-time-code"
-            :disabled="isLoading"
-          />
-          <button
-            type="submit"
-            class="lt-btn"
-            :disabled="!confirmCode || isLoading"
-          >
-            {{ isLoading ? 'Verifico…' : 'Conferma e entra' }}
-          </button>
-          <button type="button" class="text-[0.82rem] font-semibold text-[#6a5f8c] hover:underline" @click="view = 'form'">
-            ← Correggi i dati
-          </button>
-        </form>
+        <ConfirmEmailForm
+          v-else
+          :email="email"
+          :password="password"
+          back-label="← Correggi i dati"
+          @confirmed="onConfirmed"
+          @back="view = 'form'"
+        />
       </div>
     </div>
   </PublicShell>

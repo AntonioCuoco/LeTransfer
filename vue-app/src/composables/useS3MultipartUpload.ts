@@ -1,9 +1,9 @@
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notify } from '@/src/utils/notify'
-import { notifyApiError } from '@/src/utils/apiError'
-import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse } from '@/src/types/multipart-upload'
+import { apiErrorMessage, notifyApiError } from '@/src/utils/apiError'
+import type { MultipartUploadConfig, MultipartUploadState, UploadedPart, InitUploadResponse, GetPresignedUrlsResponse, CompleteUploadResponse, UploadStatus } from '@/src/types/multipart-upload'
 import { generateAESKey, generateIV, encryptChunkFramed, encryptedSizeV2, FILE_FORMAT_VERSION, exportKeyToBase64, exportIVToBase64, encryptFileName, FILENAME_VERSION } from '@/src/crypto/crypto'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { parsePlanLimitError } from '@/src/utils/planLimitError'
@@ -15,6 +15,9 @@ const DEFAULT_CONFIG: MultipartUploadConfig = {
   concurrency: 3,
   apiBaseUrl: import.meta.env.VITE_API_URL || '/api',
 }
+
+const VAULT_LOCKED_MESSAGE =
+  'Sblocca le tue chiavi, o crea le 24 parole, prima di caricare: senza, il file non si potrebbe più aprire.'
 
 interface PendingPart {
   partNumber: number
@@ -53,6 +56,9 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   let isPaused = false
   // Dimensione totale del file CIFRATO (v2 = originale + 28 byte per chunk): base dei progressi.
   let totalEncryptedBytes = 0
+  // La fileKey di cui la chiave è già sul server, finché l'upload non è completato: se
+  // l'upload muore prima, quella chiave va tolta.
+  let storedKeyFor: string | null = null
 
   // Encryption refs (avoid stale closure in async complete callback)
   const encryptionKeyRef = shallowRef<CryptoKey | null>(null)
@@ -88,6 +94,17 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     return completed + active
   }
 
+  /**
+   * Toglie la chiave di un upload che non arriverà in fondo, per non lasciarne una orfana.
+   * Best-effort: una chiave in più non fa danni, una in meno è un file perso — per questo
+   * la chiave si salva prima dei byte e si pulisce dopo, e non il contrario.
+   */
+  const discardStoredKey = () => {
+    const fileKey = storedKeyFor
+    storedKeyFor = null
+    if (fileKey) void encryptionStore.removeKey(fileKey).catch(() => {})
+  }
+
   const handleError = (error: Error) => {
     // Il `413` è l'unico errore che ha una risposta utile — ma sono **tre** motivi diversi
     // (file troppo grande, spazio pieno, tetto mensile esaurito) e vogliono tre risposte
@@ -96,7 +113,8 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     const limit = parsePlanLimitError(error)
 
     if (limit) {
-      notify.warning(limit.message, 'Limite del piano')
+      // Il testo è quello del server. I numeri che manda insieme restano al dialogo di upgrade.
+      notify.warning(apiErrorMessage(error) ?? limit.message, 'Limite del piano')
 
       if (limit.suggestsUpgrade) {
         // Per il cap per file il dialogo sa già proporre il piano più piccolo che basta;
@@ -111,6 +129,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     state.value.status = 'error'
     state.value.error = error
     abortController.value?.abort()
+    discardStoredKey()
   }
 
   const completeMultipartUpload = async (uploadId?: string, fileKey?: string) => {
@@ -123,8 +142,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     try {
       const sortedParts = [...uploadedParts.value].sort((a, b) => a.PartNumber - b.PartNumber)
       const headers = await getHeaders()
-      // Letta prima della chiamata: serve sia a cifrare il nome qui sotto, sia a salvare la
-      // chiave dopo. Era dichiarata più in basso, e usarla prima sarebbe stato un errore.
+      // Serve a cifrare il nome qui sotto.
       const currentKey = encryptionKeyRef.value
 
       await api.post<CompleteUploadResponse>('/upload/multipart/complete', {
@@ -146,19 +164,11 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
         userEmail: finalConfig.userEmail,
       }, { headers })
 
-      // Store encryption key wrapped with master key via Pinia store
-      const currentIV = encryptionIVRef.value
+      // La chiave è sul server da `init`. Qui l'upload è davvero finito: da ora nessun
+      // errore deve più toglierla.
       state.value.encryptionKey = currentKey
-      state.value.encryptionIV = currentIV
-      if (currentKey && currentIV && encryptionStore.isUnlocked) {
-        try {
-          const keyBase64 = await exportKeyToBase64(currentKey)
-          const ivBase64 = exportIVToBase64(currentIV)
-          await encryptionStore.storeKey(finalFileKey, { key: keyBase64, iv: ivBase64 })
-        } catch {
-          notify.error('Errore nel salvataggio della chiave di cifratura')
-        }
-      }
+      state.value.encryptionIV = encryptionIVRef.value
+      storedKeyFor = null
 
       state.value.status = 'completed'
       state.value.progress.percentage = 100
@@ -258,7 +268,25 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   const uploadFile = async (file: File) => {
     if (state.value.status === 'uploading' || state.value.status === 'initializing') return
 
+    // Senza master key la chiave del file non si può salvare: il file arriverebbe sul server
+    // e nessuno potrebbe più aprirlo. Ci si ferma prima di mandare un solo byte. Il server
+    // lo rifiuta comunque (RECOVERY_KEY_REQUIRED / FILE_KEY_MISSING): questo evita di arrivarci.
+    if (!encryptionStore.isUnlocked) {
+      notify.warning(VAULT_LOCKED_MESSAGE, 'Caricamento bloccato')
+      state.value = {
+        status: 'error',
+        progress: { uploadedBytes: 0, totalBytes: file.size, percentage: 0, speed: 0, eta: 0 },
+        error: new Error(VAULT_LOCKED_MESSAGE),
+        uploadId: null,
+        fileKey: null,
+        encryptionKey: null,
+        encryptionIV: null,
+      }
+      return
+    }
+
     fileRef = file
+    storedKeyFor = null
     abortController.value = new AbortController()
     partsQueue.value = []
     uploadedParts.value = []
@@ -307,9 +335,28 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
         userId: finalConfig.userId,
       }, { headers })
 
-      state.value.status = 'uploading'
       state.value.uploadId = initData.uploadId
       state.value.fileKey = initData.fileKey
+
+      // ⚠️ La chiave va al server PRIMA dei byte. Prima si salvava a fine upload: se il
+      // salvataggio falliva, o il vault era chiuso, il file restava sul server senza chiave,
+      // illeggibile per sempre e senza un errore. `complete` ora la pretende (409).
+      const stored = await encryptionStore.storeKey(initData.fileKey, {
+        key: await exportKeyToBase64(encryptionKey),
+        iv: exportIVToBase64(encryptionIV),
+      })
+      if (!stored) {
+        // Il toast lo ha già mostrato storeKey. Si chiude il multipart appena aperto.
+        await api
+          .post('/upload/multipart/abort', { fileKey: initData.fileKey, uploadId: initData.uploadId }, { headers })
+          .catch(() => {})
+        state.value.status = 'error'
+        state.value.error = new Error('Chiave del file non salvata')
+        return
+      }
+      storedKeyFor = initData.fileKey
+
+      state.value.status = 'uploading'
 
       const existingPartNumbers = new Set((initData.existingParts || []).map(p => p.PartNumber))
       if (initData.existingParts) {
@@ -333,6 +380,26 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     } catch (err) {
       handleError(err as Error)
     }
+  }
+
+  /**
+   * Carica un file e aspetta la fine: restituisce la fileKey, oppure `null` se l'upload non è
+   * arrivato in fondo (il motivo l'ha già mostrato il motore). Serve a chi deve fare qualcosa
+   * CON il file appena caricato — per esempio consegnarlo a una persona (useSendFiles).
+   * ⚠️ Un'istanza alla volta: chiamarla mentre la stessa istanza sta già caricando aspetterebbe
+   * l'upload sbagliato.
+   */
+  const uploadFileAndWait = async (file: File): Promise<string | null> => {
+    await uploadFile(file)
+    return new Promise<string | null>((resolve) => {
+      const settle = (status: UploadStatus): boolean => {
+        if (status === 'completed') { resolve(state.value.fileKey); return true }
+        if (status === 'error' || status === 'aborted' || status === 'idle') { resolve(null); return true }
+        return false
+      }
+      if (settle(state.value.status)) return
+      const stop = watch(() => state.value.status, (status) => { if (settle(status)) stop() })
+    })
   }
 
   const pauseUpload = () => {
@@ -367,6 +434,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     activePartsProgress.value = {}
     activeUploads = 0
     totalEncryptedBytes = 0
+    storedKeyFor = null
     encryptionKeyRef.value = null
     encryptionIVRef.value = null
   }
@@ -382,6 +450,9 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
         }, { headers })
       } catch { /* ignore */ }
     }
+    // Annullato a metà: la chiave di un file che non esisterà va tolta. A upload completato
+    // invece resta, perché il file c'è.
+    if (state.value.status !== 'completed') discardStoredKey()
     resetUpload()
   }
 
@@ -396,6 +467,7 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   return {
     state,
     uploadFile,
+    uploadFileAndWait,
     pauseUpload,
     resumeUpload,
     abortUpload,

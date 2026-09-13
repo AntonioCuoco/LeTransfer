@@ -13,7 +13,7 @@ import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
-import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT } from '@/src/crypto/streamingDownload'
+import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage } from '@/src/crypto/streamingDownload'
 
 /**
  * Ricezione di un link pubblico (roadmap F1.4) — l'altra metà della facciata.
@@ -170,6 +170,7 @@ const handleDownload = async () => {
         } else {
           // --- Formato v1 (legacy): intero blob con un unico IV ---
           const res = await fetch(url)
+          assertStorageResponse(res)
           const encryptedBlob = await res.blob()
           const decryptedBlob = await decryptFile(encryptedBlob, encryptionInfo.value.key, encryptionInfo.value.iv)
           const downloadUrl = URL.createObjectURL(decryptedBlob)
@@ -184,7 +185,10 @@ const handleDownload = async () => {
         }
       } catch (err) {
         shell.value?.calm()
-        if (!(err instanceof DownloadCancelled)) notify.error('Errore durante la decifratura del file', 'Decifratura non riuscita')
+        // Il motivo vero (link scaduto, file troncato, rete) se c'è; «decifratura» solo se lo è.
+        if (!(err instanceof DownloadCancelled)) {
+          notify.error(downloadErrorMessage(err, 'Errore durante la decifratura del file.'), 'Download non riuscito')
+        }
       } finally {
         isDecrypting.value = false
       }
@@ -242,8 +246,11 @@ const buildLocalPreview = async () => {
     // Sostituisce l'eventuale anteprima precedente senza lasciare object URL appesi.
     if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
     previewUrl.value = URL.createObjectURL(blob)
-  } catch {
-    notify.error('Non è stato possibile generare l’anteprima. Il download resta disponibile.', 'Anteprima non disponibile')
+  } catch (err) {
+    notify.error(
+      downloadErrorMessage(err, 'Non è stato possibile generare l’anteprima. Il download resta disponibile.'),
+      'Anteprima non disponibile',
+    )
   } finally {
     isPreviewing.value = false
   }

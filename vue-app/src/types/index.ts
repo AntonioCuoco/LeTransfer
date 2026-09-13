@@ -265,12 +265,6 @@ export interface LoadFilesOptions {
   onlyOwned?: boolean
 }
 
-export interface UploadFileOptions {
-  onProgress?: (progress: number) => void
-  onSuccess?: (file: DynamoDBFile) => void
-  onError?: (error: Error) => void
-}
-
 export interface DeleteFileOptions {
   onSuccess?: () => void
   onError?: (error: Error) => void

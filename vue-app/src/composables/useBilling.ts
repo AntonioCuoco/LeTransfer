@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
-import { notifyApiError } from '@/src/utils/apiError'
+import { apiErrorMessage, notifyApiError } from '@/src/utils/apiError'
 import { PLAN_PRICES_PROVISIONAL, type PlanId } from '@/src/types/plan'
 
 /**
@@ -74,7 +74,10 @@ export function useBilling() {
       const status = (error as { response?: { status?: number } }).response?.status
       if (status === 404 || status === 501) {
         isUnavailable.value = true
-        notify.info('I pagamenti non sono ancora attivi. Stiamo completando l’integrazione.')
+        notify.info(
+          apiErrorMessage(error) ?? 'I pagamenti non sono ancora attivi. Stiamo completando l’integrazione.',
+          'Pagamenti non attivi',
+        )
       } else {
         notifyApiError(error, 'Pagamento non avviato', 'Non siamo riusciti ad aprire il pagamento. Riprova tra poco.')
       }

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { notify } from '@/src/utils/notify'
-import { generateRecoveryKey, deriveMasterKeyFromMnemonic } from '@/src/crypto/recovery-key'
+import { generateRecoveryKey, deriveMasterKeyFromMnemonic, createVerificationHash } from '@/src/crypto/recovery-key'
+import { rememberMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
 import { generateSalt, arrayBufferToBase64 } from '@/src/crypto/crypto'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -43,6 +44,8 @@ const mnemonic = ref('')
 const revealed = ref(false)
 const isVerifying = ref(false)
 const acknowledged = ref(false)
+// Non spuntata di default: ricordare il dispositivo è una scelta. Vedi rememberedDevice.ts.
+const rememberDevice = ref(false)
 
 // Indici (0-based) delle parole da ridigitare, estratti a caso alla generazione.
 const challengeIndexes = ref<number[]>([])
@@ -115,21 +118,22 @@ const performSetup = async () => {
     const salt = generateSalt()
     const masterKey = await deriveMasterKeyFromMnemonic(mnemonic.value, salt)
 
-    const dataToEncrypt = new TextEncoder().encode('VERIFY')
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-    const encryptedBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, dataToEncrypt)
-
-    const encArr = new Uint8Array(encryptedBuffer)
-    const packed = new Uint8Array(12 + encArr.byteLength)
-    packed.set(iv)
-    packed.set(encArr, 12)
-
-    const verificationHash = arrayBufferToBase64(packed.slice().buffer)
+    const verificationHash = await createVerificationHash(masterKey)
     const saltBase64 = arrayBufferToBase64(salt.slice().buffer)
 
     const success = await setupRecoveryKey({ salt: saltBase64, verificationHash })
     if (success) {
       encryptionStore.setMasterKey(masterKey)
+      if (rememberDevice.value) {
+        try {
+          await rememberMasterKey(masterKey)
+        } catch {
+          notify.warning(
+            'La chiave è attiva, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo le 24 parole.',
+            'Dispositivo non ricordato',
+          )
+        }
+      }
       // La mnemonica esce dalla memoria appena non serve più.
       mnemonic.value = ''
       answers.value = ['', '', '']
@@ -275,6 +279,17 @@ const handleConfirm = async () => {
           />
         </div>
       </div>
+
+      <label class="flex cursor-pointer items-start gap-2.5 text-[0.9rem] text-haze-200">
+        <input v-model="rememberDevice" type="checkbox" class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brand-500)]" />
+        <span>
+          Ricorda su questo dispositivo per {{ REMEMBER_DAYS }} giorni
+          <span class="mt-0.5 block text-[0.78rem] leading-relaxed text-haze-400">
+            Così non ti chiediamo le 24 parole a ogni accesso. Non spuntarla su un computer condiviso:
+            chi lo usa con il tuo account aperto potrebbe aprire i tuoi file.
+          </span>
+        </span>
+      </label>
 
       <div class="flex justify-between gap-2">
         <Button label="Rivedile" severity="secondary" outlined @click="currentStep = 1" />

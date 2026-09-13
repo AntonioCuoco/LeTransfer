@@ -4,16 +4,22 @@ import Cookies from 'js-cookie'
 import Swal from 'sweetalert2'
 import { notify } from '@/src/utils/notify'
 import { notifyApiError } from '@/src/utils/apiError'
-import type { DynamoDBFile, LoadFilesOptions, UploadFileOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
+import type { DynamoDBFile, LoadFilesOptions, DeleteFileOptions, ShareLinkData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
-import { downloadAndDecryptV2, shouldWarnLargeDownload, DownloadCancelled } from '@/src/crypto/streamingDownload'
+import {
+  downloadAndDecryptV2,
+  shouldWarnLargeDownload,
+  DownloadCancelled,
+  DownloadError,
+  assertStorageResponse,
+  downloadErrorMessage,
+} from '@/src/crypto/streamingDownload'
 import { resolveFileName } from '@/src/utils/fileNames'
 
 export const useFileFromDynamoDB = () => {
   const files = ref<DynamoDBFile[]>([])
   const isLoading = ref(false)
-  const isUploading = ref(false)
   const isDeleting = ref(false)
   const error = ref<string | null>(null)
   const nextKey = ref<string | null>(null)
@@ -21,8 +27,11 @@ export const useFileFromDynamoDB = () => {
 
   const encryptionStore = useEncryptionStore()
 
-  // Istanza axios SENZA interceptor: gli URL S3 presigned non devono ricevere l'accessToken (#8).
-  const s3Api = axios.create()
+  // ⚠️ Qui c'era `uploadFile`: un caricamento in chiaro, senza cifratura, verso
+  // `GET /presigned-url` — un endpoint delle vecchie Lambda che nel backend Express non esiste
+  // più. Non la chiamava nessuno, ed è stata tolta: in un prodotto che promette la cifratura,
+  // un percorso di upload in chiaro pronto all'uso è un rischio anche da spento. L'unico
+  // upload dell'area autenticata è useS3MultipartUpload.
 
   const getToken = () => Cookies.get('idToken')
 
@@ -76,36 +85,6 @@ export const useFileFromDynamoDB = () => {
     }
   }
 
-  const uploadFile = async (file: File, options?: UploadFileOptions): Promise<string | null> => {
-    isUploading.value = true
-    error.value = null
-    try {
-      const token = getToken()
-      if (!token) throw new Error('Token di autenticazione non trovato')
-      const { data: presignedData } = await axios.get(`${import.meta.env.VITE_API_URL}/presigned-url`, {
-        params: { fileName: file.name, fileType: file.type },
-      })
-      await s3Api.put(presignedData.uploadUrl, file, {
-        headers: { 'Content-Type': file.type },
-        onUploadProgress: (evt) => {
-          if (options?.onProgress && evt.total) {
-            options.onProgress(Math.round((evt.loaded * 100) / evt.total))
-          }
-        },
-      })
-      await loadFiles()
-      if (options?.onSuccess && presignedData.file) options.onSuccess(presignedData.file)
-      return presignedData.key
-    } catch (err: unknown) {
-      const msg = notifyApiError(err, 'Caricamento non riuscito', "Errore durante l'upload del file")
-      error.value = msg
-      options?.onError?.(new Error(msg))
-      return null
-    } finally {
-      isUploading.value = false
-    }
-  }
-
   const deleteFile = async (fileId: string, s3Key: string, options?: DeleteFileOptions): Promise<boolean> => {
     isDeleting.value = true
     error.value = null
@@ -131,7 +110,7 @@ export const useFileFromDynamoDB = () => {
   const downloadFile = async (file: DynamoDBFile): Promise<boolean> => {
     try {
       const downloadUrl = file.s3Url
-      if (!downloadUrl) throw new Error('URL del file non disponibile')
+      if (!downloadUrl) throw new DownloadError('L’indirizzo del file non è disponibile: ricarica la pagina e riprova.')
 
       const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
 
@@ -167,7 +146,7 @@ export const useFileFromDynamoDB = () => {
           return true
         } catch (err) {
           if (err instanceof DownloadCancelled) return false
-          notify.error('Impossibile decifrare il file.', 'Decifratura non riuscita')
+          notify.error(downloadErrorMessage(err, 'Impossibile decifrare il file.'), 'Download non riuscito')
           return false
         }
       }
@@ -176,7 +155,7 @@ export const useFileFromDynamoDB = () => {
       const response = await fetch(downloadUrl)
       // `fetch` non fallisce su 403/404: senza questo un URL scaduto finiva nella decifratura
       // e l'errore mostrato era «impossibile decifrare», che manda a cercare il guasto sbagliato.
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      assertStorageResponse(response)
       const blob = await response.blob()
       let finalBlob = blob
 
@@ -211,7 +190,9 @@ export const useFileFromDynamoDB = () => {
       URL.revokeObjectURL(url)
       return true
     } catch (err) {
-      notifyApiError(err, 'Download non riuscito', 'Errore durante il download del file')
+      // Qui non ci sono chiamate al backend: gli errori sono dello storage o della rete, e il
+      // loro motivo lo porta DownloadError.
+      notify.error(downloadErrorMessage(err, 'Errore durante il download del file.'), 'Download non riuscito')
       return false
     }
   }
@@ -231,12 +212,11 @@ export const useFileFromDynamoDB = () => {
   const reset = () => {
     files.value = []
     isLoading.value = false
-    isUploading.value = false
     isDeleting.value = false
     error.value = null
     nextKey.value = null
     hasMore.value = false
   }
 
-  return { files, isLoading, isUploading, isDeleting, error, hasMore, nextKey, loadFiles, loadMoreFiles, uploadFile, deleteFile, downloadFile, createShareLink, reset }
+  return { files, isLoading, isDeleting, error, hasMore, nextKey, loadFiles, loadMoreFiles, deleteFile, downloadFile, createShareLink, reset }
 }

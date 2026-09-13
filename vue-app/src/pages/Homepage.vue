@@ -5,8 +5,8 @@ import { notify } from '@/src/utils/notify'
 import StatCard from '@/src/components/ui/StatCard.vue'
 import TransferStatusPanel from '@/src/components/TransferStatusPanel.vue'
 import FileSender from '@/src/components/FileSender/FileSender.vue'
+import UploadVaultGate from '@/src/components/upload/UploadVaultGate.vue'
 import MultipartFileUploader from '@/src/components/MultipartFileUploader.vue'
-import ShareFileModal from '@/src/components/ShareFileModal.vue'
 import { useTransferStore } from '@/src/stores/transfer'
 import { useFolderDragAndDrop } from '@/src/composables/useFolderDragAndDrop'
 import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
@@ -17,7 +17,7 @@ import { useDownloadActivity } from '@/src/composables/useDownloadActivity'
 import PlanBadge from '@/src/components/billing/PlanBadge.vue'
 import { formatBytes } from '@/src/types/plan'
 import { fileBadge } from '@/src/utils/fileBadge'
-import type { DynamoDBFile, ShareLinkData } from '@/src/types'
+import type { DynamoDBFile } from '@/src/types'
 
 /**
  * Dashboard = **da dove parte un file** (roadmap F5). La gestione di ciò che è già
@@ -35,7 +35,7 @@ import type { DynamoDBFile, ShareLinkData } from '@/src/types'
 
 const router = useRouter()
 const store = useTransferStore()
-const { isUploading, loadFiles } = useFileFromDynamoDB()
+const { loadFiles } = useFileFromDynamoDB()
 const { links, fetchLinks } = useSharedLinks()
 const {
   plan,
@@ -49,10 +49,6 @@ const {
 const { promptForFileSize } = useUpgradePrompt()
 const { newSince } = useDownloadActivity()
 
-const shareModalVisible = ref(false)
-const shareData = ref<ShareLinkData | null>(null)
-const shareUserModalVisible = ref(false)
-const fileToShare = ref<DynamoDBFile | null>(null)
 const previewFiles = ref<File[]>([])
 const previewModalVisible = ref(false)
 const recentFiles = ref<DynamoDBFile[]>([])
@@ -160,13 +156,8 @@ const handleFilesConfirm = (files: File[]) => {
   }
 }
 
-const copyToClipboard = async (text: string) => {
-  try { await navigator.clipboard.writeText(text); notify.success('Link copiato negli appunti!') }
-  catch { notify.error('Errore durante la copia del link') }
-}
-
 const openFolderInput = () => {
-  if (!isUploading.value) document.getElementById('folder-input')?.click()
+  document.getElementById('folder-input')?.click()
 }
 
 const refreshAll = async () => {
@@ -278,40 +269,39 @@ onMounted(() => {
           Il file resta tuo. Ci generi link quando vuoi, con scadenza, password e limite di download.
         </p>
 
-        <div
-          ref="dropZoneRef"
-          v-bind="dragProps"
-          class="cursor-pointer rounded-well border-2 border-dashed p-6 text-center transition-colors"
-          :class="[
-            isDragOver ? 'border-brand-400 bg-brand-500/10' : 'border-white/15 hover:border-brand-400 hover:bg-white/[0.04]',
-            isUploading ? 'cursor-not-allowed opacity-50' : '',
-          ]"
-          @click="openFolderInput"
-        >
-          <input
-            id="folder-input"
-            type="file"
-            webkitdirectory=""
-            multiple
-            :disabled="isUploading"
-            class="hidden"
-            @change="(e) => { const files = (e.target as HTMLInputElement).files; if (files?.length) { previewFiles = Array.from(files); previewModalVisible = true; (e.target as HTMLInputElement).value = '' } }"
-          />
-          <i class="pi pi-folder-open mb-3 block text-3xl text-brand-400" />
-          <p class="m-0 text-[0.95rem] font-semibold" :class="isDragOver ? 'text-brand-300' : 'text-haze-100'">
-            {{ isDragOver ? 'Rilascia qui' : 'Trascina file o cartelle' }}
-          </p>
-          <p class="m-0 mt-1 font-mono text-[0.72rem] text-haze-400">ricorsivo · coda automatica</p>
-        </div>
-
-        <details class="mt-4 rounded-well border border-white/10 bg-white/[0.02]">
-          <summary class="cursor-pointer list-none px-4 py-3 text-[0.88rem] font-semibold text-haze-200 hover:text-haze-100">
-            File molto grande (oltre 100 MB) →
-          </summary>
-          <div class="border-t border-white/10 p-4">
-            <MultipartFileUploader :api-base-url="apiMultipartUrl" :on-upload-complete="refreshAll" />
+        <!-- Bloccato finché il vault non è sbloccato: vedi UploadVaultGate -->
+        <UploadVaultGate>
+          <div
+            ref="dropZoneRef"
+            v-bind="dragProps"
+            class="cursor-pointer rounded-well border-2 border-dashed p-6 text-center transition-colors"
+            :class="isDragOver ? 'border-brand-400 bg-brand-500/10' : 'border-white/15 hover:border-brand-400 hover:bg-white/[0.04]'"
+            @click="openFolderInput"
+          >
+            <input
+              id="folder-input"
+              type="file"
+              webkitdirectory=""
+              multiple
+              class="hidden"
+              @change="(e) => { const files = (e.target as HTMLInputElement).files; if (files?.length) { previewFiles = Array.from(files); previewModalVisible = true; (e.target as HTMLInputElement).value = '' } }"
+            />
+            <i class="pi pi-folder-open mb-3 block text-3xl text-brand-400" />
+            <p class="m-0 text-[0.95rem] font-semibold" :class="isDragOver ? 'text-brand-300' : 'text-haze-100'">
+              {{ isDragOver ? 'Rilascia qui' : 'Trascina file o cartelle' }}
+            </p>
+            <p class="m-0 mt-1 font-mono text-[0.72rem] text-haze-400">ricorsivo · coda automatica</p>
           </div>
-        </details>
+
+          <details class="mt-4 rounded-well border border-white/10 bg-white/[0.02]">
+            <summary class="cursor-pointer list-none px-4 py-3 text-[0.88rem] font-semibold text-haze-200 hover:text-haze-100">
+              File molto grande (oltre 100 MB) →
+            </summary>
+            <div class="border-t border-white/10 p-4">
+              <MultipartFileUploader :api-base-url="apiMultipartUrl" :on-upload-complete="refreshAll" />
+            </div>
+          </details>
+        </UploadVaultGate>
       </section>
 
       <!-- 2. A una persona -->
@@ -324,10 +314,9 @@ onMounted(() => {
           Cifrato verso la sua chiave pubblica: nemmeno noi possiamo aprirlo. Prima di consegnare
           la chiave ti mostriamo l'impronta del destinatario, così puoi verificarla.
         </p>
-        <FileSender
-          @file-sent="refreshAll"
-          @link-generated="(data: ShareLinkData) => { shareData = data; shareModalVisible = true }"
-        />
+        <UploadVaultGate>
+          <FileSender @file-sent="refreshAll" />
+        </UploadVaultGate>
       </section>
     </div>
 
@@ -370,47 +359,6 @@ onMounted(() => {
       </section>
     </div>
 
-    <!-- Link generato dal FileSender -->
-    <Dialog v-model:visible="shareModalVisible" modal :style="{ width: 'min(600px, 94vw)' }">
-      <template #header>
-        <div class="flex items-center gap-2">
-          <i class="pi pi-link text-primary" />
-          <span class="text-white">Link di condivisione creato</span>
-        </div>
-      </template>
-      <div v-if="shareData" class="space-y-4">
-        <div>
-          <label class="lt-label mb-2 block !text-haze-400">Link per il download</label>
-          <div class="flex gap-2">
-            <InputText :model-value="shareData.url || ''" readonly fluid class="flex-1" />
-            <Button label="Copia" icon="pi pi-copy" @click="copyToClipboard(shareData.url)" />
-          </div>
-        </div>
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div class="rounded-well bg-white/[0.04] p-4">
-            <h4 class="mb-3 flex items-center gap-2 font-medium text-white"><i class="pi pi-file text-primary" /> File</h4>
-            <div class="space-y-2 font-mono text-[0.78rem]">
-              <div class="flex justify-between gap-2">
-                <span class="text-haze-400">nome</span>
-                <span v-tooltip="shareData.fileName" class="cursor-help truncate text-haze-100">{{ shareData.fileName }}</span>
-              </div>
-              <div class="flex justify-between gap-2"><span class="text-haze-400">peso</span><span class="text-haze-100">{{ shareData.fileSize }}</span></div>
-            </div>
-          </div>
-          <div class="rounded-well bg-white/[0.04] p-4">
-            <h4 class="mb-3 flex items-center gap-2 font-medium text-white"><i class="pi pi-clock text-primary" /> Link</h4>
-            <div class="space-y-2 font-mono text-[0.78rem]">
-              <div class="flex justify-between"><span class="text-haze-400">scadenza</span><span class="text-haze-100">{{ shareData.expiresIn }}</span></div>
-              <div class="flex justify-between"><span class="text-haze-400">stato</span><span class="text-verified-400">attivo ✓</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <Button label="Chiudi" severity="secondary" outlined @click="shareModalVisible = false" />
-      </template>
-    </Dialog>
-
     <!-- Anteprima della cartella trascinata -->
     <Dialog
       v-model:visible="previewModalVisible"
@@ -436,12 +384,5 @@ onMounted(() => {
         <Button :label="`Carica ${previewFiles.length} file`" @click="handleFilesConfirm(previewFiles)" />
       </template>
     </Dialog>
-
-    <ShareFileModal
-      :visible="shareUserModalVisible"
-      :file="fileToShare"
-      :on-close="() => { shareUserModalVisible = false; fileToShare = null }"
-      :on-success="refreshAll"
-    />
   </div>
 </template>

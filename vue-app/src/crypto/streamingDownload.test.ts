@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT } from './streamingDownload'
+import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT, DownloadError, downloadErrorMessage } from './streamingDownload'
 import { generateAESKey, encryptChunkFramed } from './crypto'
 
 /**
@@ -136,6 +136,46 @@ describe('decryptToBlob — giro completo', () => {
       decryptToBlob({ url: 'https://storage.test/x', key, chunkSize: 1024, originalSize: PREVIEW_SIZE_LIMIT + 1 }),
     ).rejects.toThrow()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Il motivo di un download fallito deve arrivare all'utente com'è. Prima un link firmato
+ * scaduto (403) diventava «Download non riuscito», e i chiamanti lo mostravano come «errore
+ * durante la decifratura»: un'altra causa, che fa cercare il guasto dove non è.
+ */
+describe('errori del download — il motivo vero', () => {
+  it('un link scaduto dice che il link è scaduto, non che la decifratura è fallita', async () => {
+    const key = await generateAESKey()
+    globalThis.fetch = vi.fn(async () => new Response('AccessDenied', { status: 403 })) as unknown as typeof fetch
+
+    const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize: 1024, originalSize: 10 }).catch((e) => e)
+
+    expect(error).toBeInstanceOf(DownloadError)
+    expect(error.status).toBe(403)
+    expect(downloadErrorMessage(error, 'Errore durante la decifratura del file.')).toMatch(/scaduto/)
+  })
+
+  it('senza rete parla di connessione', async () => {
+    const key = await generateAESKey()
+    globalThis.fetch = vi.fn(async () => { throw new TypeError('Failed to fetch') }) as unknown as typeof fetch
+
+    const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize: 1024, originalSize: 10 }).catch((e) => e)
+
+    expect(downloadErrorMessage(error, 'ripiego')).toMatch(/connessione/)
+  })
+
+  it('un errore di decifratura vero lascia il testo del chiamante', async () => {
+    const key = await generateAESKey()
+    const chunkSize = 1024
+    const encrypted = await encryptWhole(bytes(chunkSize), key, chunkSize)
+    encrypted[40] ^= 0xff
+    mockFetch(encrypted)
+
+    const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: chunkSize }).catch((e) => e)
+
+    expect(error).not.toBeInstanceOf(DownloadError)
+    expect(downloadErrorMessage(error, 'Errore durante la decifratura del file.')).toBe('Errore durante la decifratura del file.')
   })
 })
 

@@ -11,8 +11,16 @@ import { ref } from 'vue'
  * i due lati stanno in punti diversi dell'albero.
  */
 
+/**
+ * La chiave di recupero esiste per questo account? La scrive AppSecurityPrompt, che la
+ * chiede già al server all'avvio; la legge chi deve bloccare gli upload (useUploadAvailability).
+ * `unknown` = non ancora chiesto; `error` = chiesto, ma il server non ha risposto.
+ */
+export type RecoveryKeyStatus = 'unknown' | 'present' | 'absent' | 'error'
+
 const isPromptOpen = ref(false)
 const canUnlock = ref(false)
+const recoveryKeyStatus = ref<RecoveryKeyStatus>('unknown')
 
 export function useSecurityPrompt() {
   /** Chiamata dalla barra laterale: riapre il dialogo se c'è una chiave da inserire. */
@@ -33,5 +41,9 @@ export function useSecurityPrompt() {
     isPromptOpen.value = false
   }
 
-  return { isPromptOpen, canUnlock, requestUnlock, setUnlockAvailable, open, close }
+  function setRecoveryKeyStatus(status: RecoveryKeyStatus) {
+    recoveryKeyStatus.value = status
+  }
+
+  return { isPromptOpen, canUnlock, recoveryKeyStatus, requestUnlock, setUnlockAvailable, setRecoveryKeyStatus, open, close }
 }

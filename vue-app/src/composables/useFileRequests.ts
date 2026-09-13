@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
-import { notifyApiError } from '@/src/utils/apiError'
+import { apiErrorMessage, notifyApiError } from '@/src/utils/apiError'
 
 /**
  * Richieste file — lato di chi le apre (roadmap O2.1).
@@ -102,7 +102,10 @@ export function useFileRequests() {
       const status = (error as { response?: { status?: number } }).response?.status
       if (status === 404 || status === 501) {
         isAvailable.value = false
-        notify.info('Le richieste file non sono ancora attive su questo ambiente.')
+        notify.info(
+          apiErrorMessage(error) ?? 'Le richieste file non sono ancora attive su questo ambiente.',
+          'Richieste non attive',
+        )
       } else {
         notifyApiError(error, 'Richiesta non creata', 'Non siamo riusciti a creare la richiesta.')
       }

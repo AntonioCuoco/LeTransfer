@@ -57,6 +57,40 @@ export class DownloadCancelled extends Error {
   }
 }
 
+/**
+ * Un errore del download con un motivo **da dire all'utente così com'è**: risposta dello
+ * storage, rete assente, file troncato, limite dell'anteprima.
+ *
+ * Perché esiste: prima lo storage che rispondeva 403 (link firmato scaduto) diventava un
+ * generico «Download non riuscito», e i chiamanti lo coprivano con «errore durante la
+ * decifratura» — un'altra causa, che manda a cercare il guasto dove non è. Tutto ciò che NON
+ * è un DownloadError (es. un `OperationError` di Web Crypto, testo tecnico) resta al testo
+ * di ripiego del chiamante.
+ */
+export class DownloadError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message)
+    this.name = 'DownloadError'
+  }
+}
+
+function storageErrorMessage(status: number): string {
+  if (status === 403) return 'Il link per scaricare il file è scaduto o non è più valido: riprova.'
+  if (status === 404) return 'Il file non è più presente nello storage.'
+  if (status >= 500) return `Lo storage ha risposto con un errore (HTTP ${status}): riprova tra poco.`
+  return `Lo storage ha rifiutato il download (HTTP ${status}).`
+}
+
+/** Lancia un DownloadError se lo storage non ha risposto con successo. `fetch` da solo non lo fa. */
+export function assertStorageResponse(response: Response): void {
+  if (!response.ok) throw new DownloadError(storageErrorMessage(response.status), response.status)
+}
+
+/** Il testo da mostrare per un errore di download o decifratura. */
+export function downloadErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof DownloadError ? error.message : fallback
+}
+
 export interface DownloadV2Options {
   url: string
   key: CryptoKey
@@ -99,8 +133,14 @@ async function streamDecrypt(
   onPlainChunk: (plain: ArrayBuffer) => Promise<void> | void,
   onProgress?: (decryptedBytes: number, totalBytes: number) => void,
 ): Promise<void> {
-  const response = await fetch(url)
-  if (!response.ok || !response.body) throw new Error('Download non riuscito')
+  let response: Response
+  try {
+    response = await fetch(url)
+  } catch {
+    throw new DownloadError('Non riusciamo a raggiungere lo storage: controlla la connessione e riprova.')
+  }
+  assertStorageResponse(response)
+  if (!response.body) throw new DownloadError('Lo storage non ha restituito il contenuto del file.')
   const reader = response.body.getReader()
 
   const totalChunks = Math.max(1, Math.ceil(originalSize / chunkSize))
@@ -133,7 +173,7 @@ async function streamDecrypt(
   await drain()
 
   // Se mancano chunk o avanzano byte, il file è troncato/corrotto (o il tag GCM non tornerebbe).
-  if (index !== totalChunks) throw new Error('File incompleto o corrotto')
+  if (index !== totalChunks) throw new DownloadError('Il file è arrivato incompleto o corrotto: riprova a scaricarlo.')
 }
 
 export async function downloadAndDecryptV2(options: DownloadV2Options): Promise<void> {
@@ -198,7 +238,7 @@ export async function decryptToBlob(options: PreviewOptions): Promise<Blob> {
   const { url, key, chunkSize, originalSize, mimeType, onProgress } = options
 
   if (originalSize > PREVIEW_SIZE_LIMIT) {
-    throw new Error('File troppo grande per l’anteprima in memoria')
+    throw new DownloadError('Il file è troppo grande per l’anteprima: scaricalo per aprirlo.')
   }
 
   const parts: BlobPart[] = []

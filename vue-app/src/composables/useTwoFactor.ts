@@ -35,6 +35,9 @@ import { cognitoClient, handleCognitoError } from '@/src/utils/cognitoClient'
 
 export type TwoFactorStatus = 'unknown' | 'off' | 'on'
 
+/** Cognito ha risposto, e ha detto che il codice non va (Status diverso da SUCCESS). */
+const CODE_REJECTED = 'Il codice non è stato accettato: controlla che l’ora del telefono sia giusta e usa quello nuovo.'
+
 export function useTwoFactor() {
   const status = ref<TwoFactorStatus>('unknown')
   const isBusy = ref(false)
@@ -114,7 +117,10 @@ export function useTwoFactor() {
           ...(associationSession ? { Session: associationSession } : {}),
         }),
       )
-      if (verify.Status !== 'SUCCESS') throw new Error('Codice non valido')
+      if (verify.Status !== 'SUCCESS') {
+        errorMessage.value = CODE_REJECTED
+        return false
+      }
 
       await cognitoClient.send(
         new SetUserMFAPreferenceCommand({
@@ -168,12 +174,17 @@ export function useTwoFactor() {
   async function checkCode(code: string): Promise<boolean> {
     const token = accessToken()
     if (!token) return false
+    errorMessage.value = null
     try {
       const res = await cognitoClient.send(
         new VerifySoftwareTokenCommand({ AccessToken: token, UserCode: code.trim() }),
       )
-      return res.Status === 'SUCCESS'
-    } catch {
+      if (res.Status === 'SUCCESS') return true
+      errorMessage.value = CODE_REJECTED
+      return false
+    } catch (error) {
+      // Prima qualunque errore diventava «codice non valido», anche una sessione scaduta.
+      errorMessage.value = handleCognitoError(error)
       return false
     }
   }

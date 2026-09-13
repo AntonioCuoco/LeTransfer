@@ -130,19 +130,18 @@ const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] =>
     }
   })
 
+// Niente try/catch qui: i due composable non lanciano, e mostrano già l'errore con il
+// messaggio del server. Un catch con un testo generico sarebbe solo un secondo messaggio,
+// diverso da quello vero, pronto a comparire il giorno che qualcuno li fa lanciare.
 const loadFiles = async (page = 1) => {
-  try {
-    const options: { limit: number; fileType?: string } = { limit: pageSize * page }
-    if (selectedFileType.value) options.fileType = selectedFileType.value
-    const result = await loadFilesFromDynamo(options)
-    if (result) totalFiles.value = result.count
-  } catch { notify.error('Errore durante il caricamento dei file') }
+  const options: { limit: number; fileType?: string } = { limit: pageSize * page }
+  if (selectedFileType.value) options.fileType = selectedFileType.value
+  const result = await loadFilesFromDynamo(options)
+  if (result) totalFiles.value = result.count
 }
 
 const loadSharedFiles = async () => {
-  try {
-    await getSharedWithMe()
-  } catch { notify.error('Errore durante il caricamento dei file condivisi') }
+  await getSharedWithMe()
 }
 
 /**
@@ -215,7 +214,8 @@ const handleDeleteFile = async (fileId: string) => {
   if (!file) { notify.error('File non trovato'); return }
   await deleteFileFromDynamo(file.fileId, file.s3Key, {
     // L'errore lo mostra già deleteFile, con il messaggio del server.
-    onSuccess: () => { notify.success('File eliminato con successo'); loadFiles(currentPage.value) },
+    // Con il file il backend toglie anche i suoi link: si ricarica pure quell'elenco.
+    onSuccess: () => { notify.success('File eliminato con successo'); loadFiles(currentPage.value); fetchLinks() },
   })
 }
 

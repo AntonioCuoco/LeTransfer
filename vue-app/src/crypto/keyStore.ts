@@ -6,6 +6,10 @@
 // viva. È il meccanismo alla base del fix #1 (private key RSA non più in localStorage in chiaro).
 //
 // Nessuna dipendenza esterna: wrapper minimale sull'API IndexedDB.
+//
+// Il valore può essere anche un record che CONTIENE una CryptoKey (es. la master key ricordata,
+// con la sua scadenza — vedi rememberedDevice.ts): lo structured clone conserva la chiave
+// nativa anche dentro un oggetto, con la stessa non-estraibilità.
 
 const DB_NAME = 'letransfer-keys'
 const STORE_NAME = 'keys'
@@ -21,7 +25,7 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
-export async function idbSet(key: string, value: CryptoKey): Promise<void> {
+export async function idbSet(key: string, value: unknown): Promise<void> {
   const db = await openDB()
   try {
     await new Promise<void>((resolve, reject) => {
@@ -36,13 +40,13 @@ export async function idbSet(key: string, value: CryptoKey): Promise<void> {
   }
 }
 
-export async function idbGet(key: string): Promise<CryptoKey | undefined> {
+export async function idbGet<T = CryptoKey>(key: string): Promise<T | undefined> {
   const db = await openDB()
   try {
-    return await new Promise<CryptoKey | undefined>((resolve, reject) => {
+    return await new Promise<T | undefined>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly')
       const req = tx.objectStore(STORE_NAME).get(key)
-      req.onsuccess = () => resolve(req.result as CryptoKey | undefined)
+      req.onsuccess = () => resolve(req.result as T | undefined)
       req.onerror = () => reject(req.error)
     })
   } finally {

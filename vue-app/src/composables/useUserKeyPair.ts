@@ -1,6 +1,7 @@
 import { ref, shallowRef, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
+import { notify } from '@/src/utils/notify'
 import { notifyApiError } from '@/src/utils/apiError'
 import {
   generateRSAKeyPair, exportPublicKeyToJWK, importPublicKeyFromJWK,
@@ -193,6 +194,11 @@ export const useUserKeyPair = () => {
     try {
       const { data } = await axios.get(`${API_BASE_URL}/user/by-email/${encodeURIComponent(email)}/public-key`, { headers: getHeaders() })
       if (data.success && data.data?.publicKeyJWK) return await importPublicKeyFromJWK(data.data.publicKeyJWK)
+      // Prima questo caso tornava `null` in silenzio, e chi chiamava doveva indovinare il perché.
+      notify.error(
+        (data as { message?: string }).message ?? `${email} non ha ancora attivato la cifratura: per ora non può ricevere file.`,
+        'Destinatario non pronto',
+      )
       return null
     } catch (err) { notifyApiError(err, 'Destinatario non raggiungibile', `Impossibile recuperare la chiave pubblica per ${email}`); return null }
   }

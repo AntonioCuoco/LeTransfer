@@ -4,7 +4,8 @@ import { notify } from '@/src/utils/notify'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
-import { deriveMasterKeyFromMnemonic } from '@/src/crypto/recovery-key'
+import { deriveMasterKeyFromMnemonic, verifyMasterKey } from '@/src/crypto/recovery-key'
+import { loadRememberedMasterKey, rememberMasterKey, forgetMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
 import { base64ToArrayBuffer } from '@/src/crypto/crypto'
 import novrenIcon from '@/src/assets/novren-icon.png'
 
@@ -22,53 +23,87 @@ import novrenIcon from '@/src/assets/novren-icon.png'
 
 const encryptionStore = useEncryptionStore()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
-const { isPromptOpen, setUnlockAvailable, close, open } = useSecurityPrompt()
+const { isPromptOpen, setUnlockAvailable, setRecoveryKeyStatus, close, open } = useSecurityPrompt()
 
 const mnemonic = ref('')
 const verifying = ref(false)
 const saltBase64 = ref('')
 const verificationHash = ref('')
+// Non spuntata di default: ricordare il dispositivo è una scelta, non il comportamento normale.
+const rememberDevice = ref(false)
+
+const WORDS_MISMATCH = 'Le parole non corrispondono. Controlla di averle copiate tutte e 24, in ordine.'
 
 onMounted(async () => {
   if (encryptionStore.isUnlocked) return
   const status = await getRecoveryKeyStatus()
+  // Serve anche a chi blocca gli upload: senza chiave di recupero si crea, con la chiave si sblocca.
+  setRecoveryKeyStatus(status ? (status.hasRecoveryKey ? 'present' : 'absent') : 'error')
   if (status?.hasRecoveryKey && status.salt && status.verificationHash) {
     saltBase64.value = status.salt
     verificationHash.value = status.verificationHash
+    if (await unlockFromRememberedDevice(status.verificationHash)) return
     setUnlockAvailable(true)
     open()
   }
 })
+
+/**
+ * Dispositivo ricordato: la master key è già in questo browser. Si usa solo se apre il blob
+ * di verifica dell'account; se non lo apre più, il record è inutile e si cancella.
+ */
+async function unlockFromRememberedDevice(hash: string): Promise<boolean> {
+  try {
+    const remembered = await loadRememberedMasterKey()
+    if (!remembered) return false
+    if (await verifyMasterKey(remembered, hash)) {
+      encryptionStore.setMasterKey(remembered)
+      return true
+    }
+    await forgetMasterKey()
+  } catch {
+    // IndexedDB non disponibile (es. navigazione privata): si chiedono le parole, come prima.
+  }
+  return false
+}
 
 const handleVerify = async () => {
   if (!mnemonic.value.trim()) return
   verifying.value = true
   try {
     const salt = new Uint8Array(base64ToArrayBuffer(saltBase64.value))
-    const masterKey = await deriveMasterKeyFromMnemonic(mnemonic.value.trim(), salt)
 
-    const packedBuffer = base64ToArrayBuffer(verificationHash.value)
-    const packedArray = new Uint8Array(packedBuffer)
-    const iv = packedArray.slice(0, 12)
-    const ciphertext = packedArray.slice(12)
-
-    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, masterKey, ciphertext)
-    const decoded = new TextDecoder().decode(decrypted)
-
-    if (decoded !== 'VERIFY') throw new Error('invalid')
+    // Parole non valide (checksum) e parole valide ma di un altro account sono lo stesso
+    // errore per chi le digita: in entrambi i casi vanno ricontrollate.
+    let masterKey: CryptoKey
+    try {
+      masterKey = await deriveMasterKeyFromMnemonic(mnemonic.value.trim(), salt)
+    } catch {
+      notify.error(WORDS_MISMATCH, 'Parole non valide')
+      return
+    }
+    if (!(await verifyMasterKey(masterKey, verificationHash.value))) {
+      notify.error(WORDS_MISMATCH, 'Parole non valide')
+      return
+    }
 
     encryptionStore.setMasterKey(masterKey)
     setUnlockAvailable(false)
+    if (rememberDevice.value) {
+      try {
+        await rememberMasterKey(masterKey)
+      } catch {
+        notify.warning(
+          'I file sono sbloccati, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo di nuovo le 24 parole.',
+          'Dispositivo non ricordato',
+        )
+      }
+    }
     notify.success('File sbloccati.')
     close()
     mnemonic.value = ''
-  } catch (err: unknown) {
-    const e = err as { name?: string; message?: string }
-    if (e?.name === 'OperationError' || e?.message?.includes('operation')) {
-      notify.error('Le parole non corrispondono. Controlla di averle copiate tutte e 24, in ordine.')
-    } else {
-      notify.error('Errore durante la verifica. Riprova.')
-    }
+  } catch {
+    notify.error('Errore durante la verifica. Riprova.', 'Sblocco non riuscito')
   } finally {
     verifying.value = false
   }
@@ -124,6 +159,17 @@ const handleCancel = () => {
           tutte e 24, separate da spazio · incollarle dal gestore password va benissimo
         </p>
       </div>
+
+      <label class="flex cursor-pointer items-start gap-2.5 text-[0.9rem] text-haze-200">
+        <input v-model="rememberDevice" type="checkbox" class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brand-500)]" />
+        <span>
+          Ricorda su questo dispositivo per {{ REMEMBER_DAYS }} giorni
+          <span class="mt-0.5 block text-[0.78rem] leading-relaxed text-haze-400">
+            Non spuntarla su un computer condiviso: chi lo usa con il tuo account aperto potrebbe aprire i
+            tuoi file. La chiave resta in questo browser e non arriva mai a noi.
+          </span>
+        </span>
+      </label>
 
       <div class="flex flex-wrap justify-end gap-3 pt-1">
         <Button label="Più tardi" severity="secondary" outlined @click="handleCancel" />

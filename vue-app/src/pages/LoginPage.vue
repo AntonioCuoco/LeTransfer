@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie } from '@/src/utils/cookieStore'
 import Swal from 'sweetalert2'
 import { AuthFlowType, ChallengeNameType, InitiateAuthCommand, RespondToAuthChallengeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
+import { isPasswordValid, PASSWORD_MIN_LENGTH } from '@/src/utils/passwordPolicy'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import novrenIcon from '@/src/assets/novren-icon.png'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
+import ConfirmEmailForm from '@/src/components/auth/ConfirmEmailForm.vue'
 
 /**
  * Accesso — stessa carta chiara di invio e ricezione, dentro il mondo viola.
@@ -17,12 +19,15 @@ import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
  */
 
 const router = useRouter()
+const route = useRoute()
 if (Cookies.get('accessToken')) router.replace('/app')
 
-const view = ref<'login' | 'newPassword' | 'mfa'>('login')
+// `confirm` = account mai confermato: si chiede un nuovo codice invece di lasciarlo bloccato.
+const view = ref<'login' | 'newPassword' | 'mfa' | 'confirm'>('login')
 const session = ref('')
 const mfaCode = ref('')
-const email = ref('')
+// Precompilata quando si arriva dalla registrazione con un'email già esistente.
+const email = ref(typeof route.query.email === 'string' ? route.query.email : '')
 const password = ref('')
 const newPassword = ref('')
 const isLoading = ref(false)
@@ -36,6 +41,10 @@ const isForgotLoading = ref(false)
 
 const emailError = ref('')
 const passwordError = ref('')
+
+// Per le password NUOVE (cambio obbligatorio, recupero): la stessa policy del User Pool.
+// Il login invece non la verifica: chi entra ha già una password che Cognito ha accettato.
+const newPasswordHint = `Almeno ${PASSWORD_MIN_LENGTH} caratteri, con maiuscola, minuscola, numero e simbolo`
 
 const canSubmit = computed(() => !!email.value && !!password.value && !isLoading.value)
 
@@ -71,6 +80,12 @@ const handleLogin = async () => {
       saveTokens(response.AuthenticationResult)
     }
   } catch (error) {
+    // Cognito risponde così solo se la password è giusta: è la prova che la casella è di chi
+    // scrive, quindi qui — e solo qui — si può mandare un codice nuovo.
+    if ((error as { name?: string }).name === 'UserNotConfirmedException') {
+      view.value = 'confirm'
+      return
+    }
     Swal.fire({ title: 'Accesso non riuscito', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
   } finally {
     isLoading.value = false
@@ -90,6 +105,13 @@ const saveTokens = (result: AuthTokens) => {
   router.push('/app')
 }
 
+/** Account confermato dal login: con i token si entra, senza si torna al form. */
+const onConfirmed = (tokens: AuthTokens | null) => {
+  if (tokens) { saveTokens(tokens); return }
+  view.value = 'login'
+  Swal.fire({ title: 'Email confermata', text: 'Ora puoi accedere.', icon: 'success', confirmButtonText: 'OK' })
+}
+
 const handleMfa = async () => {
   isLoading.value = true
   try {
@@ -102,7 +124,9 @@ const handleMfa = async () => {
     if (response.AuthenticationResult) saveTokens(response.AuthenticationResult)
     else throw new Error('Codice non accettato')
   } catch (error) {
-    Swal.fire({ title: 'Codice non valido', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+    // Titolo neutro: il motivo lo dice il testo. «Codice non valido» era falso quando a
+    // scadere era la sessione di accesso, non il codice.
+    Swal.fire({ title: 'Verifica non riuscita', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
     mfaCode.value = ''
   } finally {
     isLoading.value = false
@@ -123,7 +147,7 @@ const handleChallenge = async () => {
       view.value = 'login'
     }
   } catch (error) {
-    Swal.fire({ title: 'Errore', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
+    Swal.fire({ title: 'Nuova password non salvata', text: handleCognitoError(error), icon: 'error', confirmButtonText: 'OK' })
   } finally {
     isLoading.value = false
   }
@@ -138,7 +162,7 @@ const sendForgotEmail = async () => {
     if (res.$metadata?.httpStatusCode === 200) {
       forgotStep.value = 'confirm'
     }
-  } catch (e) { Swal.fire({ title: 'Errore', text: handleCognitoError(e), icon: 'error' }) }
+  } catch (e) { Swal.fire({ title: 'Codice non inviato', text: handleCognitoError(e), icon: 'error' }) }
   finally { isForgotLoading.value = false }
 }
 
@@ -153,7 +177,7 @@ const confirmForgotPassword = async () => {
       isForgotOpen.value = false
       forgotEmail.value = ''; forgotCode.value = ''; forgotNewPassword.value = ''
     }
-  } catch (e) { Swal.fire({ title: 'Errore', text: handleCognitoError(e), icon: 'error' }) }
+  } catch (e) { Swal.fire({ title: 'Password non reimpostata', text: handleCognitoError(e), icon: 'error' }) }
   finally { isForgotLoading.value = false }
 }
 </script>
@@ -188,7 +212,12 @@ const confirmForgotPassword = async () => {
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
             <img :src="novrenIcon" alt="Novren" width="36" height="19" />
-            {{ view === 'login' ? 'Accedi' : view === 'mfa' ? 'Verifica in due passaggi' : 'Nuova password' }}
+            {{
+              view === 'login' ? 'Accedi'
+              : view === 'mfa' ? 'Verifica in due passaggi'
+              : view === 'confirm' ? 'Conferma l\'email'
+              : 'Nuova password'
+            }}
           </div>
           <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">connessione TLS</div>
         </div>
@@ -229,7 +258,7 @@ const confirmForgotPassword = async () => {
             <span class="h-px flex-1 bg-[#f0ebfa]" />
           </div>
 
-          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Errore', text: err, icon: 'error' })" />
+          <GoogleLoginButton :on-error="(err: string) => Swal.fire({ title: 'Accesso con Google non avviato', text: err, icon: 'error' })" />
 
           <div class="flex items-center justify-between pt-1 text-[0.82rem]">
             <button type="button" class="font-semibold text-[#6a5f8c] hover:underline" @click="openForgotModal">
@@ -240,6 +269,16 @@ const confirmForgotPassword = async () => {
             </button>
           </div>
         </form>
+
+        <ConfirmEmailForm
+          v-else-if="view === 'confirm'"
+          :email="email"
+          :password="password"
+          send-on-mount
+          back-label="← Torna all'accesso"
+          @confirmed="onConfirmed"
+          @back="view = 'login'"
+        />
 
         <form v-else-if="view === 'mfa'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleMfa">
           <p class="px-0.5 text-[0.86rem] leading-snug text-[#6a5f8c]">
@@ -271,14 +310,14 @@ const confirmForgotPassword = async () => {
             index="01"
             label="Nuova password"
             type="password"
-            placeholder="Almeno 8 caratteri"
+            :placeholder="newPasswordHint"
             autocomplete="new-password"
             :disabled="isLoading"
           />
           <button
             type="submit"
             class="lt-btn"
-            :disabled="!newPassword || isLoading"
+            :disabled="!isPasswordValid(newPassword) || isLoading"
           >
             Salva e continua
           </button>
@@ -321,11 +360,11 @@ const confirmForgotPassword = async () => {
 
       <div v-else class="flex flex-col gap-3.5 px-2.5 pb-2.5">
         <FieldInput v-model="forgotCode" label="Codice ricevuto" mono placeholder="123456" :disabled="isForgotLoading" />
-        <FieldInput v-model="forgotNewPassword" label="Nuova password" type="password" autocomplete="new-password" :disabled="isForgotLoading" />
+        <FieldInput v-model="forgotNewPassword" label="Nuova password" type="password" autocomplete="new-password" :placeholder="newPasswordHint" :disabled="isForgotLoading" />
         <button
           type="button"
           class="lt-btn"
-          :disabled="!forgotCode || !forgotNewPassword || isForgotLoading"
+          :disabled="!forgotCode || !isPasswordValid(forgotNewPassword) || isForgotLoading"
           @click="confirmForgotPassword"
         >
           {{ isForgotLoading ? 'Confermo…' : 'Reimposta la password' }}

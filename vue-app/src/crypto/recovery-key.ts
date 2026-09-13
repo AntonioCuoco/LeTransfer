@@ -1,5 +1,36 @@
-import { deriveKeyFromPassword, PBKDF2_ITER_RECOVERY } from './crypto'
+import { deriveKeyFromPassword, PBKDF2_ITER_RECOVERY, arrayBufferToBase64, base64ToArrayBuffer } from './crypto'
 import { wordlist } from './bip39-wordlist'
+
+/**
+ * Il testo che la master key cifra al momento della creazione. Il risultato (IV + ciphertext,
+ * in base64) è il `verificationHash` salvato sul server: non rivela nulla della chiave, ma solo
+ * la chiave giusta riesce ad aprirlo. È così che si capisce se le 24 parole — o una master key
+ * ricordata su questo dispositivo — sono quelle dell'account.
+ * ⚠️ Non cambiarlo: i blob già salvati contengono questo testo.
+ */
+const VERIFICATION_PLAINTEXT = 'VERIFY'
+
+export async function createVerificationHash(masterKey: CryptoKey): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const sealed = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, new TextEncoder().encode(VERIFICATION_PLAINTEXT)),
+  )
+  const packed = new Uint8Array(12 + sealed.byteLength)
+  packed.set(iv)
+  packed.set(sealed, 12)
+  return arrayBufferToBase64(packed.buffer as ArrayBuffer)
+}
+
+/** `true` solo se questa master key apre il blob di verifica dell'account. Non lancia mai. */
+export async function verifyMasterKey(masterKey: CryptoKey, verificationHash: string): Promise<boolean> {
+  try {
+    const packed = new Uint8Array(base64ToArrayBuffer(verificationHash))
+    const opened = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packed.slice(0, 12) }, masterKey, packed.slice(12))
+    return new TextDecoder().decode(opened) === VERIFICATION_PLAINTEXT
+  } catch {
+    return false
+  }
+}
 
 export async function generateRecoveryKey(): Promise<string> {
   const entropy = new Uint8Array(32)

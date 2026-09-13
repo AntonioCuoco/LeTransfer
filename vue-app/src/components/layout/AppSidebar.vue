@@ -6,6 +6,7 @@ import novrenIcon from '@/src/assets/novren-icon.png'
 import { clearAuthCookies } from '@/src/utils/cookieStore'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
+import { forgetMasterKey } from '@/src/crypto/rememberedDevice'
 import { notify } from '@/src/utils/notify'
 
 /**
@@ -53,6 +54,14 @@ const handleLogout = async () => {
     await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {})
   } catch {
     // si esce comunque: la pulizia locale è la parte che conta
+  }
+
+  // Chi esce non vuole lasciare i file apribili su questo browser. PRIMA dei cookie: il nome
+  // del record dipende dall'utente, che si legge dall'idToken.
+  try {
+    await forgetMasterKey()
+  } catch {
+    // IndexedDB non disponibile: non c'era niente da dimenticare.
   }
 
   clearAuthCookies()

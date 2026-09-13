@@ -87,7 +87,7 @@ export type DeletionOutcome =
   | { status: 'deleted' }
   | { status: 'confirmation_sent'; email?: string }
   | { status: 'wrong_password'; message?: string }
-  | { status: 'unavailable' }
+  | { status: 'unavailable'; message?: string }
   | { status: 'error'; message?: string }
 
 /**
@@ -203,7 +203,7 @@ export function useAccountDeletion() {
       if (status === 401 || status === 403) return { status: 'wrong_password', message }
       // 404/501 = il backend non ha ancora l'endpoint. Non è un errore dell'utente e non
       // va mostrato come tale: è una capacità che manca, e va detta con quelle parole.
-      if (status === 404 || status === 501) return { status: 'unavailable' }
+      if (status === 404 || status === 501) return { status: 'unavailable', message }
       return { status: 'error', message }
     } finally {
       isDeleting.value = false

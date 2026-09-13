@@ -69,7 +69,7 @@ async function confirm() {
       break
 
     case 'unavailable':
-      notify.info('La cancellazione automatica non è ancora attiva. Scrivici e la eseguiamo noi.', 'Non ancora disponibile')
+      notify.info(outcome.message ?? 'La cancellazione automatica non è ancora attiva. Scrivici e la eseguiamo noi.', 'Non ancora disponibile')
       break
 
     default:

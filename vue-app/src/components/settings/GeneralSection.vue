@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { notify } from '@/src/utils/notify'
 import SettingsSection from './SettingsSection.vue'
 import SettingsInput from './SettingsInput.vue'
@@ -10,22 +11,64 @@ import ExportDataPanel from './ExportDataPanel.vue'
 import TwoFactorPanel from './TwoFactorPanel.vue'
 import { useSettings } from '@/src/composables/useSettings'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
+import { rememberedUntil, forgetMasterKey } from '@/src/crypto/rememberedDevice'
 
 const { settings, updateAppearance, updateProfile, updatePassword } = useSettings()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
+const route = useRoute()
+const router = useRouter()
 
 const securityModalVisible = ref(false)
 const deleteModalVisible = ref(false)
 const isSetupRequired = ref(true)
 
+// `?chiave=crea` arriva dalla patina sugli uploader (UploadVaultGate): chi ci clicca vuole
+// creare le 24 parole adesso, quindi la creazione si apre da sola.
+const cameFromUploadGate = route.query.chiave === 'crea'
+
+// «Ricorda su questo dispositivo»: fino a quando, per poterlo revocare da qui.
+const deviceRememberedUntil = ref<number | null>(null)
+const deviceRememberedUntilLabel = computed(() =>
+  deviceRememberedUntil.value
+    ? new Date(deviceRememberedUntil.value).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '',
+)
+
+async function refreshRememberedDevice() {
+  try {
+    deviceRememberedUntil.value = await rememberedUntil()
+  } catch {
+    deviceRememberedUntil.value = null
+  }
+}
+
+async function forgetThisDevice() {
+  try {
+    await forgetMasterKey()
+    deviceRememberedUntil.value = null
+    notify.success('Alla prossima sessione ti chiederemo di nuovo le 24 parole.', 'Dispositivo dimenticato')
+  } catch {
+    notify.error('Non siamo riusciti a dimenticare questo dispositivo. Riprova.', 'Operazione non riuscita')
+  }
+}
+
 onMounted(async () => {
+  void refreshRememberedDevice()
   const status = await getRecoveryKeyStatus()
   isSetupRequired.value = !status?.hasRecoveryKey
+  if (cameFromUploadGate && isSetupRequired.value) securityModalVisible.value = true
 })
 
 const onRecoveryComplete = () => {
   securityModalVisible.value = false
   isSetupRequired.value = false
+  void refreshRememberedDevice()
+  if (cameFromUploadGate) {
+    // Era venuto per caricare: lo si riporta lì, con il vault già sbloccato.
+    notify.success('Chiave di recupero creata: ora puoi caricare i tuoi file.', 'Tutto pronto')
+    router.push('/app')
+    return
+  }
   notify.success('Sicurezza configurata!')
 }
 </script>
@@ -77,6 +120,17 @@ const onRecoveryComplete = () => {
         <p class="m-0 text-sm leading-relaxed text-haze-200">
           Finché non la crei, la protezione end-to-end funziona solo su questo browser.
         </p>
+      </div>
+
+      <div v-if="deviceRememberedUntil" class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
+        <div class="min-w-0">
+          <h4 class="m-0 font-medium text-haze-100">Questo dispositivo è ricordato</h4>
+          <p class="m-0 mt-1 max-w-[64ch] text-xs leading-relaxed text-haze-400">
+            I tuoi file si sbloccano senza le 24 parole fino al {{ deviceRememberedUntilLabel }}.
+            Dimenticalo se questo computer non lo usi solo tu.
+          </p>
+        </div>
+        <Button label="Dimentica" severity="secondary" outlined size="small" @click="forgetThisDevice" />
       </div>
 
       <TwoFactorPanel :email="settings.profile.email" />

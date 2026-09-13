@@ -32,7 +32,7 @@ async function openSetup() {
   code.value = ''
   const ok = await beginSetup(props.email)
   if (!ok) {
-    notify.error(errorMessage.value ?? 'Non siamo riusciti ad avviare l’attivazione.')
+    notify.error(errorMessage.value ?? 'Non siamo riusciti ad avviare l’attivazione.', 'Attivazione non avviata')
     return
   }
   setupOpen.value = true
@@ -43,20 +43,21 @@ async function confirm() {
     setupOpen.value = false
     notify.success('Verifica in due passaggi attiva.')
   } else {
-    notify.error(errorMessage.value ?? 'Codice non valido.')
+    notify.error(errorMessage.value ?? 'Attivazione non riuscita.', 'Attivazione non riuscita')
   }
 }
 
 async function confirmDisable() {
+  // Il motivo lo decide Cognito: codice rifiutato, sessione scaduta, rete. Non sempre «codice non valido».
   if (!(await checkCode(code.value))) {
-    notify.error('Codice non valido.')
+    notify.error(errorMessage.value ?? 'Disattivazione non riuscita.', 'Disattivazione non riuscita')
     return
   }
   if (await disable()) {
     disableOpen.value = false
     notify.success('Verifica in due passaggi disattivata.')
   } else {
-    notify.error(errorMessage.value ?? 'Non siamo riusciti a disattivarla.')
+    notify.error(errorMessage.value ?? 'Non siamo riusciti a disattivarla.', 'Disattivazione non riuscita')
   }
 }
 </script>

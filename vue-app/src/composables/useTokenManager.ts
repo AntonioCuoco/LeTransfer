@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie, clearAuthCookies } from '@/src/utils/cookieStore'
 import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
-import { cognitoClient, clientId } from '@/src/utils/cognitoClient'
+import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
 import { isTokenExpired } from '@/src/utils/getCurrentUser'
 import { useSessionNotifications } from './useSessionNotifications'
 
@@ -15,10 +15,10 @@ export const useTokenManager = () => {
   const router = useRouter()
   const { showInfo, showError } = useSessionNotifications()
 
-  const clearTokens = () => {
+  const clearTokens = (reason = 'Sessione scaduta. Effettua nuovamente il login.') => {
     clearAuthCookies()
     isAuthenticated.value = false
-    showError('Sessione scaduta. Effettua nuovamente il login.')
+    showError(reason)
   }
 
   const updateTokens = (accessToken: string, idToken: string, refreshToken?: string) => {
@@ -78,9 +78,10 @@ export const useTokenManager = () => {
 
       clearTokens()
       return false
-    } catch {
-      showError('Impossibile rinnovare la sessione. Effettua nuovamente il login.')
-      clearTokens()
+    } catch (error) {
+      // Il motivo vero (token scaduto, revocato, rete…) e un solo avviso: prima ne uscivano
+      // due, entrambi generici.
+      clearTokens(handleCognitoError(error))
       return false
     } finally {
       isRefreshingRef.value = false

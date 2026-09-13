@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateRecoveryKey, deriveMasterKeyFromMnemonic } from './recovery-key'
+import { generateRecoveryKey, deriveMasterKeyFromMnemonic, createVerificationHash, verifyMasterKey } from './recovery-key'
 import { wordlist } from './bip39-wordlist'
 import { generateSalt } from './crypto'
 
@@ -74,3 +74,29 @@ describe('derivazione della master key', () => {
     await expect(crypto.subtle.decrypt({ name: 'AES-GCM', iv }, stranger, sealed)).rejects.toThrow()
   })
 }, 30_000) // PBKDF2 a 100k iterazioni, più volte per test
+
+/**
+ * Il blob di verifica decide chi entra: le 24 parole digitate, e anche una master key
+ * ricordata su questo dispositivo. Se accettasse la chiave sbagliata, il vault si
+ * "sbloccherebbe" con una chiave che non apre nessun file.
+ */
+describe('verifica della master key', () => {
+  const nuovaChiave = () => crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+
+  it('la chiave che ha creato il blob lo apre', async () => {
+    const masterKey = await nuovaChiave()
+    const hash = await createVerificationHash(masterKey)
+
+    expect(await verifyMasterKey(masterKey, hash)).toBe(true)
+  })
+
+  it('un\'altra chiave no', async () => {
+    const hash = await createVerificationHash(await nuovaChiave())
+
+    expect(await verifyMasterKey(await nuovaChiave(), hash)).toBe(false)
+  })
+
+  it('un blob rovinato dà false, non un\'eccezione', async () => {
+    expect(await verifyMasterKey(await nuovaChiave(), 'non-è-base64-valido')).toBe(false)
+  })
+})

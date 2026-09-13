@@ -22,6 +22,7 @@ declare module 'vue' {
     CipherField: typeof import('./src/components/landing/CipherField.vue')['default']
     Column: typeof import('primevue/column')['default']
     ConfirmDialog: typeof import('primevue/confirmdialog')['default']
+    ConfirmEmailForm: typeof import('./src/components/auth/ConfirmEmailForm.vue')['default']
     ConfirmPopup: typeof import('primevue/confirmpopup')['default']
     DataTable: typeof import('primevue/datatable')['default']
     DatePicker: typeof import('primevue/datepicker')['default']
@@ -83,6 +84,7 @@ declare module 'vue' {
     TwoFactorPanel: typeof import('./src/components/settings/TwoFactorPanel.vue')['default']
     UpgradeDialog: typeof import('./src/components/billing/UpgradeDialog.vue')['default']
     UploadQueueManager: typeof import('./src/components/UploadQueueManager.vue')['default']
+    UploadVaultGate: typeof import('./src/components/upload/UploadVaultGate.vue')['default']
   }
   export interface GlobalDirectives {
     Tooltip: typeof import('primevue/tooltip')['default']

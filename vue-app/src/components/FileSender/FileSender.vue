@@ -1,218 +1,298 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { notify } from '@/src/utils/notify'
-import Swal from 'sweetalert2'
-import axios from 'axios'
-import { notifyApiError } from '@/src/utils/apiError'
-import Cookies from 'js-cookie'
 import { useFileDragAndDrop } from '@/src/composables/useFileDragAndDrop'
-import type { DynamoDBFile, ShareLinkData } from '@/src/types'
+import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
+import { useRecipientVerification } from '@/src/composables/useRecipientVerification'
+import { useSendFiles, type SendItem } from '@/src/composables/useSendFiles'
+import { useEncryptionStore } from '@/src/stores/encryption'
+import { importKeyFromBase64 } from '@/src/crypto/crypto'
+import { resolveFileName } from '@/src/utils/fileNames'
+import RecipientFingerprintDialog from '@/src/components/RecipientFingerprintDialog.vue'
+import type { DynamoDBFile } from '@/src/types'
 
-const emit = defineEmits<{
-  fileSent: []
-  linkGenerated: [data: ShareLinkData]
-}>()
+/**
+ * «Manda a una persona» — il riquadro 02 della Homepage.
+ *
+ * Riscritto sopra la condivisione che funziona. Il componente di prima chiamava un endpoint
+ * inesistente (`POST /share/send`), non caricava i file dal computer, non cifrava la chiave per
+ * il destinatario e aveva un campo «messaggio» che il server non ha mai ricevuto. Ora:
+ *  - l'invio vero sta in useSendFiles (testato), gli stessi passi di «Condividi»;
+ *  - la verifica dell'impronta è quella di «Condividi» (useRecipientVerification);
+ *  - niente messaggio: il server lo conserverebbe in chiaro, e qui non si scrive nulla in chiaro.
+ */
 
-interface SelectedFile {
-  id: string; name: string; size: string; type: string; isFromS3: boolean
-  s3Key?: string; file?: File; uploadStatus?: 'pending' | 'uploading' | 'success' | 'error'
-}
+const emit = defineEmits<{ fileSent: [] }>()
 
-const selectedFiles = ref<SelectedFile[]>([])
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const encryptionStore = useEncryptionStore()
+const verification = useRecipientVerification()
+const { isSending, send } = useSendFiles({ verifyRecipient: verification.askApproval })
+const { files: ownFiles, isLoading: isLoadingOwnFiles, loadFiles } = useFileFromDynamoDB()
+
 const recipientEmails = ref<string[]>([])
 const currentEmail = ref('')
-const customMessage = ref('')
-const isLoading = ref(false)
-const s3Files = ref<DynamoDBFile[]>([])
-const isLoadingS3Files = ref(false)
+const items = ref<SendItem[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const formatSize = (bytes: number) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
+// ── I tuoi file, con il nome vero ────────────────────────────────────────────────
+// Con `nameVersion: 2` il nome che arriva dal server è ciphertext: si apre con la chiave del
+// file, quindi solo a vault sbloccato. Stessa logica della tabella in «I tuoi file».
+const selectableOwnFiles = computed(() => ownFiles.value.filter((file) => !file.isReceived))
+const ownFileNames = ref<Record<string, string>>({})
 
-const loadS3Files = async () => {
-  isLoadingS3Files.value = true
-  try {
-    const { data } = await axios.get(`${import.meta.env.VITE_API_URL}/user/files/paginated`, {
-      headers: { Authorization: `Bearer ${Cookies.get('idToken')}` },
-      params: { page: 1, limit: 100 },
-    })
-    s3Files.value = data.files || []
-  } catch (err) {
-    notifyApiError(err, 'File non caricati', 'Non siamo riusciti a caricare i tuoi file.')
-  } finally {
-    isLoadingS3Files.value = false
+async function resolveOwnFileNames() {
+  const names: Record<string, string> = {}
+  for (const file of selectableOwnFiles.value) {
+    const keyData = encryptionStore.isUnlocked ? await encryptionStore.getKey(file.s3Key) : null
+    names[file.s3Key] = await resolveFileName(file, keyData ? await importKeyFromBase64(keyData.key) : null)
   }
+  ownFileNames.value = names
 }
 
-onMounted(loadS3Files)
+watch([ownFiles, () => encryptionStore.isUnlocked], () => { void resolveOwnFileNames() })
+onMounted(() => { void loadFiles({ limit: 100, onlyOwned: true }) })
 
-const { isDragOver, dragProps, dropZoneRef } = useFileDragAndDrop({
-  onFilesDropped: (files: File[]) => {
-    const newFiles: SelectedFile[] = files.map((file, i) => ({
-      id: `local-${Date.now()}-${i}`,
-      name: file.name,
-      size: formatSize(file.size),
-      type: file.type,
-      isFromS3: false,
-      file,
-      uploadStatus: 'pending',
-    }))
-    selectedFiles.value = [...selectedFiles.value, ...newFiles]
-  },
-})
-
-const handleFileInput = (e: Event) => {
-  const files = (e.target as HTMLInputElement).files
-  if (!files) return
-  const newFiles: SelectedFile[] = Array.from(files).map((file, i) => ({
-    id: `local-${Date.now()}-${i}`,
-    name: file.name,
-    size: formatSize(file.size),
-    type: file.type,
-    isFromS3: false,
-    file,
-    uploadStatus: 'pending',
-  }))
-  selectedFiles.value = [...selectedFiles.value, ...newFiles]
-}
-
-const addS3File = (s3File: DynamoDBFile) => {
-  if (selectedFiles.value.some(f => f.s3Key === s3File.s3Key)) return
-  selectedFiles.value.push({
-    id: `s3-${s3File.s3Key}`,
-    name: s3File.fileName || s3File.originalName || 'File',
-    size: s3File.formattedSize || s3File.fileSize || '',
-    type: s3File.fileType,
-    isFromS3: true,
-    s3Key: s3File.s3Key,
-    uploadStatus: 'success',
-  })
-}
-
-const removeFile = (id: string) => { selectedFiles.value = selectedFiles.value.filter(f => f.id !== id) }
-
-const addEmail = () => {
+// ── Destinatari ──────────────────────────────────────────────────────────────────
+function addEmail() {
   const email = currentEmail.value.trim()
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { notify.error('Email non valida'); return }
-  if (recipientEmails.value.includes(email)) { notify.warning('Email già aggiunta'); return }
-  recipientEmails.value.push(email)
+  if (!EMAIL_PATTERN.test(email)) {
+    notify.error('Scrivi un indirizzo email valido.', 'Email non valida')
+    return
+  }
+  if (recipientEmails.value.some((existing) => existing.toLowerCase() === email.toLowerCase())) {
+    notify.warning(`${email} è già fra i destinatari.`, 'Già aggiunto')
+    return
+  }
+  recipientEmails.value = [...recipientEmails.value, email]
   currentEmail.value = ''
 }
 
-const removeEmail = (email: string) => { recipientEmails.value = recipientEmails.value.filter(e => e !== email) }
+function removeEmail(email: string) {
+  recipientEmails.value = recipientEmails.value.filter((existing) => existing !== email)
+}
 
-const handleSend = async () => {
-  if (recipientEmails.value.length === 0) { notify.error('Aggiungi almeno un destinatario'); return }
-  if (selectedFiles.value.length === 0) { notify.error('Seleziona almeno un file'); return }
+// ── File ─────────────────────────────────────────────────────────────────────────
+function addLocalFiles(files: File[]) {
+  items.value = [
+    ...items.value,
+    ...files.map((file): SendItem => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      size: file.size,
+      source: 'local',
+      file,
+      status: 'pending',
+    })),
+  ]
+}
 
-  isLoading.value = true
-  try {
-    await axios.post(`${import.meta.env.VITE_API_URL}/share/send`, {
-      recipients: recipientEmails.value,
-      files: selectedFiles.value.map(f => ({ s3Key: f.s3Key, isFromS3: f.isFromS3, fileName: f.name })),
-      message: customMessage.value,
-    }, { headers: { Authorization: `Bearer ${Cookies.get('idToken')}` } })
+function onFileInput(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files?.length) addLocalFiles(Array.from(input.files))
+  // Senza azzerarlo, scegliere di nuovo lo stesso file non farebbe scattare `change`.
+  input.value = ''
+}
 
-    await Swal.fire({ title: 'File inviati!', text: 'I file sono stati inviati con successo.', icon: 'success', timer: 2000, showConfirmButton: false })
-    selectedFiles.value = []
+const { isDragOver, dragProps, dropZoneRef } = useFileDragAndDrop({ onFilesDropped: addLocalFiles })
+
+const isSelected = (s3Key: string) => items.value.some((item) => item.s3Key === s3Key)
+
+function addOwnFile(file: DynamoDBFile) {
+  if (isSelected(file.s3Key)) return
+  items.value = [
+    ...items.value,
+    {
+      id: `space-${file.s3Key}`,
+      name: ownFileNames.value[file.s3Key] || file.fileName || 'File',
+      size: file.formattedSize || file.fileSize || '',
+      source: 'space',
+      s3Key: file.s3Key,
+      status: 'pending',
+    },
+  ]
+}
+
+function removeItem(id: string) {
+  items.value = items.value.filter((item) => item.id !== id)
+}
+
+function sizeLabel(size: number | string): string {
+  if (typeof size === 'string') return size
+  if (size === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const index = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)))
+  return `${parseFloat((size / Math.pow(1024, index)).toFixed(1))} ${units[index]}`
+}
+
+const STATUS_LABEL: Record<SendItem['status'], string> = {
+  pending: '',
+  uploading: 'cifro e carico…',
+  sent: 'consegnato ✓',
+  partial: 'solo in parte',
+  error: 'non inviato',
+}
+
+const statusClass = (item: SendItem) =>
+  item.status === 'sent' ? 'text-verified-400'
+    : item.status === 'error' || item.status === 'partial' ? 'text-crit-400'
+      : 'text-haze-400'
+
+// ── Invio ────────────────────────────────────────────────────────────────────────
+const hasTypedValidEmail = computed(() => EMAIL_PATTERN.test(currentEmail.value.trim()))
+const canSend = computed(
+  () => !isSending.value && items.value.length > 0 && (recipientEmails.value.length > 0 || hasTypedValidEmail.value),
+)
+const sendLabel = computed(() => {
+  if (isSending.value) return 'Invio in corso…'
+  return items.value.length > 1 ? `Invia ${items.value.length} file cifrati` : 'Invia cifrato'
+})
+
+async function handleSend() {
+  // Un'email scritta ma non ancora aggiunta con «+» è chiaramente un destinatario.
+  if (hasTypedValidEmail.value) addEmail()
+  if (!canSend.value) return
+
+  const fileCount = items.value.length
+  const recipients = [...recipientEmails.value]
+  const outcome = await send(items.value, recipients)
+  if (outcome.aborted) return
+
+  // Gli upload dal computer finiscono comunque nel tuo spazio: le statistiche vanno aggiornate.
+  emit('fileSent')
+
+  if (outcome.failed === 0) {
+    const what = fileCount === 1 ? 'Il file è stato consegnato' : `${fileCount} file consegnati`
+    const who = recipients.length === 1 ? recipients[0] : `${recipients.length} destinatari`
+    notify.success(`${what} a ${who}. Solo loro possono aprirli.`, 'Inviato')
+    items.value = []
     recipientEmails.value = []
-    customMessage.value = ''
-    emit('fileSent')
-  } catch (err) {
-    notifyApiError(err, 'Invio non riuscito', "Errore durante l'invio")
-  } finally {
-    isLoading.value = false
+    return
+  }
+
+  // Parziale: restano in lista solo i file da riprovare; quelli dal computer già caricati non
+  // si ricaricano (useSendFiles li ha già segnati come «nel tuo spazio»).
+  items.value = items.value.filter((item) => item.status !== 'sent')
+  if (outcome.delivered > 0) {
+    notify.warning(
+      `${outcome.delivered} consegne riuscite, ${outcome.failed} no. I file rimasti in lista non sono arrivati a tutti: puoi riprovare.`,
+      'Invio parziale',
+    )
   }
 }
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="flex flex-col gap-5">
     <!-- Destinatari -->
     <div>
-      <h3 class="text-white font-semibold mb-3">Destinatari</h3>
-      <div class="flex gap-2 mb-2">
+      <label for="send-recipient" class="lt-label mb-2 block !text-haze-400">Destinatari</label>
+      <div class="flex gap-2">
         <InputText
+          id="send-recipient"
           v-model="currentEmail"
           type="email"
-          placeholder="email@esempio.com"
+          placeholder="email@esempio.it"
           fluid
           class="flex-1"
+          :disabled="isSending"
           @keydown.enter.prevent="addEmail"
         />
-        <Button icon="pi pi-plus" @click="addEmail" />
+        <Button icon="pi pi-plus" aria-label="Aggiungi destinatario" :disabled="isSending" @click="addEmail" />
       </div>
-      <div class="flex flex-wrap gap-2">
-        <Chip v-for="email in recipientEmails" :key="email" :label="email" removable @remove="removeEmail(email)" />
+      <div v-if="recipientEmails.length" class="mt-2 flex flex-wrap gap-2">
+        <Chip v-for="email in recipientEmails" :key="email" :label="email" :removable="!isSending" @remove="removeEmail(email)" />
       </div>
+      <p class="m-0 mt-2 font-mono text-[0.7rem] text-haze-400">serve un account Novren con la cifratura attiva</p>
     </div>
 
-    <!-- Drag & Drop -->
+    <!-- File dal computer -->
     <div>
-      <h3 class="text-white font-semibold mb-3">File</h3>
+      <p class="lt-label mb-2 !text-haze-400">File</p>
       <div
         ref="dropZoneRef"
         v-bind="dragProps"
-        :class="['border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all', isDragOver ? 'border-brand-500 bg-deep-900' : 'border-white/10 hover:border-brand-500']"
+        class="cursor-pointer rounded-well border-2 border-dashed p-5 text-center transition-colors"
+        :class="isDragOver ? 'border-brand-400 bg-brand-500/10' : 'border-white/15 hover:border-brand-400 hover:bg-white/[0.04]'"
         @click="fileInputRef?.click()"
       >
-        <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInput" />
-        <i class="pi pi-inbox text-primary text-3xl" />
-        <p class="text-haze-200 mt-2">{{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per selezionare' }}</p>
+        <input ref="fileInputRef" type="file" multiple class="hidden" @change="onFileInput" />
+        <i class="pi pi-inbox mb-2 block text-2xl text-brand-400" />
+        <p class="m-0 text-[0.9rem] font-semibold text-haze-100">
+          {{ isDragOver ? 'Rilascia qui' : 'Trascina file o clicca per sceglierli' }}
+        </p>
+        <p class="m-0 mt-1 font-mono text-[0.7rem] text-haze-400">dal computer: prima si caricano, cifrati, nel tuo spazio</p>
       </div>
     </div>
 
-    <!-- File S3 -->
-    <div v-if="!isLoadingS3Files && s3Files.length > 0">
-      <h4 class="text-haze-200 font-medium mb-2">Seleziona dai tuoi file caricati</h4>
-      <div class="max-h-32 overflow-y-auto space-y-1">
-        <div
-          v-for="file in s3Files"
-          :key="file.s3Key"
-          class="flex items-center justify-between p-2 rounded bg-black/25 hover:bg-deep-900 cursor-pointer"
-          @click="addS3File(file)"
-        >
-          <span class="text-white text-sm truncate">{{ file.fileName || file.originalName }}</span>
-          <span class="text-haze-400 text-xs ml-2 flex-shrink-0">{{ file.formattedSize || file.fileSize }}</span>
-        </div>
-      </div>
-    </div>
+    <!-- Dal tuo spazio -->
+    <details v-if="selectableOwnFiles.length" class="rounded-well border border-white/10 bg-white/[0.02]">
+      <summary class="cursor-pointer list-none px-4 py-3 text-[0.88rem] font-semibold text-haze-200 hover:text-haze-100">
+        Scegli dai tuoi file ({{ selectableOwnFiles.length }}) →
+      </summary>
+      <ul class="m-0 flex max-h-44 list-none flex-col gap-1 overflow-y-auto border-t border-white/10 p-2">
+        <li v-for="file in selectableOwnFiles" :key="file.s3Key">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 rounded-chip px-2.5 py-2 text-left transition-colors hover:bg-white/[0.05] disabled:cursor-default disabled:opacity-40"
+            :disabled="isSending || isSelected(file.s3Key)"
+            @click="addOwnFile(file)"
+          >
+            <span class="truncate text-[0.86rem] text-haze-100">{{ ownFileNames[file.s3Key] || '…' }}</span>
+            <span class="flex-none font-mono text-[0.7rem] text-haze-400">
+              {{ isSelected(file.s3Key) ? 'aggiunto' : sizeLabel(file.formattedSize || file.fileSize || '') }}
+            </span>
+          </button>
+        </li>
+      </ul>
+    </details>
+    <p v-else-if="isLoadingOwnFiles" class="m-0 font-mono text-[0.72rem] text-haze-400">carico i tuoi file…</p>
 
-    <!-- File selezionati -->
-    <div v-if="selectedFiles.length > 0">
-      <h4 class="text-haze-200 font-medium mb-2">File selezionati</h4>
-      <div class="space-y-1">
-        <div v-for="file in selectedFiles" :key="file.id" class="flex items-center gap-2 p-2 rounded bg-black/25">
-          <i class="pi pi-file text-primary flex-shrink-0" />
-          <span class="text-white text-sm truncate flex-1">{{ file.name }}</span>
-          <span class="text-haze-400 text-xs">{{ file.size }}</span>
-          <Button icon="pi pi-trash" text severity="danger" size="small" @click="removeFile(file.id)" />
-        </div>
-      </div>
-    </div>
+    <!-- Selezionati -->
+    <ul v-if="items.length" class="m-0 flex list-none flex-col gap-1.5 p-0">
+      <li
+        v-for="item in items"
+        :key="item.id"
+        class="flex items-center gap-2.5 rounded-chip border border-white/5 bg-white/[0.02] px-3 py-1.5"
+      >
+        <i :class="item.source === 'local' ? 'pi pi-upload' : 'pi pi-folder'" class="flex-none text-[0.8rem] text-brand-400" />
+        <span class="flex-1 truncate text-[0.86rem] text-haze-100" :title="item.name">{{ item.name }}</span>
+        <span class="flex-none font-mono text-[0.7rem]" :class="statusClass(item)">
+          {{ STATUS_LABEL[item.status] || sizeLabel(item.size) }}
+        </span>
+        <Button
+          icon="pi pi-times"
+          text
+          rounded
+          size="small"
+          severity="secondary"
+          :aria-label="`Togli ${item.name}`"
+          :disabled="isSending"
+          @click="removeItem(item.id)"
+        />
+      </li>
+    </ul>
 
-    <!-- Messaggio -->
-    <div>
-      <label class="block text-haze-200 font-medium text-sm mb-1">Messaggio (opzionale)</label>
-      <Textarea v-model="customMessage" :rows="2" placeholder="Scrivi un messaggio per i destinatari..." fluid />
-    </div>
-
-    <!-- Invio -->
     <div class="flex justify-end">
       <Button
-        :label="isLoading ? 'Invio in corso...' : 'Invia File'"
-        :icon="isLoading ? undefined : 'pi pi-send'"
-        size="large"
-        :loading="isLoading"
-        :disabled="selectedFiles.length === 0 || recipientEmails.length === 0"
+        :label="sendLabel"
+        :icon="isSending ? undefined : 'pi pi-send'"
+        :loading="isSending"
+        :disabled="!canSend"
         @click="handleSend"
       />
     </div>
+
+    <!-- Tra «chiave pubblica scaricata» e «chiave del file consegnata», per ogni destinatario -->
+    <RecipientFingerprintDialog
+      :visible="verification.dialog.visible"
+      :email="verification.dialog.email"
+      :thumbprint="verification.dialog.thumbprint"
+      :state="verification.dialog.state"
+      :verified-at="verification.dialog.verifiedAt"
+      @confirm="verification.settle(true)"
+      @cancel="verification.settle(false)"
+    />
   </div>
 </template>

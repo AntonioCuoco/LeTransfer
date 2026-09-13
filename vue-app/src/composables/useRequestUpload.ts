@@ -205,16 +205,18 @@ export function useRequestUpload(publicToken: string) {
       // carica è un estraneo senza account. Quindi niente numeri: dirgli quanto spazio ha
       // libero l'avvocato che gli ha mandato il link sarebbe raccontare lo stato di un
       // account altrui a chi passava di lì. Gli si dice che non è colpa sua e cosa fare.
-      // Per lo stesso motivo sui limiti NON si usa il messaggio del server, che quei numeri
-      // può contenerli: vale solo per gli altri casi.
+      // Il server qui risponde con testi che quei numeri NON li contengono (routes/requests.js:
+      // «Il destinatario non ha spazio sufficiente per questo file»): si mostrano quelli, e i
+      // nostri restano solo il ripiego.
       if (httpStatus === 410) {
         errorMessage.value = apiErrorMessage(error) ?? 'Questa richiesta non accetta più caricamenti.'
       } else if (limit?.code === 'QUOTA_EXCEEDED' || limit?.code === 'MONTHLY_LIMIT_EXCEEDED') {
         errorMessage.value =
+          apiErrorMessage(error) ??
           'Chi ha aperto questa richiesta non ha spazio sufficiente per ricevere il file. ' +
           'Avvisalo: potrà liberarne e allora riproverai.'
       } else if (limit) {
-        errorMessage.value = 'Il file supera la dimensione ammessa da questa richiesta.'
+        errorMessage.value = apiErrorMessage(error) ?? 'Il file supera la dimensione ammessa da questa richiesta.'
       } else {
         errorMessage.value = apiErrorMessage(error) ?? 'Il caricamento non è riuscito. Riprova.'
       }
