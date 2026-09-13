@@ -34,6 +34,28 @@ export async function keyThumbprint(publicKey: CryptoKey): Promise<string> {
   return jwkThumbprint(jwk)
 }
 
+/**
+ * Impronta di un destinatario con chiave **ibrida** (RSA + X-Wing, formato v2 del wrap).
+ *
+ * Deve impegnare ENTRAMBE le chiavi: se coprisse solo la RSA, chi controlla il server potrebbe
+ * sostituire la chiave X-Wing senza che l'impronta cambi — e con la X-Wing sostituita la
+ * protezione post-quantum di quel destinatario sarebbe vuota.
+ *
+ *   SHA-256( {"rsa":"<RFC 7638 della RSA, hex>","xwing":"<SHA-256 della chiave X-Wing, hex>"} )
+ *
+ * JSON canonico (chiavi in ordine, nessuno spazio) come in RFC 7638, per la stessa ragione:
+ * due client indipendenti devono ottenere lo stesso digest. Senza chiave X-Wing l'impronta è
+ * quella RFC 7638 di sempre, così un destinatario che non ha ancora la chiave nuova non
+ * risulta «cambiato».
+ */
+export async function hybridThumbprint(rsaJwk: JsonWebKey, xwingPublicKey: Uint8Array | null): Promise<string> {
+  const rsa = await jwkThumbprint(rsaJwk)
+  if (!xwingPublicKey) return rsa
+  const toHex = (buffer: ArrayBuffer) => Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  const xwing = toHex(await crypto.subtle.digest('SHA-256', xwingPublicKey.slice()))
+  return toHex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`{"rsa":"${rsa}","xwing":"${xwing}"}`)))
+}
+
 /** "a3f1…" → ["A3","F1",…]: coppie maiuscole, il formato che si legge a voce. */
 export function fingerprintGroups(hex: string): string[] {
   return (hex.match(/.{2}/g) ?? []).map((pair) => pair.toUpperCase())

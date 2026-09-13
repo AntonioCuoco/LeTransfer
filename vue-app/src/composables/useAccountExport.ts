@@ -4,9 +4,8 @@ import { downloadZip } from 'client-zip'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import {
   decryptToStream,
-  supportsStreamingToDisk,
-  shouldWarnLargeDownload,
 } from '@/src/crypto/streamingDownload'
+import { supportsStreamingToDisk, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
 import { apiErrorMessage } from '@/src/utils/apiError'

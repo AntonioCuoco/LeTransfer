@@ -16,7 +16,7 @@ import type { DynamoDBFile, TableFile, SharedFile } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
 import { hasEncryptedName, resolveFileName, NAME_UNAVAILABLE } from '@/src/utils/fileNames'
-import { importKeyFromBase64, unwrapKeyWithPrivateKey } from '@/src/crypto/crypto'
+import { importKeyFromBase64 } from '@/src/crypto/crypto'
 
 const fileTypeOptions = [
   { value: '', label: 'Tutti i tipi' },
@@ -158,7 +158,7 @@ const loadSharedFiles = async () => {
  */
 const resolvedNames = ref<Record<string, string>>({})
 const encryptionStoreForNames = useEncryptionStore()
-const { privateKey } = useUserKeyPair()
+const { privateKey, xwingPublicKey, unwrapReceivedKey } = useUserKeyPair()
 
 const refreshNames = async () => {
   const next: Record<string, string> = { ...resolvedNames.value }
@@ -179,7 +179,7 @@ const refreshNames = async () => {
       let key: CryptoKey | null = null
       if (file.encryptedAESKey && privateKey.value) {
         try {
-          key = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+          key = await unwrapReceivedKey(file.encryptedAESKey)
         } catch {
           key = null
         }
@@ -192,7 +192,8 @@ const refreshNames = async () => {
   syncAllFiles()
 }
 
-watch([dynamoFiles, sharedFiles, () => encryptionStoreForNames.isUnlocked, privateKey], refreshNames)
+// `xwingPublicKey`: quando la chiave post-quantum diventa pronta, i nomi dei file v2 si possono aprire.
+watch([dynamoFiles, sharedFiles, () => encryptionStoreForNames.isUnlocked, privateKey, xwingPublicKey], refreshNames)
 
 const syncAllFiles = () => {
   const own = convertFilesToTableFormat(dynamoFiles.value)

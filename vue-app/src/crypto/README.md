@@ -1,8 +1,8 @@
 # Modello crittografico di LeTransfer
 
 > Specifica del nucleo crittografico che gira **nel browser**. Serve a rendere verificabili
-> le affermazioni del prodotto: chi vuole controllarle legge questo documento e poi i sei
-> file di questa cartella, senza dover attraversare il resto dell'applicazione.
+> le affermazioni del prodotto: chi vuole controllarle legge questo documento e poi i file
+> di questa cartella, senza dover attraversare il resto dell'applicazione.
 >
 > ⚠️ **Questo documento e il codice cambiano insieme.** Se modifichi un file di
 > `src/crypto/`, aggiorna qui nello stesso commit. Una specifica che diverge dal codice è
@@ -27,12 +27,14 @@ Tutto ciò che segue esiste per rendere vera quella frase — e la §7 dice dove
 | Uso | Algoritmo | Parametri |
 |---|---|---|
 | Contenuto dei file | **AES-256-GCM** | chiave 256 bit, IV 96 bit, tag 128 bit |
-| Chiavi tra utenti | **RSA-OAEP** | modulo 4096 bit, hash SHA-256 |
+| Chiavi tra utenti (v1) | **RSA-OAEP** | modulo 4096 bit, hash SHA-256 |
+| Chiavi tra utenti (v2, post-quantum) | **RSA-OAEP** + **X-Wing** → **HKDF-SHA256** → **AES-256-GCM** | X-Wing = ML-KEM-768 + X25519, draft-connolly-cfrg-xwing-kem-10 (§4.5) |
 | Derivazione da chiave di recupero | **PBKDF2-SHA256** | 100 000 iterazioni (`PBKDF2_ITER_RECOVERY`) |
-| Impronta di chiave pubblica | **SHA-256** su JWK canonico | RFC 7638 |
+| Impronta di chiave pubblica | **SHA-256** su JWK canonico; ibrida se c'è X-Wing | RFC 7638 (§5) |
 | Generazione casuale | `crypto.getRandomValues` | CSPRNG del sistema operativo |
 
-Nessuna libreria crittografica di terze parti: solo **Web Crypto** della piattaforma.
+Tutto con **Web Crypto** della piattaforma, con **un'unica eccezione dichiarata**:
+`@noble/post-quantum` per X-Wing, perché i browser non espongono ML-KEM (motivazione in §9).
 L'unico dato statico incluso è la wordlist BIP39 (`bip39-wordlist.ts`).
 
 > **Perché 100 000 iterazioni bastano per la recovery key.** PBKDF2 serve a rendere costoso
@@ -114,8 +116,9 @@ in chiaro. Due destini possibili:
 - **Link pubblico** → finisce nel **frammento `#`** dell'URL (`createKeyHash()`), nella forma
   `#key=<base64>&iv=<base64>`. Il frammento, per come è definito HTTP, **non viene inviato al
   server dal browser**: è il fondamento dello schema, non un trucco.
-- **Condivisione utente-a-utente** → viene **wrappata** con la chiave pubblica RSA del
-  destinatario (`wrapKeyWithPublicKey`). Il server trasporta un blob che non sa aprire.
+- **Condivisione utente-a-utente e richieste file** → viene **wrappata** sulle chiavi
+  pubbliche del destinatario (`wrapFileKeyForRecipient`): formato v2 ibrido se il destinatario
+  ha una chiave X-Wing, v1 RSA altrimenti (§4.5). Il server trasporta un blob che non sa aprire.
 
 ### 4.2 Coppia RSA dell'utente
 Generata nel browser. La **privata è `extractable: false`** e vive in IndexedDB
@@ -133,6 +136,63 @@ quella giusta" senza che il server possa risalire a nulla.
 ⚠️ Il backup della privata è cifrato **direttamente con la master key**, senza ulteriore
 PBKDF2: la master key ha già entropia piena, quindi il blob resta inattaccabile anche se il
 server viene compromesso.
+
+### 4.4 Chiave X-Wing dell'utente (post-quantum)
+Un **seme di 32 byte** generato nel browser: è l'intera chiave segreta, e la chiave pubblica
+(1216 byte) se ne ricava. Il seme vive in IndexedDB (`letransfer_xwing_seed_<sub>`) e sul server
+c'è un **backup cifrato con la master key** (AES-256-GCM, AAD `novren/xwing-seed-backup/v1`).
+
+⚠️ **Il seme è leggibile da uno script nella pagina**, a differenza della privata RSA: Web Crypto
+non conosce X-Wing, quindi non esiste una `CryptoKey` non estraibile che lo contenga. È accettato
+perché il formato v2 richiede **entrambe** le chiavi: col solo seme non si apre nulla (§4.5).
+
+Regole di allineamento fra dispositivo e server (`xwingKeySync.ts`), perché sbagliarne una fa
+perdere file già ricevuti senza alcun errore:
+1. **prima si ripristina, poi si genera** — se l'account ha già una chiave X-Wing, il dispositivo
+   usa quella dal backup;
+2. **mai una chiave pubblica senza il backup del seme** — viaggiano nella stessa richiesta, e il
+   server (`POST /api/user/xwing-key`) li salva insieme o per niente;
+3. **il server non sostituisce mai una chiave X-Wing diversa** (409 `XWING_KEY_EXISTS`): se due
+   dispositivi generano insieme vince il primo, e l'altro ripristina la sua.
+
+La sincronizzazione richiede la master key, quindi avviene allo sblocco. Finché non è avvenuta,
+chi ti manda file vede solo la chiave RSA e cifra in v1: nulla si rompe, si perde solo la
+protezione post-quantum per quei file.
+
+### 4.5 Chiave del file wrappata per un utente — v1 e v2
+Campo `encryptedAESKey`. La versione sta **nel valore stesso**: la v1 è base64url puro, che non
+contiene mai un punto, la v2 inizia con `v2.`. Il lettore (`unwrapReceivedFileKey`) le riconosce
+senza campi accanto, e i record esistenti restano leggibili.
+
+**v1** — `base64url( RSA-OAEP-SHA256(pk RSA, chiave del file raw) )`.
+
+**v2 (ibrido post-quantum)**:
+
+```
+"v2." b64u(cRsa) "." b64u(cXWing) "." b64u(iv) "." b64u(sealed)
+
+kRsa       = 32 byte casuali
+cRsa       = RSA-OAEP-SHA256(pk RSA, kRsa)                          512 byte
+cXWing, ss = X-Wing.Encapsulate(pk X-Wing)                          1120 + 32 byte
+KEK        = HKDF-SHA256(ikm  = kRsa || ss,
+                         salt = "novren/key-wrap/v2",
+                         info = SHA-256(cRsa || cXWing || pk X-Wing))   32 byte
+sealed     = AES-256-GCM(KEK, iv 12 byte, chiave del file raw, AAD = "novren/key-wrap/v2")
+```
+
+Perché così:
+- **La KEK nasce da entrambi i segreti.** Chi rompe RSA con un computer quantistico non ha `ss`;
+  chi ruba il seme X-Wing non ha `kRsa`, che si ottiene solo *usando* la privata RSA non
+  estraibile; un difetto di ML-KEM o della libreria lascia intatta la sicurezza della v1. X-Wing
+  stesso regge se regge almeno uno fra ML-KEM-768 e X25519.
+- **L'`info` di HKDF impegna entrambi i ciphertext e la chiave X-Wing:** una parte presa da un
+  altro blob, o cifrata per un'altra chiave, cambia la KEK e il tag GCM rifiuta.
+- **Si scrive v2 solo se il destinatario ha una chiave X-Wing**, e solo con l'interruttore
+  `HYBRID_KEY_WRAP` acceso: spegnerlo riporta i nuovi invii alla v1 senza toccare nulla di già
+  scritto. La lettura della v2 c'è sempre.
+
+La libreria X-Wing si carica con un `import()` dinamico: chi usa solo i link pubblici non la
+scarica. Codice: `hybrid.ts`.
 
 ---
 
@@ -152,6 +212,20 @@ L'applicazione confronta l'impronta con quella annotata al primo scambio e **seg
 cambiamenti** (trust on first use). Il caso "impronta cambiata" è l'unico momento in cui una
 sostituzione di chiave diventa visibile all'utente.
 
+**Impronta ibrida.** Se il destinatario ha una chiave X-Wing, l'impronta deve coprire anche
+quella: altrimenti il server potrebbe sostituire la sola chiave post-quantum senza che nulla
+cambi sullo schermo (`hybridThumbprint`):
+
+```
+SHA-256( {"rsa":"<RFC 7638 della RSA, hex>","xwing":"<SHA-256 della chiave X-Wing, hex>"} )
+```
+
+JSON canonico, chiavi in ordine e senza spazi, per la stessa ragione della RFC 7638. Senza
+chiave X-Wing l'impronta è quella RFC 7638 di sempre. Quando un destinatario aggiunge la chiave
+X-Wing la sua impronta cambia e l'app lo segnala: è corretto, le chiavi su cui si cifra sono
+cambiate. La propria impronta (impostazioni) usa la chiave X-Wing **di questo dispositivo**, mai
+quella dichiarata dal server.
+
 ---
 
 ## 6. Cosa vede il server
@@ -159,8 +233,9 @@ sostituzione di chiave diventa visibile all'utente.
 | Dato | Il server lo vede? |
 |---|---|
 | Byte dei file | **No** — solo ciphertext |
-| Chiave del file | **No** — frammento `#` o blob wrappato RSA |
+| Chiave del file | **No** — frammento `#` o blob wrappato (v1 RSA, v2 ibrido) |
 | Chiave privata dell'utente | **No** — non estraibile, backup cifrato |
+| Seme X-Wing dell'utente | **No** — solo il backup cifrato con la master key |
 | Chiave di recupero | **No** — solo `salt` + blob di verifica |
 | Nome del file | **No** con `nameVersion: 2` — cifrato con la chiave del file (§3-bis). Sì sui record precedenti, che restano leggibili |
 | Tipo MIME del file | **Sì** — serve ad anteprime, icone e filtri. Rivela molto meno del nome, ma è un'eccezione e va contata come tale |
@@ -183,8 +258,12 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
    dopo la decifratura: la crittografia non protegge da un browser infetto.
 4. **La prima verifica è fiducia cieca.** Il trust on first use rileva i *cambiamenti* di
    chiave; se la prima chiave servita è già falsa, solo il confronto fuori banda lo scopre.
-5. **Post-quantum: non ancora.** Il wrapping è RSA-OAEP. La migrazione a uno schema ibrido
-   è in roadmap (E4) e il formato è già versionato per accoglierla.
+5. **Post-quantum: sì per le chiavi fra utenti, con tre limiti.** Il wrapping v2 (§4.5)
+   protegge dal «raccogli oggi, decifra domani». Ma: (a) **i file condivisi prima**, o con
+   destinatari che non hanno ancora una chiave X-Wing, restano in v1 RSA — un blob già scritto
+   non si può ricifrare senza il destinatario; (b) i **link pubblici** non usano chiavi
+   pubbliche (la chiave è nel frammento, AES-256 è già considerato resistente); (c) la libreria
+   X-Wing **non ha ancora un audit indipendente** — per questo la v2 non scende mai sotto la v1.
 
 ---
 
@@ -193,10 +272,15 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 | File | Responsabilità |
 |---|---|
 | `crypto.ts` | Primitive, formato v2 a chunk, **nome del file cifrato**, chiavi RSA, PBKDF2, frammento del link |
-| `streamingDownload.ts` | Download + decifratura a chunk. Tre destinazioni per lo stesso chiaro: **disco** (`downloadAndDecryptV2`), **memoria** (`decryptToBlob`, per le anteprime) e **stream** (`decryptToStream`, per l'export in zip). Un solo motore di decifratura (`streamDecrypt`) le alimenta tutte: interpretazioni diverse dello stesso formato sono occasioni di divergere |
-| `keyStore.ts` | Persistenza delle `CryptoKey` non estraibili in IndexedDB |
+| `streamingDownload.ts` | Download + decifratura a chunk verso un **`PlaintextSink`** (adattatore di sink): un solo motore (`decryptToSink`) per tutte le destinazioni, perché interpretazioni diverse dello stesso formato sono occasioni di divergere. Include i sink **memoria** (`decryptToBlob`, anteprime) e **stream** (`decryptToStream`, export zip). Nessun DOM: gira in Node |
+| `browserDownload.ts` | Adattatore browser del sink: **disco** con la File System Access API, Blob altrove (`downloadAndDecryptV2`) |
+| `storage.ts` | Adattatore di storage delle chiavi (`KeyStorage`) e implementazione in memoria per Node e test |
+| `keyStore.ts` | Adattatore browser dello storage: `CryptoKey` non estraibili in IndexedDB |
 | `recovery-key.ts` | Mnemonica BIP39 a 24 parole → master key |
-| `fingerprint.ts` | JWK Thumbprint RFC 7638 e formattazione leggibile |
+| `fingerprint.ts` | JWK Thumbprint RFC 7638, impronta ibrida RSA + X-Wing, formattazione leggibile |
+| `hybrid.ts` | Wrapping v2 ibrido post-quantum, lettura v1/v2, seme X-Wing e suo backup |
+| `xwingKeySync.ts` | Regole di allineamento della chiave X-Wing fra dispositivo e server (rete iniettata) |
+| `rememberedDevice.ts` | Master key ricordata su questo dispositivo, con scadenza |
 | `bip39-wordlist.ts` | Wordlist BIP39 (dato statico) |
 
 ---
@@ -222,25 +306,69 @@ produce una schermata sbagliata ma **file che non si riaprono**:
 - **invarianti della wordlist**: 2048 voci, nessun duplicato, ordine alfabetico;
 - **nome del file**: giro completo, caratteri non latini ed emoji, IV diverso a ogni
   cifratura, rifiuto con chiave sbagliata o nome manomesso, e **un chunk non spacciabile
-  per un nome** (la prova che l'AAD separa davvero i due domini).
+  per un nome** (la prova che l'AAD separa davvero i due domini);
+- **wrapping v2**: si apre solo con RSA *e* seme X-Wing giusti, rifiuta una parte presa da un
+  altro blob; la v1 resta leggibile dallo stesso punto di lettura;
+- **allineamento X-Wing** (`xwingKeySync.test.ts`): ripristino invece di generazione su un
+  dispositivo nuovo, nessuna pubblicazione senza backup, corsa fra due dispositivi, backup che
+  non corrisponde alla chiave pubblicata.
 
-⚠️ **Nota sulla wordlist.** La lista era corrotta: `"night"` compariva due volte, anche
-al posto di `"tonight"`. Poiché la generazione usa l'indice e la verifica usa
-`indexOf()` (che restituisce la prima occorrenza), **circa una frase su 86 risultava
-invalida per l'applicazione stessa**. Corretto, con i test che presidiano l'invariante.
-Resta però che la lista **non è identica a quella ufficiale BIP39** (manca `"tool"`):
-funziona — qualsiasi insieme di 2048 parole distinte dà 256 bit di entropia — ma **non
-va dichiarata interoperabile con altri strumenti BIP39** finché non viene sostituita con
-quella ufficiale. La sostituzione va fatta **prima** che un utente reale generi una
-frase: dopo, invaliderebbe le frasi già consegnate.
+⚠️ **Nota sulla wordlist.** La lista era corrotta due volte. Prima `"night"` compariva
+due volte (circa una frase su 86 risultava invalida per l'applicazione stessa); poi,
+confrontandola con l'originale, è emerso che **non era proprio la lista ufficiale**: 10
+parole estranee e 1014 indici spostati. Il 2026-09-13 è stata sostituita con la **wordlist
+inglese ufficiale BIP39**, verificata contro `bitcoin/bips` e `@scure/bip39`, e un test ne
+controlla l'hash SHA-256. In produzione esisteva una sola frase generata con la lista vecchia
+(account di prova), azzerata. Da ora le 24 parole sono BIP39 standard.
+
+---
+
+## 8-ter. Vettori di test
+
+`vectors/crypto-vectors.json` è la **specifica eseguibile** dei formati di questo documento:
+chunk v2, nome del file cifrato, frammento del link, chiave del file avvolta dalla master key
+(anche nel formato pre-#9 senza AAD), BIP39 con i vettori ufficiali, mnemonica → master key →
+blob di verifica, RSA-OAEP con impronta RFC 7638, backup della chiave privata. Dalla versione 2
+del file: i **vettori ufficiali X-Wing** del draft IETF, il **wrapping v2 ibrido**, il **backup del
+seme X-Wing** e l'**impronta ibrida**.
+
+- **Chi li calcola.** `scripts/generate-crypto-vectors.mjs`, con `node:crypto` (OpenSSL) e non
+  con il codice di questa cartella: un vettore prodotto dall'implementazione che deve
+  verificare proverebbe solo che è coerente con sé stessa. ⚠️ Eccezione: `node:crypto` non ha
+  ML-KEM, quindi la parte X-Wing delle sezioni v2 usa `@noble/post-quantum` — ma solo **dopo**
+  che il generatore le ha fatto riprodurre i vettori ufficiali del draft, e si ferma se non ci
+  riesce. RSA-OAEP, HKDF, AES-GCM e SHA-256 della v2 restano calcolati da OpenSSL.
+- **Chi li verifica.** `vectors.test.ts`, dentro `npm test`, quindi anche in CI. Dove il
+  formato è deterministico si controllano entrambe le direzioni (a parità di IV); RSA-OAEP e il
+  backup (JSON non canonico) si verificano in decifratura.
+- **L'IV iniettabile.** `encryptChunkFramed`, `encryptFileName`, `wrapFileKey`,
+  `wrapPrivateKeyWithMasterKey` e `createVerificationHash` accettano un `iv` facoltativo **solo
+  per i vettori**. In produzione non si passa mai: in GCM un IV riusato rompe tutto.
+- ⚠️ **Non si rigenerano.** Un vettore che cambia è un formato che cambia, e i file già cifrati
+  potrebbero non riaprirsi. Un formato nuovo — il wrapping post-quantum, per esempio — si
+  aggiunge come **sezione nuova**, lasciando intatte le esistenti. Il generatore carica il file
+  così com'è e aggiunge solo le sezioni mancanti; `--force` riscrive tutto, e va usato solo
+  prima che esista un file cifrato in produzione.
+- Ogni implementazione futura (desktop, CLI, SDK) deve superare **questo** file prima di
+  scrivere il suo primo byte in produzione.
 
 ---
 
 ## 9. Regole per chi modifica questa cartella
 
-- Nessuna dipendenza da Vue, dagli store, dalla rete o dal DOM applicativo.
-- Nessuna libreria crittografica di terze parti: solo API di piattaforma.
+- Nessuna dipendenza da Vue, dagli store, dalla sessione o dal DOM applicativo. DOM e IndexedDB
+  vivono **solo negli adattatori browser** (`browserDownload.ts`, `keyStore.ts`); chi ha bisogno
+  dell'utente corrente lo riceve come parametro. `boundaries.test.ts` lo verifica a ogni `npm test`,
+  e controlla che il nucleo si carichi in Node (roadmap O3.1).
+- Nessuna libreria crittografica di terze parti: solo API di piattaforma. **Unica eccezione
+  dichiarata: `@noble/post-quantum`** (versione fissata, esatta), per X-Wing. Perché è
+  accettabile: i browser non offrono ML-KEM; la libreria è JavaScript puro e senza dipendenze
+  oltre `@noble/curves` e `@noble/hashes` (queste sì, con audit indipendenti); riproduce i
+  vettori ufficiali del draft in ogni esecuzione dei test; e il formato v2 è costruito perché un
+  suo difetto non porti mai la sicurezza sotto la v1 (§4.5). Quando i browser esporranno ML-KEM
+  in Web Crypto, l'eccezione va tolta. Nessun'altra libreria si aggiunge per analogia.
 - Mai un `console.log` di chiavi, mnemoniche, frammenti di URL o materiale derivato.
 - Ogni cambiamento di formato passa da un **numero di versione**, mai da un'interpretazione
   implicita dei byte: i file già caricati devono restare leggibili.
+- Un formato nuovo porta con sé i suoi **vettori** (§8-ter); quelli esistenti non si toccano.
 - Aggiorna questo README nello stesso commit.

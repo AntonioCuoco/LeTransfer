@@ -10,8 +10,11 @@ import { wordlist } from './bip39-wordlist'
  */
 const VERIFICATION_PLAINTEXT = 'VERIFY'
 
-export async function createVerificationHash(masterKey: CryptoKey): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12))
+/** ⚠️ `iv` solo per i vettori di test: in produzione non si passa (vedi crypto.ts). */
+export async function createVerificationHash(
+  masterKey: CryptoKey,
+  iv: Uint8Array = crypto.getRandomValues(new Uint8Array(12)),
+): Promise<string> {
   const sealed = new Uint8Array(
     await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, masterKey, new TextEncoder().encode(VERIFICATION_PLAINTEXT)),
   )
@@ -35,7 +38,7 @@ export async function verifyMasterKey(masterKey: CryptoKey, verificationHash: st
 export async function generateRecoveryKey(): Promise<string> {
   const entropy = new Uint8Array(32)
   crypto.getRandomValues(entropy)
-  return entropyToMnemonicAsync(entropy)
+  return entropyToMnemonic(entropy)
 }
 
 export async function validateRecoveryKey(mnemonic: string): Promise<boolean> {
@@ -64,7 +67,8 @@ function byteToBinary(byte: number): string {
   return byte.toString(2).padStart(8, '0')
 }
 
-async function entropyToMnemonicAsync(entropy: Uint8Array): Promise<string> {
+/** Entropia → mnemonica BIP39. Esportata per i vettori ufficiali BIP39 (vectors.test.ts). */
+export async function entropyToMnemonic(entropy: Uint8Array): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', entropy)
   const hashBytes = new Uint8Array(hashBuffer)
   const checksumLength = (entropy.length * 8) / 32

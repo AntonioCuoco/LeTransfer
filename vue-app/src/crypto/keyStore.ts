@@ -11,6 +11,8 @@
 // con la sua scadenza — vedi rememberedDevice.ts): lo structured clone conserva la chiave
 // nativa anche dentro un oggetto, con la stessa non-estraibilità.
 
+import type { KeyStorage } from './storage'
+
 const DB_NAME = 'letransfer-keys'
 const STORE_NAME = 'keys'
 
@@ -52,6 +54,13 @@ export async function idbGet<T = CryptoKey>(key: string): Promise<T | undefined>
   } finally {
     db.close()
   }
+}
+
+/** L'adattatore di storage del browser (O3.1, vedi storage.ts): questo stesso IndexedDB. */
+export const indexedDbKeyStorage: KeyStorage = {
+  get: (name) => idbGet(name),
+  set: (name, value) => idbSet(name, value),
+  delete: (name) => idbDel(name),
 }
 
 export async function idbDel(key: string): Promise<void> {

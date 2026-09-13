@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { rememberMasterKey, loadRememberedMasterKey, rememberedUntil, forgetMasterKey, REMEMBER_DAYS, type DeviceContext } from './rememberedDevice'
+import { memoryKeyStorage, type KeyStorage } from './storage'
 
 /**
  * «Ricorda su questo dispositivo».
@@ -6,78 +8,69 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
  * Cosa difendono questi test: che la comodità non allarghi il rischio oltre quanto dichiarato.
  * La chiave ricordata deve scadere davvero, non deve passare a un altro account dello stesso
  * browser, e non deve mai poter essere salvata in forma esportabile.
+ *
+ * Nessun mock: IndexedDB non esiste in Node, e al suo posto c'è l'adattatore in memoria —
+ * la stessa sostituzione che farebbe un client desktop o una CLI (O3.1).
  */
-
-const { storage, user } = vi.hoisted(() => ({
-  storage: new Map<string, unknown>(),
-  user: { current: { sub: 'sub-antonio' } as { sub: string } | null },
-}))
-
-// IndexedDB non esiste in node: al suo posto una mappa, con la stessa interfaccia.
-vi.mock('./keyStore', () => ({
-  idbSet: async (key: string, value: unknown) => { storage.set(key, value) },
-  idbGet: async (key: string) => storage.get(key),
-  idbDel: async (key: string) => { storage.delete(key) },
-}))
-vi.mock('@/src/utils/getCurrentUser', () => ({ getCurrentUser: () => user.current }))
-
-import { rememberMasterKey, loadRememberedMasterKey, rememberedUntil, forgetMasterKey, REMEMBER_DAYS } from './rememberedDevice'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const ADESSO = Date.UTC(2026, 8, 13)
 
+let storage: KeyStorage
+let antonio: DeviceContext
+
 const chiave = (extractable = false) =>
   crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, extractable, ['encrypt', 'decrypt'])
 
+const record = (sub: string) => storage.get(`letransfer_master_key_${sub}`)
+
 beforeEach(() => {
-  storage.clear()
-  user.current = { sub: 'sub-antonio' }
+  storage = memoryKeyStorage()
+  antonio = { sub: 'sub-antonio', storage }
 })
 
 describe('rememberedDevice', () => {
   it('ricorda la master key e la restituisce finché non scade', async () => {
     const masterKey = await chiave()
 
-    const expiresAt = await rememberMasterKey(masterKey, ADESSO)
+    const expiresAt = await rememberMasterKey(masterKey, antonio, ADESSO)
 
     expect(expiresAt).toBe(ADESSO + REMEMBER_DAYS * DAY_MS)
-    expect(await loadRememberedMasterKey(ADESSO + (REMEMBER_DAYS - 1) * DAY_MS)).toBe(masterKey)
-    expect(await rememberedUntil(ADESSO)).toBe(expiresAt)
+    expect(await loadRememberedMasterKey(antonio, ADESSO + (REMEMBER_DAYS - 1) * DAY_MS)).toBe(masterKey)
+    expect(await rememberedUntil(antonio, ADESSO)).toBe(expiresAt)
   })
 
   it('scaduta non la restituisce più, e la cancella', async () => {
-    await rememberMasterKey(await chiave(), ADESSO)
+    await rememberMasterKey(await chiave(), antonio, ADESSO)
 
-    expect(await loadRememberedMasterKey(ADESSO + REMEMBER_DAYS * DAY_MS)).toBeNull()
-    expect(storage.size).toBe(0)
+    expect(await loadRememberedMasterKey(antonio, ADESSO + REMEMBER_DAYS * DAY_MS)).toBeNull()
+    expect(await record('sub-antonio')).toBeUndefined()
   })
 
   it('rifiuta una chiave esportabile e non salva niente', async () => {
-    await expect(rememberMasterKey(await chiave(true), ADESSO)).rejects.toThrow(/esportabile/)
-    expect(storage.size).toBe(0)
+    await expect(rememberMasterKey(await chiave(true), antonio, ADESSO)).rejects.toThrow(/esportabile/)
+    expect(await record('sub-antonio')).toBeUndefined()
   })
 
   it('un altro account sullo stesso browser non la trova', async () => {
-    await rememberMasterKey(await chiave(), ADESSO)
+    await rememberMasterKey(await chiave(), antonio, ADESSO)
 
-    user.current = { sub: 'sub-qualcun-altro' }
-
-    expect(await loadRememberedMasterKey(ADESSO)).toBeNull()
+    expect(await loadRememberedMasterKey({ sub: 'sub-qualcun-altro', storage }, ADESSO)).toBeNull()
   })
 
   it('dimenticata, alla sessione dopo non c\'è più', async () => {
-    await rememberMasterKey(await chiave(), ADESSO)
+    await rememberMasterKey(await chiave(), antonio, ADESSO)
 
-    await forgetMasterKey()
+    await forgetMasterKey(antonio)
 
-    expect(await loadRememberedMasterKey(ADESSO)).toBeNull()
-    expect(await rememberedUntil(ADESSO)).toBeNull()
+    expect(await loadRememberedMasterKey(antonio, ADESSO)).toBeNull()
+    expect(await rememberedUntil(antonio, ADESSO)).toBeNull()
   })
 
   it('senza un utente identificato non ricorda e non restituisce niente', async () => {
-    user.current = null
+    const nessuno = { sub: null, storage }
 
-    await expect(rememberMasterKey(await chiave(), ADESSO)).rejects.toThrow(/Utente non identificato/)
-    expect(await loadRememberedMasterKey(ADESSO)).toBeNull()
+    await expect(rememberMasterKey(await chiave(), nessuno, ADESSO)).rejects.toThrow(/Utente non identificato/)
+    expect(await loadRememberedMasterKey(nessuno, ADESSO)).toBeNull()
   })
 })

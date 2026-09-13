@@ -7,6 +7,7 @@ import { clearAuthCookies } from '@/src/utils/cookieStore'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 import { forgetMasterKey } from '@/src/crypto/rememberedDevice'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { notify } from '@/src/utils/notify'
 
 /**
@@ -59,7 +60,7 @@ const handleLogout = async () => {
   // Chi esce non vuole lasciare i file apribili su questo browser. PRIMA dei cookie: il nome
   // del record dipende dall'utente, che si legge dall'idToken.
   try {
-    await forgetMasterKey()
+    await forgetMasterKey({ sub: getCurrentUser()?.sub })
   } catch {
     // IndexedDB non disponibile: non c'era niente da dimenticare.
   }

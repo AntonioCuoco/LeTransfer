@@ -5,14 +5,14 @@ import {
   generateIV,
   encryptChunkFramed,
   encryptedSizeV2,
-  wrapKeyWithPublicKey,
   importPublicKeyFromJWK,
   arrayBufferToBase64,
   encryptFileName,
   FILENAME_VERSION,
   FILE_FORMAT_VERSION,
 } from '@/src/crypto/crypto'
-import { jwkThumbprint } from '@/src/crypto/fingerprint'
+import { hybridThumbprint } from '@/src/crypto/fingerprint'
+import { wrapFileKeyForRecipient, xwingPublicKeyFromBase64, type RecipientPublicKeys } from '@/src/crypto/hybrid'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { parsePlanLimitError } from '@/src/utils/planLimitError'
 import { apiErrorMessage } from '@/src/utils/apiError'
@@ -22,7 +22,8 @@ import { apiErrorMessage } from '@/src/utils/apiError'
  *
  * ── Dove sta la crittografia ────────────────────────────────────────────────────
  * La chiave AES nasce in questo browser, cifra il file a chunk (formato v2, lo stesso
- * dell'invio guest) e poi viene **wrappata sulla chiave pubblica RSA del destinatario**.
+ * dell'invio guest) e poi viene **wrappata sulle chiavi pubbliche del destinatario**: RSA e,
+ * se l'ha già, X-Wing (formato ibrido post-quantum v2, crypto/hybrid.ts).
  * Al server arrivano solo ciphertext e una chiave wrappata che non sa aprire: la può
  * sciogliere unicamente la chiave privata del destinatario, che vive nel suo browser e non
  * è esportabile.
@@ -38,7 +39,7 @@ import { apiErrorMessage } from '@/src/utils/apiError'
  * ── Contratto atteso dal backend ────────────────────────────────────────────────
  *   GET  /api/requests/:publicToken
  *     200 → { success, data: { title, note?, expiresAt, closed, uploadsLeft,
- *                              ownerPublicKeyJWK, ownerFingerprint } }
+ *                              ownerPublicKeyJWK, ownerXWingPublicKey } }
  *     410 → scaduta / chiusa / piena
  *   POST /api/requests/:publicToken/upload/{init,urls,complete,abort}
  * `init` accetta `turnstileToken`: se il backend ha `TURNSTILE_SECRET` impostata è
@@ -62,11 +63,16 @@ export interface RequestInfo {
   closed: boolean
   uploadsLeft: number | null
   ownerPublicKeyJWK: JsonWebKey
-  /** Impronta ricalcolata **da noi** sulla chiave ricevuta, non quella dichiarata dal server. */
+  /** Chiave X-Wing del destinatario in base64url; `null` se non l'ha ancora (si cifra in v1). */
+  ownerXWingPublicKey: string | null
+  /** Impronta ricalcolata **da noi** sulle chiavi ricevute, non dichiarata dal server. */
   fingerprint: string
 }
 
 export type UploadStatus = 'idle' | 'encrypting' | 'uploading' | 'finalizing' | 'done' | 'error'
+
+const ownerXWing = (value: string | null | undefined): Uint8Array | null =>
+  value ? xwingPublicKeyFromBase64(value) : null
 
 interface Part {
   PartNumber: number
@@ -98,8 +104,8 @@ export function useRequestUpload(publicToken: string) {
       // L'impronta si ricalcola sulla chiave che useremo davvero: è l'unico modo perché
       // il confronto significhi qualcosa. Un'impronta ricevuta insieme alla chiave
       // proverebbe solo che il server sa fare SHA-256.
-      const fingerprint = await jwkThumbprint(data.data.ownerPublicKeyJWK)
-      info.value = { ...data.data, fingerprint }
+      const fingerprint = await hybridThumbprint(data.data.ownerPublicKeyJWK, ownerXWing(data.data.ownerXWingPublicKey))
+      info.value = { ...data.data, ownerXWingPublicKey: data.data.ownerXWingPublicKey ?? null, fingerprint }
     } catch (error) {
       const httpStatus = (error as { response?: { status?: number } }).response?.status
       if (httpStatus === 410) loadError.value = 'gone'
@@ -123,8 +129,12 @@ export function useRequestUpload(publicToken: string) {
       const key = await generateAESKey()
       const iv = generateIV()
 
-      const publicKey = await importPublicKeyFromJWK(info.value.ownerPublicKeyJWK)
-      const encryptedAESKey = await wrapKeyWithPublicKey(key, publicKey)
+      const owner: RecipientPublicKeys = {
+        rsa: await importPublicKeyFromJWK(info.value.ownerPublicKeyJWK),
+        rsaJwk: info.value.ownerPublicKeyJWK,
+        xwing: ownerXWing(info.value.ownerXWingPublicKey),
+      }
+      const encryptedAESKey = await wrapFileKeyForRecipient(key, owner)
 
       const meta = {
         fileName: ENCRYPT_FILENAMES ? await encryptFileName(file.name, key) : file.name,

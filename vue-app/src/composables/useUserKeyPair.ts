@@ -8,6 +8,11 @@ import {
   exportPrivateKeyToJWK, importPrivateKeyFromJWK,
   wrapPrivateKeyWithMasterKey, unwrapPrivateKeyWithMasterKey, type KeyPairBackup,
 } from '@/src/crypto/crypto'
+import {
+  isHybridKeyWrap, unwrapReceivedFileKey, xwingPublicKeyFromBase64, xwingPublicKeyFromSeed,
+  type RecipientPublicKeys,
+} from '@/src/crypto/hybrid'
+import { syncXWingKey, type PublishedXWingKey } from '@/src/crypto/xwingKeySync'
 import { idbGet, idbSet, idbDel } from '@/src/crypto/keyStore'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -27,6 +32,103 @@ const LEGACY_PUBLIC_IDB = 'letransfer_public_key'
 const idbKeyNames = () => {
   const sub = getCurrentUser()?.sub || 'anon'
   return { pub: `letransfer_public_key_${sub}`, priv: `letransfer_private_key_${sub}` }
+}
+const xwingSeedName = (sub: string) => `letransfer_xwing_seed_${sub}`
+
+const httpStatus = (err: unknown) => (err as { response?: { status?: number } }).response?.status
+const httpCode = (err: unknown) => (err as { response?: { data?: { code?: string } } }).response?.data?.code
+
+/*
+ * ── Chiave X-Wing (post-quantum, O2.3) ─────────────────────────────────────────────
+ * Stato di MODULO, non del singolo composable: useUserKeyPair si istanzia in più componenti,
+ * e ognuno che sincronizzasse per conto suo potrebbe generare una chiave diversa nello stesso
+ * momento. Una sola sincronizzazione per utente, condivisa.
+ *
+ * ⚠️ Il seme in IndexedDB è un Uint8Array, quindi LEGGIBILE da uno script nella pagina — a
+ * differenza della privata RSA, che è non estraibile. È accettato perché il formato v2 richiede
+ * ENTRAMBE: col solo seme non si apre niente (motivazione completa in crypto/hybrid.ts).
+ */
+const xwing = {
+  sub: null as string | null,
+  seed: shallowRef<Uint8Array | null>(null),
+  publicKey: shallowRef<Uint8Array | null>(null),
+  sync: null as Promise<boolean> | null,
+}
+
+/** Allinea lo stato condiviso all'utente corrente: su un cambio utente si riparte da zero. */
+function xwingFor(sub: string) {
+  if (xwing.sub !== sub) {
+    xwing.sub = sub
+    xwing.seed.value = null
+    xwing.publicKey.value = null
+    xwing.sync = null
+  }
+  return xwing
+}
+
+/** Seme da IndexedDB: basta per APRIRE i file v2, senza master key e senza rete. */
+async function loadLocalXWing(): Promise<void> {
+  const sub = getCurrentUser()?.sub
+  if (!sub || xwingFor(sub).seed.value) return
+  try {
+    const seed = await idbGet<Uint8Array>(xwingSeedName(sub))
+    if (!seed || xwing.sub !== sub) return
+    xwing.publicKey.value = await xwingPublicKeyFromSeed(seed)
+    xwing.seed.value = seed
+  } catch { /* nessun seme leggibile: lo porta la sincronizzazione allo sblocco */ }
+}
+
+/**
+ * Allinea la chiave X-Wing col server (serve la master key, per il backup del seme). Regole in
+ * crypto/xwingKeySync.ts. Se fallisce si ritenta al prossimo sblocco; intanto chi ci manda file
+ * vede solo la chiave RSA e cifra in v1, quindi niente si rompe.
+ */
+function ensureXWingKey(masterKey: CryptoKey): Promise<boolean> {
+  const sub = getCurrentUser()?.sub
+  if (!sub) return Promise.resolve(false)
+  const state = xwingFor(sub)
+  if (state.sync) return state.sync
+
+  state.sync = syncXWingKey({
+    masterKey,
+    loadLocalSeed: async () => (await idbGet<Uint8Array>(xwingSeedName(sub))) ?? null,
+    saveLocalSeed: (seed) => idbSet(xwingSeedName(sub), seed),
+    fetchPublished: async () => {
+      try {
+        const { data } = await axios.get<{ data: PublishedXWingKey }>(`${API_BASE_URL}/user/xwing-key-backup`)
+        return data.data
+      } catch (err) {
+        if (httpStatus(err) === 404 && httpCode(err) === 'XWING_BACKUP_NOT_FOUND') return null
+        throw err
+      }
+    },
+    publish: async (key) => {
+      try {
+        await axios.post(`${API_BASE_URL}/user/xwing-key`, key)
+        return 'published'
+      } catch (err) {
+        if (httpStatus(err) === 409 && httpCode(err) === 'XWING_KEY_EXISTS') return 'exists'
+        throw err
+      }
+    },
+  }).then(
+    (key) => {
+      if (xwing.sub === sub) {
+        xwing.publicKey.value = key.publicKey
+        xwing.seed.value = key.seed
+      }
+      return true
+    },
+    (err) => {
+      if (xwing.sub === sub) xwing.sync = null
+      // Il testo del server se c'è; altrimenti quello della sincronizzazione (già scritto per l'utente).
+      notifyApiError(err, 'Chiave post-quantum non pronta', err instanceof Error && !('response' in err)
+        ? err.message
+        : 'La chiave post-quantum non è stata preparata: si riproverà al prossimo sblocco.')
+      return false
+    },
+  )
+  return state.sync
 }
 
 export const useUserKeyPair = () => {
@@ -154,27 +256,36 @@ export const useUserKeyPair = () => {
     }
   }
 
+  /** Dopo che la coppia RSA è pronta: seme locale subito, allineamento col server se c'è la master key. */
+  const prepareXWing = async () => {
+    await loadLocalXWing()
+    if (encryptionStore.masterKey) void ensureXWingKey(encryptionStore.masterKey)
+  }
+
   const initializeKeyPair = async () => {
     if (isInitializing.value || isKeyPairReady.value) return
     isInitializing.value = true
     error.value = null
     try {
-      const idb = await loadFromIDB()
-      if (idb) { publicKey.value = idb.publicKey; privateKey.value = idb.privateKey; return }
-
-      const migrated = await migrateLegacyKeys()
-      if (migrated) { publicKey.value = migrated.publicKey; privateKey.value = migrated.privateKey; return }
-
-      const serverBackup = await checkServerBackup()
-      if (serverBackup) { await doRestore(serverBackup); return }
-
-      const keyPair = await generateRSAKeyPair() // estraibile (transitoria)
-      const nonExtractablePriv = await persistKeys(keyPair.publicKey, keyPair.privateKey)
-      await uploadPublicKeyToServer(keyPair.publicKey)
-      publicKey.value = keyPair.publicKey
-      privateKey.value = nonExtractablePriv
-      exportablePrivateKey.value = keyPair.privateKey
-      ensureServerBackup() // se sbloccato fa subito il backup; altrimenti lo fa il watcher allo sblocco
+      const local = (await loadFromIDB()) ?? (await migrateLegacyKeys())
+      if (local) {
+        publicKey.value = local.publicKey
+        privateKey.value = local.privateKey
+      } else {
+        const serverBackup = await checkServerBackup()
+        if (serverBackup) {
+          await doRestore(serverBackup)
+        } else {
+          const keyPair = await generateRSAKeyPair() // estraibile (transitoria)
+          const nonExtractablePriv = await persistKeys(keyPair.publicKey, keyPair.privateKey)
+          await uploadPublicKeyToServer(keyPair.publicKey)
+          publicKey.value = keyPair.publicKey
+          privateKey.value = nonExtractablePriv
+          exportablePrivateKey.value = keyPair.privateKey
+          ensureServerBackup() // se sbloccato fa subito il backup; altrimenti lo fa il watcher allo sblocco
+        }
+      }
+      if (isKeyPairReady.value) await prepareXWing()
     } catch (err) {
       error.value = notifyApiError(err, 'Chiavi non pronte', 'Impossibile inizializzare le chiavi di cifratura')
     } finally {
@@ -184,16 +295,26 @@ export const useUserKeyPair = () => {
 
   // Quando il vault si sblocca (master key disponibile): ripristina il backup in attesa, oppure
   // carica il backup della keypair se è appena stata generata/ripristinata e non è ancora sul server.
-  watch(() => encryptionStore.isUnlocked, (unlocked) => {
+  // Poi allinea la chiave post-quantum, che per il backup del seme ha bisogno della master key.
+  watch(() => encryptionStore.isUnlocked, async (unlocked) => {
     if (!unlocked) return
-    if (pendingRestore.value) doRestore(pendingRestore.value)
+    if (pendingRestore.value) await doRestore(pendingRestore.value)
     else if (isKeyPairReady.value) ensureServerBackup()
+    if (isKeyPairReady.value) await prepareXWing()
   })
 
-  const getRecipientPublicKey = async (email: string): Promise<CryptoKey | null> => {
+  /** Le chiavi pubbliche di un destinatario: RSA sempre, X-Wing se l'ha già pubblicata. */
+  const getRecipientPublicKey = async (email: string): Promise<RecipientPublicKeys | null> => {
     try {
       const { data } = await axios.get(`${API_BASE_URL}/user/by-email/${encodeURIComponent(email)}/public-key`, { headers: getHeaders() })
-      if (data.success && data.data?.publicKeyJWK) return await importPublicKeyFromJWK(data.data.publicKeyJWK)
+      if (data.success && data.data?.publicKeyJWK) {
+        const rsaJwk = data.data.publicKeyJWK as JsonWebKey
+        return {
+          rsa: await importPublicKeyFromJWK(rsaJwk),
+          rsaJwk,
+          xwing: data.data.xwingPublicKey ? xwingPublicKeyFromBase64(data.data.xwingPublicKey) : null,
+        }
+      }
       // Prima questo caso tornava `null` in silenzio, e chi chiamava doveva indovinare il perché.
       notify.error(
         (data as { message?: string }).message ?? `${email} non ha ancora attivato la cifratura: per ora non può ricevere file.`,
@@ -201,6 +322,20 @@ export const useUserKeyPair = () => {
       )
       return null
     } catch (err) { notifyApiError(err, 'Destinatario non raggiungibile', `Impossibile recuperare la chiave pubblica per ${email}`); return null }
+  }
+
+  /**
+   * Apre la chiave di un file ricevuto, in qualunque formato (v1 RSA, v2 ibrido). Per il v2
+   * serve anche il seme X-Wing: se qui non c'è e il vault è sbloccato, prova prima a prenderlo.
+   * Senza, lancia `MissingPostQuantumKey`, con un messaggio già scritto per l'utente.
+   */
+  const unwrapReceivedKey = async (blob: string): Promise<CryptoKey> => {
+    if (!privateKey.value) throw new Error('Chiavi di cifratura non ancora pronte. Riprova tra un istante.')
+    if (isHybridKeyWrap(blob)) {
+      await loadLocalXWing()
+      if (!xwing.seed.value && encryptionStore.masterKey) await ensureXWingKey(encryptionStore.masterKey)
+    }
+    return unwrapReceivedFileKey(blob, privateKey.value, xwing.seed.value)
   }
 
   const exportPublicKeyJWK = async (): Promise<JsonWebKey | null> => {
@@ -212,17 +347,35 @@ export const useUserKeyPair = () => {
     if (Cookies.get('accessToken')) initializeKeyPair()
   })
 
-  return { publicKey, privateKey, isKeyPairReady, isInitializing, error, initializeKeyPair, getRecipientPublicKey, exportPublicKeyJWK }
+  return {
+    publicKey,
+    privateKey,
+    /** La MIA chiave X-Wing pubblica, `null` finché su questo dispositivo non è pronta. */
+    xwingPublicKey: xwing.publicKey,
+    isKeyPairReady,
+    isInitializing,
+    error,
+    initializeKeyPair,
+    getRecipientPublicKey,
+    unwrapReceivedKey,
+    exportPublicKeyJWK,
+  }
 }
 
-// Rimuove la coppia RSA dell'utente corrente da IndexedDB (funzione standalone: NON istanzia il
-// composable, quindi niente onMounted). ⚠️ NON collegata al logout di proposito: la keypair è già
-// ripristinabile dal backup cifrato con la master key, ma cancellarla al logout imporrebbe un
+// Rimuove le chiavi dell'utente corrente da IndexedDB (funzione standalone: NON istanzia il
+// composable, quindi niente onMounted). ⚠️ NON collegata al logout di proposito: le chiavi sono già
+// ripristinabili dai backup cifrati con la master key, ma cancellarle al logout imporrebbe un
 // restore a ogni login. Collegarla al logout solo se si vuole la semantica "dimentica dispositivo".
 export async function clearPersistedKeyPair(): Promise<void> {
   try {
     const { pub, priv } = idbKeyNames()
     await idbDel(priv)
     await idbDel(pub)
+    const sub = getCurrentUser()?.sub
+    if (sub) {
+      await idbDel(xwingSeedName(sub))
+      xwing.sub = null
+      xwingFor(sub)
+    }
   } catch { /* ignore */ }
 }

@@ -28,7 +28,7 @@ vi.mock('@/src/utils/notify', () => ({
 
 import { useSendFiles, type SendItem } from './useSendFiles'
 
-const CHIAVE_PUBBLICA = {} as CryptoKey
+const CHIAVI_PUBBLICHE = { rsa: {} as CryptoKey, rsaJwk: {}, xwing: null }
 
 const dalComputer = (name = 'contratto.pdf'): SendItem => ({
   id: name, name, size: 2048, source: 'local', file: new File(['x'], name), status: 'pending',
@@ -43,7 +43,7 @@ beforeEach(() => {
   share.getShareableKey.mockReset().mockResolvedValue({ key: 'k', iv: 'i' })
   share.prepareRecipient.mockReset().mockImplementation(async (email: string) => {
     order.push(`verifica ${email}`)
-    return { email, publicKey: CHIAVE_PUBBLICA }
+    return { email, keys: CHIAVI_PUBBLICHE }
   })
   share.deliverFile.mockReset().mockImplementation(async (s3Key: string, recipient: { email: string }) => {
     order.push(`consegna ${s3Key} → ${recipient.email}`)
@@ -73,7 +73,7 @@ describe('useSendFiles', () => {
 
   it('se un destinatario non viene confermato non carica né consegna niente', async () => {
     share.prepareRecipient.mockImplementation(async (email: string) =>
-      email === 'eva@esempio.it' ? null : { email, publicKey: CHIAVE_PUBBLICA })
+      email === 'eva@esempio.it' ? null : { email, keys: CHIAVI_PUBBLICHE })
 
     const outcome = await useSendFiles().send([dalComputer()], ['bob@esempio.it', 'eva@esempio.it'])
 

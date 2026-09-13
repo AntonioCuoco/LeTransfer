@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
-import { keyThumbprint } from '@/src/crypto/fingerprint'
+import { hybridThumbprint } from '@/src/crypto/fingerprint'
+import type { RecipientPublicKeys } from '@/src/crypto/hybrid'
 import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVerifiedKeys'
 
 /**
@@ -10,6 +11,11 @@ import { useVerifiedKeys, type VerificationState } from '@/src/composables/useVe
  * della persona giusta. Prima viveva dentro ShareFileModal; ora la usano sia «Condividi» da
  * «I tuoi file» sia «Manda a una persona», con lo stesso dialogo e la stessa memoria delle
  * impronte già verificate.
+ *
+ * L'impronta copre **tutte** le chiavi su cui si cifra (RSA e, se c'è, X-Wing): se coprisse
+ * solo la RSA, il server potrebbe sostituire la chiave post-quantum senza che nessuno se ne
+ * accorga. Quando un destinatario aggiunge la chiave post-quantum la sua impronta cambia, e il
+ * dialogo lo segnala come chiave cambiata: è corretto, le chiavi su cui si cifra sono cambiate.
  *
  * Uso: `askApproval` va passata come `verifyRecipient` a useShareFile / useSendFiles, e il
  * chiamante monta `<RecipientFingerprintDialog>` legato a `dialog`, con
@@ -28,8 +34,8 @@ export function useRecipientVerification() {
 
   let pending: ((approved: boolean) => void) | null = null
 
-  async function askApproval(publicKey: CryptoKey, email: string): Promise<boolean> {
-    const thumbprint = await keyThumbprint(publicKey)
+  async function askApproval(recipient: RecipientPublicKeys, email: string): Promise<boolean> {
+    const thumbprint = await hybridThumbprint(recipient.rsaJwk, recipient.xwing)
     dialog.email = email
     dialog.thumbprint = thumbprint
     dialog.state = await checkRecipient(email, thumbprint)

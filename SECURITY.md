@@ -58,8 +58,11 @@ Non sono segnalazioni nuove; sono limiti dichiarati in
 - **Un dispositivo compromesso vince sempre.** I dati sono in chiaro prima della
   cifratura e dopo la decifratura.
 - **La prima verifica di un'impronta è fiducia cieca** (trust on first use).
-- **Il wrapping è ancora RSA-OAEP**, non post-quantum. La migrazione a uno schema
-  ibrido è in roadmap e il formato è già versionato per accoglierla.
+- **Il post-quantum copre solo i nuovi invii fra utenti che hanno la chiave X-Wing.**
+  Il wrapping ibrido RSA-OAEP + X-Wing (formato v2) protegge le chiavi dei file condivisi
+  da quando il destinatario ha una chiave post-quantum; i blob scritti prima restano
+  RSA-OAEP. La libreria X-Wing (`@noble/post-quantum`) non ha ancora un audit
+  indipendente: per questo il formato v2 non scende mai sotto la sicurezza di RSA.
 
 Se hai un modo per **peggiorare** uno di questi limiti, o per renderlo sfruttabile in
 pratica dove noi lo diamo per teorico, quello ci interessa eccome.

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { notify } from '@/src/utils/notify'
 import { generateRecoveryKey, deriveMasterKeyFromMnemonic, createVerificationHash } from '@/src/crypto/recovery-key'
 import { rememberMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { generateSalt, arrayBufferToBase64 } from '@/src/crypto/crypto'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -126,7 +127,7 @@ const performSetup = async () => {
       encryptionStore.setMasterKey(masterKey)
       if (rememberDevice.value) {
         try {
-          await rememberMasterKey(masterKey)
+          await rememberMasterKey(masterKey, { sub: getCurrentUser()?.sub })
         } catch {
           notify.warning(
             'La chiave è attiva, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo le 24 parole.',

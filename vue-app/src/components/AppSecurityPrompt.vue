@@ -6,6 +6,7 @@ import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 import { deriveMasterKeyFromMnemonic, verifyMasterKey } from '@/src/crypto/recovery-key'
 import { loadRememberedMasterKey, rememberMasterKey, forgetMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { base64ToArrayBuffer } from '@/src/crypto/crypto'
 import novrenIcon from '@/src/assets/novren-icon.png'
 
@@ -54,13 +55,13 @@ onMounted(async () => {
  */
 async function unlockFromRememberedDevice(hash: string): Promise<boolean> {
   try {
-    const remembered = await loadRememberedMasterKey()
+    const remembered = await loadRememberedMasterKey({ sub: getCurrentUser()?.sub })
     if (!remembered) return false
     if (await verifyMasterKey(remembered, hash)) {
       encryptionStore.setMasterKey(remembered)
       return true
     }
-    await forgetMasterKey()
+    await forgetMasterKey({ sub: getCurrentUser()?.sub })
   } catch {
     // IndexedDB non disponibile (es. navigazione privata): si chiedono le parole, come prima.
   }
@@ -91,7 +92,7 @@ const handleVerify = async () => {
     setUnlockAvailable(false)
     if (rememberDevice.value) {
       try {
-        await rememberMasterKey(masterKey)
+        await rememberMasterKey(masterKey, { sub: getCurrentUser()?.sub })
       } catch {
         notify.warning(
           'I file sono sbloccati, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo di nuovo le 24 parole.',

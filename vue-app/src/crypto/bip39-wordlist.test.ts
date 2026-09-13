@@ -17,6 +17,17 @@ import { wordlist } from './bip39-wordlist'
  */
 
 describe('wordlist BIP39', () => {
+  // La lista precedente passava tutti gli invarianti qui sotto e NON era BIP39: 10 parole
+  // estranee e 1014 indici spostati. Gli invarianti dicono che la lista è coerente; solo
+  // l'hash dice che è quella giusta.
+  it('è esattamente la wordlist inglese ufficiale BIP39', async () => {
+    const officialFile = new TextEncoder().encode(`${wordlist.join('\n')}\n`)
+    const digest = await crypto.subtle.digest('SHA-256', officialFile)
+    const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+
+    expect(hex).toBe('2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda')
+  })
+
   it('contiene esattamente 2048 parole (11 bit per parola)', () => {
     expect(wordlist).toHaveLength(2048)
   })

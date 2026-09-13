@@ -13,7 +13,8 @@ import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
-import { downloadAndDecryptV2, decryptToBlob, shouldWarnLargeDownload, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage } from '@/src/crypto/streamingDownload'
+import { decryptToBlob, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage } from '@/src/crypto/streamingDownload'
+import { downloadAndDecryptV2, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 
 /**
  * Ricezione di un link pubblico (roadmap F1.4) — l'altra metà della facciata.

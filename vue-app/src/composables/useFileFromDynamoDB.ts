@@ -8,13 +8,12 @@ import type { DynamoDBFile, LoadFilesOptions, DeleteFileOptions, ShareLinkData }
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
 import {
-  downloadAndDecryptV2,
-  shouldWarnLargeDownload,
   DownloadCancelled,
   DownloadError,
   assertStorageResponse,
   downloadErrorMessage,
 } from '@/src/crypto/streamingDownload'
+import { downloadAndDecryptV2, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 import { resolveFileName } from '@/src/utils/fileNames'
 
 export const useFileFromDynamoDB = () => {

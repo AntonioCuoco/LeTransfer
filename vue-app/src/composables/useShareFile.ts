@@ -5,25 +5,25 @@ import Swal from 'sweetalert2'
 import type { ShareFileRequest, ShareFileResponse, SharedFile, ShareFileOptions, EncryptionKeyData } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from './useUserKeyPair'
-import { wrapKeyWithPublicKey, unwrapKeyWithPrivateKey, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
+import { importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
+import { wrapFileKeyForRecipient, MissingPostQuantumKey, type RecipientPublicKeys } from '@/src/crypto/hybrid'
 import { notify } from '@/src/utils/notify'
 import { notifyApiError } from '@/src/utils/apiError'
 import { resolveFileName } from '@/src/utils/fileNames'
 import {
-  downloadAndDecryptV2,
-  shouldWarnLargeDownload,
   DownloadCancelled,
   DownloadError,
   assertStorageResponse,
   downloadErrorMessage,
 } from '@/src/crypto/streamingDownload'
+import { downloadAndDecryptV2, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
-/** Un destinatario la cui chiave pubblica è stata scaricata e, se richiesto, verificata. */
+/** Un destinatario le cui chiavi pubbliche sono state scaricate e, se richiesto, verificate. */
 export interface PreparedRecipient {
   email: string
-  publicKey: CryptoKey
+  keys: RecipientPublicKeys
 }
 
 /**
@@ -47,7 +47,7 @@ export const useShareFile = () => {
   const sharedFiles = ref<SharedFile[]>([])
   const shareError = ref<string | null>(null)
 
-  const { getRecipientPublicKey, privateKey } = useUserKeyPair()
+  const { getRecipientPublicKey, privateKey, unwrapReceivedKey } = useUserKeyPair()
   const encryptionStore = useEncryptionStore()
 
   const ensureVaultUnlocked = (): boolean => {
@@ -82,12 +82,12 @@ export const useShareFile = () => {
     verifyRecipient?: ShareFileOptions['verifyRecipient'],
   ): Promise<PreparedRecipient | null> => {
     const targetEmail = email.trim()
-    const publicKey = await getRecipientPublicKey(targetEmail)
-    if (!publicKey) return null
-    // Verifica dell'impronta (F2): l'ultimo momento utile per accorgersi che la chiave
-    // pubblica servita non è quella della persona giusta. Se non conferma, niente parte.
-    if (verifyRecipient && !(await verifyRecipient(publicKey, targetEmail))) return null
-    return { email: targetEmail, publicKey }
+    const keys = await getRecipientPublicKey(targetEmail)
+    if (!keys) return null
+    // Verifica dell'impronta (F2): l'ultimo momento utile per accorgersi che le chiavi
+    // pubbliche servite non sono quelle della persona giusta. Se non conferma, niente parte.
+    if (verifyRecipient && !(await verifyRecipient(keys, targetEmail))) return null
+    return { email: targetEmail, keys }
   }
 
   /** Consegna un file a un destinatario già preparato. Senza la chiave del file non consegna nulla. */
@@ -100,7 +100,8 @@ export const useShareFile = () => {
         s3Key,
         type: 'user',
         targetEmail: recipient.email,
-        encryptedAESKey: await wrapKeyWithPublicKey(aesKey, recipient.publicKey),
+        // v2 ibrido post-quantum se il destinatario ha la chiave X-Wing, altrimenti v1 RSA.
+        encryptedAESKey: await wrapFileKeyForRecipient(aesKey, recipient.keys),
         encryptionIV: keyData.iv,
       }
       const { data } = await axios.post<ShareFileResponse>(`${API_BASE_URL}/share`, body, {
@@ -170,12 +171,18 @@ export const useShareFile = () => {
     try {
       if (!file.s3Url) throw new DownloadError('L’indirizzo del file non è disponibile: ricarica la pagina e riprova.')
 
-      // La file key AES è wrappata con la MIA chiave pubblica RSA → la sblocco con la mia private key
-      // (non estraibile, ma può comunque fare unwrap).
+      // La file key AES è wrappata sulle MIE chiavi pubbliche (v1: RSA; v2: RSA + X-Wing) → la
+      // sblocco con le mie chiavi private. Il formato lo riconosce il blob stesso.
       let aesKey: CryptoKey | null = null
       if (file.encryptedAESKey) {
         if (!privateKey.value) throw new DownloadError('Chiavi di cifratura non ancora pronte. Riprova tra un istante.')
-        aesKey = await unwrapKeyWithPrivateKey(file.encryptedAESKey, privateKey.value)
+        try {
+          aesKey = await unwrapReceivedKey(file.encryptedAESKey)
+        } catch (err) {
+          // Il motivo vero, non «non è stato possibile decifrare»: qui manca una chiave, non è rotto il file.
+          if (err instanceof MissingPostQuantumKey) throw new DownloadError(err.message)
+          throw err
+        }
       }
 
       // Con `nameVersion: 2` il nome è ciphertext: salvarlo così darebbe all'utente un file

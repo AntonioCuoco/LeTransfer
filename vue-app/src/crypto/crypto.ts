@@ -79,9 +79,18 @@ export function encryptedChunkSizeV2(index: number, originalSize: number, chunkS
   return plain + CHUNK_OVERHEAD
 }
 
+// ⚠️ Il parametro `iv` di encryptChunkFramed, encryptFileName, wrapFileKey e
+// wrapPrivateKeyWithMasterKey esiste SOLO per i vettori di test (vectors/crypto-vectors.json),
+// che hanno bisogno di byte deterministici. In produzione non va MAI passato: in AES-GCM un IV
+// riusato con la stessa chiave rompe insieme riservatezza e integrità.
+
 /** Cifra un chunk in v2 → [IV][ciphertext+tag], pronto da caricare come parte multipart. */
-export async function encryptChunkFramed(raw: ArrayBuffer, key: CryptoKey, index: number): Promise<Uint8Array> {
-  const iv = generateIV()
+export async function encryptChunkFramed(
+  raw: ArrayBuffer,
+  key: CryptoKey,
+  index: number,
+  iv: Uint8Array = generateIV(),
+): Promise<Uint8Array> {
   const encrypted = await encryptChunk(raw, key, iv, index)
   const out = new Uint8Array(CHUNK_IV_BYTES + encrypted.byteLength)
   out.set(iv, 0)
@@ -112,8 +121,7 @@ const FILENAME_AAD = 'filename'
 /** Versione del formato del nome: assente o 1 = in chiaro (legacy), 2 = cifrato. */
 export const FILENAME_VERSION = 2
 
-export async function encryptFileName(name: string, key: CryptoKey): Promise<string> {
-  const iv = generateIV()
+export async function encryptFileName(name: string, key: CryptoKey, iv: Uint8Array = generateIV()): Promise<string> {
   const aad = new TextEncoder().encode(FILENAME_AAD)
   const encrypted = await crypto.subtle.encrypt(
     { name: AES_ALGORITHM, iv, additionalData: aad },
@@ -224,8 +232,11 @@ export async function deriveKeyFromPassword(password: string, salt: Uint8Array, 
 // Nessuna password/PBKDF2: la master key è già a piena entropia (256 bit), quindi il blob è
 // inattaccabile anche se il server viene compromesso. È il meccanismo di backup/restore
 // multi-dispositivo della keypair di condivisione.
-export async function wrapPrivateKeyWithMasterKey(privateKey: CryptoKey, masterKey: CryptoKey): Promise<KeyPairBackup> {
-  const iv = generateIV()
+export async function wrapPrivateKeyWithMasterKey(
+  privateKey: CryptoKey,
+  masterKey: CryptoKey,
+  iv: Uint8Array = generateIV(),
+): Promise<KeyPairBackup> {
   const privateKeyJWK = await exportPrivateKeyToJWK(privateKey)
   const encrypted = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, masterKey, new TextEncoder().encode(JSON.stringify(privateKeyJWK)))
   return { encryptedPrivateKey: arrayBufferToBase64(encrypted), iv: arrayBufferToBase64(iv.buffer) }
@@ -239,8 +250,12 @@ export async function unwrapPrivateKeyWithMasterKey(backup: KeyPairBackup, maste
   return importPrivateKeyFromJWK(JSON.parse(new TextDecoder().decode(decrypted)), true)
 }
 
-export async function wrapFileKey(fileKey: CryptoKey, wrappingKey: CryptoKey, s3Key: string): Promise<{ wrappedKey: string; wrapIV: string }> {
-  const iv = generateIV()
+export async function wrapFileKey(
+  fileKey: CryptoKey,
+  wrappingKey: CryptoKey,
+  s3Key: string,
+  iv: Uint8Array = generateIV(),
+): Promise<{ wrappedKey: string; wrapIV: string }> {
   const keyData = await crypto.subtle.exportKey('raw', fileKey)
   // AAD = s3Key (#9): lega crittograficamente la file key al file specifico. Un server malevolo
   // che scambia le entry non può far decifrare la wrapped key con un s3Key diverso.

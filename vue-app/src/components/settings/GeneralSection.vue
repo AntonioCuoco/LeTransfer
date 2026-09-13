@@ -12,6 +12,7 @@ import TwoFactorPanel from './TwoFactorPanel.vue'
 import { useSettings } from '@/src/composables/useSettings'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { rememberedUntil, forgetMasterKey } from '@/src/crypto/rememberedDevice'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
 
 const { settings, updateAppearance, updateProfile, updatePassword } = useSettings()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
@@ -36,7 +37,7 @@ const deviceRememberedUntilLabel = computed(() =>
 
 async function refreshRememberedDevice() {
   try {
-    deviceRememberedUntil.value = await rememberedUntil()
+    deviceRememberedUntil.value = await rememberedUntil({ sub: getCurrentUser()?.sub })
   } catch {
     deviceRememberedUntil.value = null
   }
@@ -44,7 +45,7 @@ async function refreshRememberedDevice() {
 
 async function forgetThisDevice() {
   try {
-    await forgetMasterKey()
+    await forgetMasterKey({ sub: getCurrentUser()?.sub })
     deviceRememberedUntil.value = null
     notify.success('Alla prossima sessione ti chiederemo di nuovo le 24 parole.', 'Dispositivo dimenticato')
   } catch {

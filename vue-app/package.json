@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.797.0",
+    "@noble/post-quantum": "0.7.1",
     "@primeuix/themes": "^2.0.3",
     "@tailwindcss/vite": "^4.1.4",
     "@tanstack/vue-query": "^5.71.10",

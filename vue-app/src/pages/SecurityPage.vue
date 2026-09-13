@@ -41,7 +41,7 @@ const BUILD_RUNNER = 'ubuntu-24.04 · linux x64'
 const primitives = [
   { what: 'Contenuto dei file', how: 'AES-256-GCM', note: 'chiave per trasferimento, generata nel browser' },
   { what: 'Blocchi', how: 'IV a 96 bit per blocco + tag 128 bit', note: 'AAD = indice, blocca riordino e sostituzione' },
-  { what: 'Chiavi tra utenti', how: 'RSA-OAEP 4096 / SHA-256', note: 'la chiave del file viaggia wrappata' },
+  { what: 'Chiavi tra utenti', how: 'RSA-OAEP 4096 + X-Wing (ML-KEM-768 + X25519)', note: 'ibrido post-quantum: servono entrambe le chiavi per aprire; RSA-OAEP da solo per chi non ha ancora la chiave X-Wing' },
   { what: 'Recovery key', how: 'mnemonica 24 parole (256 bit)', note: 'PBKDF2-SHA256, 100.000 iterazioni' },
   { what: 'Password dei link', how: 'Argon2 lato server', note: 'gate d’accesso, non chiave di cifratura' },
   { what: 'Trasporto', how: 'TLS 1.3', note: 'in aggiunta alla cifratura, non al posto suo' },
