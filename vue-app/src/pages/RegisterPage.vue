@@ -12,6 +12,7 @@ import BrandSeal from '@/src/components/landing/BrandSeal.vue'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 import ConfirmEmailForm from '@/src/components/auth/ConfirmEmailForm.vue'
+import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
  * Registrazione — stessa carta chiara delle altre superfici pubbliche.
@@ -52,6 +53,9 @@ const validate = () => {
 }
 
 const handleRegister = async () => {
+  // Con la registrazione chiusa il modulo non è nemmeno in pagina: questa è la seconda
+  // serratura, perché una chiamata a Cognito partita da qui non la ferma più nessuno.
+  if (!REGISTRATION_OPEN) return
   if (!validate()) return
   isLoading.value = true
   try {
@@ -134,14 +138,14 @@ const onConfirmed = (tokens: AuthenticationResultType | null) => {
         <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
           <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
             <BrandSeal :size="19" :variant="view === 'confirm' ? 'check' : 'plain'" />
-            {{ view === 'form' ? 'Nuovo account' : 'Conferma l\'email' }}
+            {{ !REGISTRATION_OPEN ? 'Registrazione chiusa' : (view === 'form' ? 'Nuovo account' : 'Conferma l\'email') }}
           </div>
-          <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">
+          <div v-if="REGISTRATION_OPEN" class="font-mono text-[0.66rem] font-semibold tracking-[0.04em] text-[#12b89a]">
             {{ view === 'form' ? 'passo 1 di 2' : 'passo 2 di 2' }}
           </div>
         </div>
 
-        <form v-if="view === 'form'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleRegister">
+        <form v-if="REGISTRATION_OPEN && view === 'form'" class="flex flex-col gap-3.5 px-2.5 pb-2.5" @submit.prevent="handleRegister">
           <div class="grid grid-cols-2 gap-2.5">
             <FieldInput v-model="name" index="01" label="Nome" placeholder="Antonio" autocomplete="given-name" :error="nameError" :disabled="isLoading" />
             <FieldInput v-model="surname" index="02" label="Cognome" placeholder="Rossi" autocomplete="family-name" :error="surnameError" :disabled="isLoading" />
@@ -205,13 +209,27 @@ const onConfirmed = (tokens: AuthenticationResultType | null) => {
         </form>
 
         <ConfirmEmailForm
-          v-else
+          v-else-if="REGISTRATION_OPEN"
           :email="email"
           :password="password"
           back-label="← Correggi i dati"
           @confirmed="onConfirmed"
           @back="view = 'form'"
         />
+
+        <!-- Registrazione chiusa: si dice perché e dove andare, invece di mostrare un
+             modulo che il server (e Cognito) rifiuterebbero comunque. -->
+        <div v-else data-testid="registration-closed" class="flex flex-col gap-3.5 px-3.5 pb-4 pt-1">
+          <p class="m-0 text-[0.92rem] leading-relaxed text-[#3d3260]">
+            {{ REGISTRATION_CLOSED_MESSAGE }}
+          </p>
+          <p class="m-0 text-[0.82rem] leading-relaxed text-[#6a5f8c]">
+            Riapriremo le iscrizioni appena la fatturazione sarà pronta. Se un account ce l'hai già, puoi accedere.
+          </p>
+          <button type="button" class="lt-btn" @click="router.push('/login')">
+            Vai all’accesso
+          </button>
+        </div>
       </div>
     </div>
   </PublicShell>

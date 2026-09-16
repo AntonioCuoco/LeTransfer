@@ -38,9 +38,11 @@ import { apiErrorMessage } from '@/src/utils/apiError'
  *
  * ── Contratto atteso dal backend ────────────────────────────────────────────────
  *   GET  /api/requests/:publicToken
- *     200 → { success, data: { title, note?, expiresAt, closed, uploadsLeft,
- *                              ownerPublicKeyJWK, ownerXWingPublicKey } }
- *     410 → scaduta / chiusa / piena
+ *     200 → { title, note?, expiresAt, closed, uploadsLeft, ownerPublicKeyJWK,
+ *             ownerXWingPublicKey }
+ *     404 → token inesistente · 410 → scaduta / chiusa / piena
+ *   ⚠️ I campi sono **piatti**, non dentro `{ success, data }`: è la forma di tutto il
+ *   router `requests`, la stessa che `init` e `urls` qui sotto già leggono così.
  *   POST /api/requests/:publicToken/upload/{init,urls,complete,abort}
  * `init` accetta `turnstileToken`: se il backend ha `TURNSTILE_SECRET` impostata è
  * obbligatorio, altrimenti risponde 403. Il client lo manda **già ora**, così accendere il
@@ -96,16 +98,20 @@ export function useRequestUpload(publicToken: string) {
     isLoadingInfo.value = true
     loadError.value = null
     try {
-      const { data } = await axios.get<{ data?: Omit<RequestInfo, 'fingerprint'> }>(
+      // I campi arrivano PIATTI. Prima qui si leggeva `data.data`, che il backend non manda
+      // mai: la lettura falliva sempre, e siccome l'errore non ha uno status HTTP finiva nel
+      // ramo «network» — la pagina pubblica diceva «Non siamo riusciti a contattare il
+      // servizio» anche con la richiesta viva e il server che rispondeva 200.
+      const { data } = await axios.get<Omit<RequestInfo, 'fingerprint'>>(
         `${API_BASE_URL}/requests/${publicToken}`,
       )
-      if (!data?.data) throw new Error('risposta vuota')
+      if (!data?.ownerPublicKeyJWK) throw new Error('risposta senza la chiave pubblica del destinatario')
 
       // L'impronta si ricalcola sulla chiave che useremo davvero: è l'unico modo perché
       // il confronto significhi qualcosa. Un'impronta ricevuta insieme alla chiave
       // proverebbe solo che il server sa fare SHA-256.
-      const fingerprint = await hybridThumbprint(data.data.ownerPublicKeyJWK, ownerXWing(data.data.ownerXWingPublicKey))
-      info.value = { ...data.data, ownerXWingPublicKey: data.data.ownerXWingPublicKey ?? null, fingerprint }
+      const fingerprint = await hybridThumbprint(data.ownerPublicKeyJWK, ownerXWing(data.ownerXWingPublicKey))
+      info.value = { ...data, ownerXWingPublicKey: data.ownerXWingPublicKey ?? null, fingerprint }
     } catch (error) {
       const httpStatus = (error as { response?: { status?: number } }).response?.status
       if (httpStatus === 410) loadError.value = 'gone'

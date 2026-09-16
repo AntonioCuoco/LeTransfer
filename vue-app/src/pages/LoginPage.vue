@@ -12,6 +12,7 @@ import novrenIcon from '@/src/assets/novren-icon.png'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 import ConfirmEmailForm from '@/src/components/auth/ConfirmEmailForm.vue'
+import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
  * Accesso — stessa carta chiara di invio e ricezione, dentro il mondo viola.
@@ -264,9 +265,12 @@ const confirmForgotPassword = async () => {
             <button type="button" class="font-semibold text-[#6a5f8c] hover:underline" @click="openForgotModal">
               Password dimenticata
             </button>
-            <button type="button" class="font-semibold text-[#12b89a] hover:underline" @click="router.push('/register')">
+            <button v-if="REGISTRATION_OPEN" type="button" class="font-semibold text-[#12b89a] hover:underline" @click="router.push('/register')">
               Crea un account →
             </button>
+            <span v-else :title="REGISTRATION_CLOSED_MESSAGE" aria-disabled="true" class="cursor-not-allowed font-semibold text-[#a79cc4]">
+              Registrazione chiusa
+            </span>
           </div>
         </form>
 

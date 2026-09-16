@@ -14,6 +14,7 @@ import { usePreSendCheck } from '@/src/composables/usePreSendCheck'
 import { savePendingClaim } from '@/src/composables/usePendingClaim'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
+import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
  * Widget d'invio "senza account": aggiungi → configura → invia.
@@ -240,6 +241,12 @@ function copyLink() {
 }
 
 function claimTransfer() {
+  // Registrazione chiusa: non si manda nessuno su una pagina che non può creare l'account.
+  // Il trasferimento resta valido: il link ce l'ha già in mano.
+  if (!REGISTRATION_OPEN) {
+    notify.info(REGISTRATION_CLOSED_MESSAGE, 'Registrazione chiusa')
+    return
+  }
   if (result.value) {
     savePendingClaim({
       publicToken: result.value.publicToken,
@@ -385,8 +392,8 @@ onMounted(() => {
                 : expiryDays === opt.value
                   ? 'border-[#724cf9] bg-[#724cf9] text-white'
                   : 'border-[#e9e3f6] bg-white text-[#6a5f8c] hover:border-[#7c4dff]'"
-              :title="opt.locked ? 'Serve un account' : undefined"
-              @click="opt.locked ? router.push('/register') : (expiryDays = opt.value)"
+              :title="opt.locked ? (REGISTRATION_OPEN ? 'Serve un account' : REGISTRATION_CLOSED_MESSAGE) : undefined"
+              @click="opt.locked ? (REGISTRATION_OPEN && router.push('/register')) : (expiryDays = opt.value)"
             >
               {{ opt.locked ? `🔒 ${opt.label}` : opt.label }}
             </button>

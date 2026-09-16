@@ -12,6 +12,7 @@ import {
   type PlanCatalogEntry,
   type PlanId,
 } from '@/src/types/plan'
+import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
  * Prezzi (roadmap F3).
@@ -145,10 +146,12 @@ const faq = [
 
           <button
             type="button"
-            class="mt-6 w-full rounded-[13px] p-3.5 text-[0.95rem] font-bold tracking-[-0.01em] transition hover:-translate-y-px"
+            class="mt-6 w-full rounded-[13px] p-3.5 text-[0.95rem] font-bold tracking-[-0.01em] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             :class="plan.featured
               ? 'bg-[linear-gradient(140deg,#724cf9,#5a30eb)] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] hover:brightness-105'
               : 'border border-white/15 bg-white/[0.06] text-[#F2ECFF] hover:border-white/30'"
+            :disabled="plan.id !== 'free' && !REGISTRATION_OPEN"
+            :title="plan.id !== 'free' && !REGISTRATION_OPEN ? REGISTRATION_CLOSED_MESSAGE : undefined"
             @click="router.push(plan.id === 'free' ? '/' : '/register')"
           >
             {{ CTA[plan.id] }}

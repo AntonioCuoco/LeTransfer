@@ -6,6 +6,7 @@ import novrenIcon from '@/src/assets/novren-icon.png'
 import CipherField from './CipherField.vue'
 import GuestTransferPill from './GuestTransferPill.vue'
 import { useRoute, useRouter } from 'vue-router'
+import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
  * Guscio delle superfici pubbliche (invio e ricezione): il "mondo viola" della landing.
@@ -108,12 +109,23 @@ defineExpose({ surge, settle, calm, stampSeal })
               Accedi
             </RouterLink>
             <RouterLink
-              v-if="route.path !== '/register'"
+              v-if="REGISTRATION_OPEN && route.path !== '/register'"
               to="/register"
               class="rounded-[11px] bg-[#724cf9] px-4 py-2 text-[0.9rem] font-bold text-white shadow-[0_8px_20px_-8px_rgba(114,76,249,0.6)] transition hover:brightness-105"
             >
               Registrati
             </RouterLink>
+            <!-- Registrazione chiusa: il pulsante resta al suo posto ma è inerte, e il
+                 tooltip dice perché. Toglierlo farebbe sembrare l'app senza account. -->
+            <span
+              v-else-if="!REGISTRATION_OPEN"
+              :title="REGISTRATION_CLOSED_MESSAGE"
+              aria-disabled="true"
+              data-testid="register-disabled"
+              class="cursor-not-allowed rounded-[11px] bg-[#724cf9]/40 px-4 py-2 text-[0.9rem] font-bold text-white/70"
+            >
+              Registrati
+            </span>
           </div>
         </div>
       </header>
@@ -150,13 +162,18 @@ defineExpose({ surge, settle, calm, stampSeal })
         <nav class="grid gap-2.5">
           <span class="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Account</span>
           <RouterLink to="/login" class="text-[0.88rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">Accedi</RouterLink>
-          <RouterLink to="/register" class="text-[0.88rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">Crea un account</RouterLink>
+          <RouterLink v-if="REGISTRATION_OPEN" to="/register" class="text-[0.88rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">Crea un account</RouterLink>
+          <span v-else :title="REGISTRATION_CLOSED_MESSAGE" aria-disabled="true" class="cursor-not-allowed text-[0.88rem] text-[#6a5f8c]">Crea un account</span>
         </nav>
 
         <div class="grid gap-2.5">
           <span class="font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Segnalazioni</span>
           <a href="mailto:security@novren.net" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
             security@novren.net
+          </a>
+          <span class="mt-2 font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Contattami</span>
+          <a href="mailto:info@novren.net" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
+            info@novren.net
           </a>
         </div>
       </div>
