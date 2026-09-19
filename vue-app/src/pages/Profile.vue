@@ -17,6 +17,7 @@ import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
 import { hasEncryptedName, resolveFileName, NAME_UNAVAILABLE } from '@/src/utils/fileNames'
 import { importKeyFromBase64 } from '@/src/crypto/crypto'
+import { receivedFileRow, formatRowDate } from '@/src/utils/fileRows'
 
 const fileTypeOptions = [
   { value: '', label: 'Tutti i tipi' },
@@ -73,14 +74,6 @@ const statTiles = computed<StatTile[]>(() => {
 
 const isLoading = computed(() => hookLoading.value || isLoadingShared.value || isLinksLoading.value)
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
 const convertFilesToTableFormat = (files: DynamoDBFile[]): TableFile[] =>
   files.map((file, i) => ({
     id: file.fileId || file.s3Key || String(i),
@@ -90,7 +83,7 @@ const convertFilesToTableFormat = (files: DynamoDBFile[]): TableFile[] =>
     type: file.fileType || 'application/octet-stream',
     size: file.fileSize || 'N/A',
     status: (file.sharedWith?.length ? 'sent' : 'uploaded') as TableFile['status'],
-    date: file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString('it-IT') : 'Sconosciuta',
+    date: formatRowDate(file.uploadedAt),
     recipient: file.sharedWith?.length ? file.sharedWith.map(r => r.email).join(', ') : '-',
     originalFile: file,
     sharedWith: file.sharedWith,
@@ -98,37 +91,19 @@ const convertFilesToTableFormat = (files: DynamoDBFile[]): TableFile[] =>
     isReceived: false,
   }))
 
+// La riga la costruisce `utils/fileRows`, testato a parte: leggere qui i campi del server
+// significava sbagliarne il nome senza che nulla lo segnalasse (data «Sconosciuta», colonna
+// «Cifrato» a trattino su file cifrati). Qui resta solo ciò che dipende dalla pagina: il nome,
+// che con `nameVersion: 2` arriva cifrato e si risolve in modo asincrono.
 const convertSharedFilesToTableFormat = (files: SharedFile[]): TableFile[] =>
-  files.map((file, i) => {
-    const dynamoFile: DynamoDBFile = {
-      fileId: file.shareId, fileName: file.fileName, originalName: file.fileName,
-      fileSize: typeof file.fileSize === 'number' ? formatFileSize(file.fileSize) : file.fileSize,
-      formattedSize: typeof file.fileSize === 'number' ? formatFileSize(file.fileSize) : file.fileSize,
-      fileType: file.fileType, s3Key: file.s3Key, s3Url: file.s3Url, urlExpires: null,
-      ownerUserId: file.ownerId, uploadedAt: file.createdAt, isReceived: true,
-      senderEmail: file.viaRequest ? (file.uploaderName || 'Nome non indicato') : file.ownerEmail,
-      senderId: file.ownerId, shareId: file.shareId, sharedAt: file.createdAt,
-    }
-    return {
-      id: file.shareId || String(i),
-      name: hasEncryptedName(file)
+  files.map((file) =>
+    receivedFileRow(
+      file,
+      hasEncryptedName(file)
         ? (resolvedNames.value[file.shareId] ?? NAME_UNAVAILABLE)
-        : file.fileName || 'File sconosciuto',
-      type: file.fileType || 'application/octet-stream',
-      size: typeof file.fileSize === 'number' ? formatFileSize(file.fileSize) : file.fileSize,
-      status: 'received' as TableFile['status'],
-      date: file.createdAt ? new Date(file.createdAt).toLocaleDateString('it-IT') : 'Sconosciuta',
-      recipient: '-',
-      originalFile: dynamoFile,
-      isReceived: true,
-      // Un caricamento su richiesta non ha un mittente registrato: l'unica provenienza è
-      // il nome digitato. Dirlo così com'è vale più di "Utente sconosciuto", che nasconde
-      // un'informazione che invece abbiamo.
-      senderEmail: file.viaRequest
-        ? `${file.uploaderName || 'Nome non indicato'}${file.requestTitle ? ` — ${file.requestTitle}` : ''}`
-        : file.ownerEmail || 'Utente sconosciuto',
-    }
-  })
+        : (file.fileName || 'File sconosciuto'),
+    ),
+  )
 
 // Niente try/catch qui: i due composable non lanciano, e mostrano già l'errore con il
 // messaggio del server. Un catch con un testo generico sarebbe solo un secondo messaggio,

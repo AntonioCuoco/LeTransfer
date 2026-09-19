@@ -99,11 +99,23 @@ export interface SharedFile {
   shareId: string
   s3Key: string
   ownerId: string
-  ownerEmail?: string
+  /**
+   * Email di chi ha condiviso, risolta dal server. ⚠️ Il campo si chiama così, **non**
+   * `ownerEmail`: leggerlo con l'altro nome mostrava «Utente sconosciuto» su ogni riga.
+   * `null` per i caricamenti su richiesta: chi carica non ha un account.
+   */
+  senderEmail?: string | null
   fileName: string
   fileSize: number | string
   fileType: string
-  createdAt: string
+  /**
+   * Quando il file è stato condiviso con me. ⚠️ `GET /api/shared-files` lo manda come
+   * `sharedAt` e **non manda `createdAt`**: leggerlo con quel nome faceva comparire
+   * «Sconosciuta» nella colonna Data di ogni file ricevuto.
+   */
+  sharedAt: string
+  /** Quando il file è stato caricato: ripiego per la data, e dato a sé per i file legacy. */
+  uploadedAt?: string
   s3Url: string
   // Presenti se il file è cifrato E2E: la file key AES wrappata con la MIA chiave pubblica RSA.
   encryptedAESKey?: string
@@ -117,7 +129,6 @@ export interface SharedFile {
   // Non è verificato: va mostrato come dichiarazione, mai come identità accertata.
   viaRequest?: boolean
   uploaderName?: string
-  requestTitle?: string
   /** O2.2 — 2 = `fileName` è ciphertext, apribile con la chiave del file. Assente/1 = in chiaro. */
   nameVersion?: number
 }
