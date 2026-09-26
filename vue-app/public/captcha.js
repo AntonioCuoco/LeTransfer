@@ -22,10 +22,14 @@
   // `novren.net`, quindi il browser arriva qui sempre e solo da quell'origine.
   // Un redirect non è un'origine: dopo il 301 la pagina è servita da novren.net,
   // ed è quello che il browser dichiara come `parent`.
+  // Le ultime due sono le origini di STAGING: senza, il widget compare ma il token
+  // non esce, e l'invio senza account fallisce appena il captcha e' attivo.
   var ALLOWED_PARENTS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
-    'https://novren.net'
+    'https://novren.net',
+    'https://novren-staging.pages.dev',
+    'https://staging.novren.net'
   ];
 
   var params = new URLSearchParams(location.search);
