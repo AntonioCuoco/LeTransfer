@@ -20,6 +20,8 @@ declare module 'vue' {
     Checkbox: typeof import('primevue/checkbox')['default']
     Chip: typeof import('primevue/chip')['default']
     CipherField: typeof import('./src/components/landing/CipherField.vue')['default']
+    CliConsentCard: typeof import('./src/components/cli/CliConsentCard.vue')['default']
+    CliDevicesSection: typeof import('./src/components/settings/CliDevicesSection.vue')['default']
     Column: typeof import('primevue/column')['default']
     ConfirmDialog: typeof import('primevue/confirmdialog')['default']
     ConfirmEmailForm: typeof import('./src/components/auth/ConfirmEmailForm.vue')['default']

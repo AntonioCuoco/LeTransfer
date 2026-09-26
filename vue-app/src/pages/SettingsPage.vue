@@ -5,6 +5,7 @@ import { notify } from '@/src/utils/notify'
 import GeneralSection from '@/src/components/settings/GeneralSection.vue'
 import NotificationSection from '@/src/components/settings/NotificationSection.vue'
 import SubscriptionSection from '@/src/components/settings/SubscriptionSection.vue'
+import CliDevicesSection from '@/src/components/settings/CliDevicesSection.vue'
 import IntegrationSettings from '@/src/components/settings/IntegrationSettings.vue'
 import MyKeyFingerprint from '@/src/components/settings/MyKeyFingerprint.vue'
 
@@ -67,6 +68,8 @@ const handleReset = () => {
         <TabPanel value="1">
           <GeneralSection />
           <div class="mt-6"><MyKeyFingerprint /></div>
+          <!-- Si nasconde da sola se l'accesso dalla CLI non è attivo sul backend. -->
+          <div class="mt-6"><CliDevicesSection /></div>
         </TabPanel>
         <TabPanel value="2"><NotificationSection /></TabPanel>
         <TabPanel value="3"><SubscriptionSection /></TabPanel>

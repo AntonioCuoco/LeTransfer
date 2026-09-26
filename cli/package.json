@@ -1,0 +1,29 @@
+{
+  "name": "@novren/cli",
+  "version": "0.1.0",
+  "description": "Novren da terminale: file cifrati end-to-end, la chiave non lascia mai il tuo computer.",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "type": "module",
+  "bin": {
+    "novren": "dist/novren.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && vitest run",
+    "verify": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "client-zip": "^2.5.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~5.7.3",
+    "vitest": "^3.2.7"
+  }
+}

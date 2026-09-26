@@ -15,6 +15,10 @@ const router = createRouter({
     { path: '/register', component: () => import('@/src/pages/RegisterPage.vue') },
     { path: '/oauth2/callback', component: () => import('@/src/pages/OAuthCallback.vue') },
     { path: '/share/:publicToken', component: () => import('@/src/pages/ShareAccessPage.vue') },
+    // Autorizzare la CLI (`novren login`): pubbliche, perché chi arriva può non avere ancora
+    // una sessione. Senza l'interruttore del backend dicono «non ancora disponibile».
+    { path: '/cli/authorize', component: () => import('@/src/pages/CliAuthorizePage.vue') },
+    { path: '/cli/device', component: () => import('@/src/pages/CliDevicePage.vue') },
     // Pagina pubblica: chi carica non ha un account e spesso non sa cos'è Novren.
     { path: '/richiesta/:publicToken', component: () => import('@/src/pages/RequestUploadPage.vue') },
 

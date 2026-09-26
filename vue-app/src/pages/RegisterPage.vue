@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
 import { setAuthCookie } from '@/src/utils/cookieStore'
+import { postLoginPath } from '@/src/utils/cliAuthorization'
 import Swal from 'sweetalert2'
 import { SignUpCommand, type AuthenticationResultType } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
@@ -22,7 +23,7 @@ import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/regi
  */
 
 const router = useRouter()
-if (Cookies.get('accessToken')) router.replace('/app')
+if (Cookies.get('accessToken')) router.replace(postLoginPath())
 
 const view = ref<'form' | 'confirm'>('form')
 const name = ref('')
@@ -104,7 +105,7 @@ const onConfirmed = (tokens: AuthenticationResultType | null) => {
     setAuthCookie('accessToken', tokens.AccessToken, 1 / 24)
     setAuthCookie('idToken', tokens.IdToken, 1 / 24)
     setAuthCookie('refreshToken', tokens.RefreshToken, 30)
-    router.push('/app')
+    router.push(postLoginPath())
     return
   }
   Swal.fire({ title: 'Email confermata', text: 'Ora accedi con la tua password.', icon: 'success' })

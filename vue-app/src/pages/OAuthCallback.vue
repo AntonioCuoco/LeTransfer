@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { setAuthCookie } from '@/src/utils/cookieStore'
+import { postLoginPath } from '@/src/utils/cliAuthorization'
 import { notify } from '@/src/utils/notify'
 
 const router = useRouter()
@@ -58,7 +59,7 @@ onMounted(async () => {
       if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
     }
     sessionStorage.removeItem('pkce_verifier')
-    router.replace('/app')
+    router.replace(postLoginPath())
   } catch { fail(describeOAuthError()) }
 })
 </script>
