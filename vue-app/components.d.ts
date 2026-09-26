@@ -40,6 +40,7 @@ declare module 'vue' {
     GoogleLoginButton: typeof import('./src/components/GoogleLoginButton.vue')['default']
     GuestSendWidget: typeof import('./src/components/landing/GuestSendWidget.vue')['default']
     GuestTransferPill: typeof import('./src/components/landing/GuestTransferPill.vue')['default']
+    HandoffCard: typeof import('./src/components/LinkAccess/HandoffCard.vue')['default']
     InputNumber: typeof import('primevue/inputnumber')['default']
     InputText: typeof import('primevue/inputtext')['default']
     IntegrationSettings: typeof import('./src/components/settings/IntegrationSettings.vue')['default']

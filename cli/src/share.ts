@@ -3,20 +3,17 @@ import { encode } from 'uqr'
 import { looksHeadless } from './login'
 import { openExternal } from './open'
 import { ask, info, interactive } from './ui'
+import { select } from './select'
 import { UserError } from './commands/get'
 
 /**
- * Dopo `send`: far arrivare il link a qualcuno — appunti, QR, email, WhatsApp, Telegram.
+ * Dopo `send`: far arrivare il link a qualcuno — appunti, QR, email.
  *
  * ── Chi vede il link ─────────────────────────────────────────────────────────
  * Il link contiene la chiave: chi lo legge apre il file. Per questo NON lo manda Novren (il
  * server vedrebbe la chiave e cadrebbe lo zero-knowledge): lo consegna questo computer al
  * canale scelto dall'utente, esattamente come se lo copiasse a mano. Novren non è mai nel
  * mezzo; il canale sì, e la scelta del canale è dell'utente.
- *
- * Per WhatsApp e Telegram si aprono le **app** (`whatsapp:`, `tg:`), non le pagine web
- * wa.me / t.me: quelle ricevono il testo nella query string, cioè i loro server leggerebbero
- * il link con la chiave prima ancora che il messaggio parta.
  */
 
 export interface SharedTransfer {
@@ -32,8 +29,6 @@ export interface ShareOptions {
   qr?: boolean
   /** Indirizzo del destinatario; stringa vuota = lo si sceglie nel programma di posta. */
   mail?: string
-  whatsapp?: boolean
-  telegram?: boolean
   noMenu?: boolean
 }
 
@@ -46,7 +41,7 @@ function expiryText(expiresAt: string | null): string | null {
   return `Il link scade il ${when.toLocaleString('it-IT', { dateStyle: 'long', timeStyle: 'short' })}.`
 }
 
-/** Il testo che accompagna il link: lo stesso per email e chat. */
+/** Il testo che accompagna il link nell'email. */
 export function composeMessage(t: SharedTransfer): string {
   return [
     `Ti ho mandato «${t.name}» con Novren:`,
@@ -75,13 +70,6 @@ export function mailtoUrl(t: SharedTransfer, to: string): string {
   return `mailto:${to}?subject=${mailEncode(subject)}&body=${mailEncode(composeMessage(t))}`
 }
 
-export const whatsappUrl = (t: SharedTransfer) => `whatsapp://send?text=${encodeURIComponent(composeMessage(t))}`
-
-export function telegramUrl(t: SharedTransfer): string {
-  // Telegram mette il link in cima da solo: nel testo va il resto del messaggio.
-  const text = composeMessage(t).replace(`${t.link}\n\n`, '')
-  return `tg://msg_url?url=${encodeURIComponent(t.link)}&text=${encodeURIComponent(text)}`
-}
 
 // ── QR ─────────────────────────────────────────────────────────────────────────
 
@@ -178,16 +166,22 @@ async function doCopy(t: SharedTransfer): Promise<void> {
   else info('Non riesco ad accedere agli appunti: copia il link qui sopra.')
 }
 
+/**
+ * Il link del QR: quello vero più `via=qr` nel frammento. La pagina del sito lo riconosce e,
+ * invece di chiedere «come ti chiami?» per scaricare, offre di inoltrarlo dal telefono
+ * (vue-app, utils/linkHandoff.ts). Il segnale sta nel frammento come la chiave: il server non
+ * lo vede. Un sito che non conosce il segnale lo ignora e mostra la pagina di sempre.
+ */
+export const handoffLink = (link: string) => `${link}&via=qr`
+
 function doQr(t: SharedTransfer): void {
-  info(`${renderQr(t.link)}\nInquadralo con la fotocamera del telefono.`)
+  info(`${renderQr(handoffLink(t.link))}\nInquadralo con il telefono: da lì lo inoltri con l'app che vuoi, o scarichi il file.`)
 }
 
 async function runOptions(t: SharedTransfer, options: ShareOptions): Promise<void> {
   if (options.copy) await doCopy(t)
   if (options.qr) doQr(t)
   if (options.mail !== undefined) openOrPrint(mailtoUrl(t, options.mail.trim()), 'il programma di posta')
-  if (options.whatsapp) openOrPrint(whatsappUrl(t), 'WhatsApp')
-  if (options.telegram) openOrPrint(telegramUrl(t), 'Telegram')
 }
 
 interface MenuEntry {
@@ -195,45 +189,41 @@ interface MenuEntry {
   run: (t: SharedTransfer) => Promise<void> | void
 }
 
-/** Le voci del menu. Senza schermo (SSH) niente email né app: non c'è niente da aprire. */
+/** Le voci del menu. Senza schermo (SSH) niente email: non c'è un programma di posta da aprire. */
 export function menuEntries(headless: boolean): MenuEntry[] {
   const entries: MenuEntry[] = [
     { label: 'Copia negli appunti', run: doCopy },
     { label: 'Mostra il QR code (lo inquadri con il telefono)', run: doQr },
   ]
   if (!headless) {
-    entries.push(
-      {
-        label: 'Email (dal tuo programma di posta)',
-        run: async (t) => {
-          let to = await ask('A chi? (Invio: lo scegli nel programma di posta) ')
-          while (to && !isEmail(to)) to = await ask('Non sembra un indirizzo email. Riprova (Invio per saltare): ')
-          openOrPrint(mailtoUrl(t, to), 'il programma di posta')
-        },
+    entries.push({
+      label: 'Email (dal tuo programma di posta)',
+      run: async (t) => {
+        let to = await ask('A chi? (Invio: lo scegli nel programma di posta) ')
+        while (to && !isEmail(to)) to = await ask('Non sembra un indirizzo email. Riprova (Invio per saltare): ')
+        openOrPrint(mailtoUrl(t, to), 'il programma di posta')
       },
-      { label: 'WhatsApp', run: (t) => openOrPrint(whatsappUrl(t), 'WhatsApp') },
-      { label: 'Telegram', run: (t) => openOrPrint(telegramUrl(t), 'Telegram') },
-    )
+    })
   }
   return entries
 }
 
+/**
+ * Il menu con le frecce. All'inizio il cursore è sulla prima voce; dopo aver fatto qualcosa
+ * si sposta su «Fine», così un secondo Invio chiude — e la voce fatta resta segnata con ✓.
+ */
 async function runMenu(t: SharedTransfer): Promise<void> {
   const entries = menuEntries(looksHeadless())
-  info('\nCosa ne faccio del link?')
-  entries.forEach((entry, i) => info(`  ${i + 1}  ${entry.label}`))
-  info('  Invio  niente, basta così')
-  let prompt = 'Scelta: '
+  const done = new Set<number>()
+  let cursor = 0
+  info('\nCosa ne faccio del link?  (↑↓ per scegliere, Invio per confermare)')
   for (;;) {
-    const answer = await ask(prompt)
-    if (!answer) return
-    const entry = entries[Number(answer) - 1]
-    if (!entry) {
-      prompt = `Scegli un numero da 1 a ${entries.length}, o Invio per finire: `
-      continue
-    }
-    await entry.run(t)
-    prompt = 'Altro? (numero, o Invio per finire): '
+    const labels = [...entries.map((entry, i) => (done.has(i) ? `${entry.label} ✓` : entry.label)), 'Fine']
+    const choice = await select(labels, { initial: cursor })
+    if (choice === null || choice === entries.length) return
+    await entries[choice]!.run(t)
+    done.add(choice)
+    cursor = entries.length
   }
 }
 
@@ -242,7 +232,7 @@ async function runMenu(t: SharedTransfer): Promise<void> {
  * In uno script (niente terminale) non chiede mai niente: il link è già su stdout.
  */
 export async function shareLink(t: SharedTransfer, options: ShareOptions): Promise<void> {
-  const explicit = options.copy || options.qr || options.mail !== undefined || options.whatsapp || options.telegram
+  const explicit = options.copy || options.qr || options.mail !== undefined
   if (explicit) return runOptions(t, options)
   if (!options.noMenu && interactive()) return runMenu(t)
 }

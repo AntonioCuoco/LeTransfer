@@ -364,16 +364,7 @@ describe('novren send', () => {
     expect(result.stderr).toContain(`\x1b]52;c;${Buffer.from(link).toString('base64')}\x07`)
     expect(result.stderr).toContain('▀')
     expect(result.stderr).toContain('Inquadralo')
-  })
-
-  it('--whatsapp e --telegram: le app, con il link', async () => {
-    await saveToken('device')
-    await writeFile(join(work, 'a.txt'), 'x')
-    const result = await run(['send', join(work, 'a.txt'), '--whatsapp', '--telegram'])
-    expect(result.code, result.stderr).toBe(0)
-    const link = result.stdout.trim()
-    expect(new URL(result.stderr.match(/whatsapp:\S+/)![0]).searchParams.get('text')).toContain(link)
-    expect(new URL(result.stderr.match(/tg:\S+/)![0]).searchParams.get('url')).toBe(link)
+    expect(result.stderr).toContain('inoltri')
   })
 
   it('in uno script (niente terminale) non chiede niente', async () => {

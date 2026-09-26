@@ -29,24 +29,25 @@ novren send report.pdf --expires 24 --max-downloads 3
 ### Consegnare il link
 
 Dopo l'invio, in un terminale, la CLI chiede cosa fare del link: copiarlo, mostrarlo come QR
-code (lo inquadri con il telefono e il file è lì), aprire il tuo programma di posta o
-WhatsApp/Telegram con il messaggio già scritto. Le stesse cose, senza domande:
+code, o aprire il tuo programma di posta con il messaggio già scritto. Le stesse cose, senza
+domande:
 
 ```bash
 novren send contratto.pdf --copy
 novren send foto.zip --qr
 novren send preventivo.pdf --mail mario@example.com
-novren send video.mp4 --whatsapp        # oppure --telegram
 novren send report.pdf --no-menu        # solo il link, niente domande
 ```
 
 - **Il link lo consegna il tuo computer, non Novren.** Il link contiene la chiave: se lo
   mandasse il server di Novren, il server la vedrebbe. Così invece Novren resta fuori, come
   quando copi il link a mano.
+- **Il QR è per il tuo telefono.** Inquadrandolo si apre una pagina che non chiede niente e
+  non conta come download: «Inoltra» apre il menu di condivisione del telefono (WhatsApp,
+  Telegram, Messaggi, Mail, AirDrop…), oppure copi il link o scarichi il file lì. Il link
+  che inoltri è quello normale, e chi lo riceve vede la pagina per scaricare.
 - **Chi vede il link apre il file**: scegli il canale di conseguenza. Per file delicati usa
   `--password` e manda la password su un canale diverso da quello del link.
-- WhatsApp e Telegram si aprono nelle **app** installate, non nelle pagine web wa.me / t.me,
-  che riceverebbero il testo, chiave compresa. Se l'app non c'è, usa `--copy`.
 - Via SSH ci sono solo appunti e QR. Gli appunti passano dal terminale (OSC 52) e arrivano al
   computer davanti a cui sei seduto, se il terminale lo supporta.
 
@@ -108,7 +109,7 @@ Codici d'uscita: `0` riuscito · `1` errore (link, rete, decifratura) · `2` uso
 | `NOVREN_WEB_URL` | il sito per il login e per i link (default `https://novren.net`) |
 | `NOVREN_LINK_PASSWORD` | la password di un link, per gli script (in `get` e in `send --password`) |
 | `NOVREN_CONFIG_DIR` | dove tenere token e cronologia degli invii |
-| `NOVREN_OPEN_BROWSER=0` | non aprire browser, posta o app: la CLI stampa l'indirizzo da aprire a mano |
+| `NOVREN_OPEN_BROWSER=0` | non aprire browser o posta: la CLI stampa l'indirizzo da aprire a mano |
 | `NOVREN_CLIPBOARD=osc52` | copia sempre tramite il terminale (OSC 52), anche in locale |
 | `NOVREN_DEBUG` | dettagli tecnici sugli errori inattesi |
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { encode } from 'uqr'
-import { composeMessage, isEmail, mailtoUrl, menuEntries, renderQr, telegramUrl, whatsappUrl } from '../src/share'
+import { composeMessage, handoffLink, isEmail, mailtoUrl, menuEntries, renderQr } from '../src/share'
+import { parseLink } from '../src/link'
 
 // Un link vero ha «&» e «#»: sono proprio i caratteri che un indirizzo costruito male spezza.
 const transfer = {
@@ -51,21 +52,6 @@ describe('mailto', () => {
   })
 })
 
-describe('chat', () => {
-  it('WhatsApp: l’app, non wa.me — e il link intero nel testo', () => {
-    const url = whatsappUrl(transfer)
-    expect(url.startsWith('whatsapp://send?text=')).toBe(true)
-    expect(new URL(url).searchParams.get('text')).toContain(transfer.link)
-  })
-
-  it('Telegram: l’app, non t.me — link nel suo parametro, non ripetuto nel testo', () => {
-    const url = new URL(telegramUrl(transfer))
-    expect(url.protocol).toBe('tg:')
-    expect(url.searchParams.get('url')).toBe(transfer.link)
-    expect(url.searchParams.get('text')).not.toContain(transfer.link)
-  })
-})
-
 describe('QR', () => {
   it('il disegno è esattamente la matrice del QR: si rilegge modulo per modulo', () => {
     const expected = encode(transfer.link, { ecc: 'L', border: 2 }).data
@@ -89,9 +75,20 @@ describe('QR', () => {
   })
 })
 
+describe('link del QR', () => {
+  it('è il link vero con il segnale nel frammento: chiave e iv restano gli stessi', () => {
+    const qr = handoffLink(transfer.link)
+    const url = new URL(qr)
+    expect(url.search).toBe('')
+    expect(new URLSearchParams(url.hash.slice(1)).get('via')).toBe('qr')
+    // Anche chi non conosce il segnale (un sito vecchio, `novren get`) apre lo stesso file.
+    expect(parseLink(qr)).toEqual(parseLink(transfer.link))
+  })
+})
+
 describe('menu', () => {
-  it('senza schermo (SSH) solo appunti e QR: email e app non avrebbero dove aprirsi', () => {
+  it('senza schermo (SSH) solo appunti e QR: l’email non avrebbe dove aprirsi', () => {
     expect(menuEntries(true).map((e) => e.label)).toHaveLength(2)
-    expect(menuEntries(false).map((e) => e.label)).toHaveLength(5)
+    expect(menuEntries(false).map((e) => e.label)).toHaveLength(3)
   })
 })

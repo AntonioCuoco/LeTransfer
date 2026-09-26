@@ -29,7 +29,6 @@ Uso:
       --copy                   copialo negli appunti
       --qr                     mostralo come QR code, da inquadrare con il telefono
       --mail <indirizzo>       apri il tuo programma di posta con il messaggio pronto
-      --whatsapp, --telegram   apri l'app con il messaggio pronto
       --no-menu                stampa solo il link, senza chiedere niente
 
   novren get [link]            scarica e decifra un invio (senza link: te lo chiede)
@@ -91,8 +90,6 @@ export async function main(argv: string[]): Promise<number> {
             copy: { type: 'boolean' },
             qr: { type: 'boolean' },
             mail: { type: 'string' },
-            whatsapp: { type: 'boolean' },
-            telegram: { type: 'boolean' },
             'no-menu': { type: 'boolean' },
           },
         })
@@ -109,8 +106,6 @@ export async function main(argv: string[]): Promise<number> {
           copy: values.copy,
           qr: values.qr,
           mail: values.mail,
-          whatsapp: values.whatsapp,
-          telegram: values.telegram,
           noMenu: values['no-menu'],
         })
         return 0
