@@ -1,6 +1,7 @@
 import { ApiError, guestRevoke } from '../api'
 import { forgetCredentials, loadSends, saveSends } from '../config'
-import { send as upload } from '../send'
+import { send as upload, type SendResult } from '../send'
+import { isEmail } from '../share'
 import { askSecret, info, interactive } from '../ui'
 import { requireCredentials } from './account'
 import { UserError } from './get'
@@ -18,6 +19,8 @@ export interface SendCommandOptions {
   askPassword?: boolean
   expiresInHours?: string
   maxDownloads?: string
+  /** Solo per validarlo PRIMA di caricare: scoprire un indirizzo sbagliato a invio fatto è tardi. */
+  mail?: string
 }
 
 function positiveInt(value: string | undefined, what: string): number | undefined {
@@ -27,10 +30,12 @@ function positiveInt(value: string | undefined, what: string): number | undefine
   return n
 }
 
-export async function send(options: SendCommandOptions): Promise<string> {
+export async function send(options: SendCommandOptions): Promise<SendResult> {
   if (options.paths.length === 0) throw new UserError('Cosa invio? Esempio: novren send documento.pdf')
   const expiresInHours = positiveInt(options.expiresInHours, '--expires')
   const maxDownloads = positiveInt(options.maxDownloads, '--max-downloads')
+  const mail = options.mail?.trim()
+  if (mail && !isEmail(mail)) throw new UserError(`--mail: «${mail}» non sembra un indirizzo email.`)
 
   let password = process.env.NOVREN_LINK_PASSWORD || undefined
   if (options.askPassword && !password) {
@@ -45,7 +50,7 @@ export async function send(options: SendCommandOptions): Promise<string> {
     const result = await upload({ paths: options.paths, credentials, password, expiresInHours, maxDownloads })
     if (result.expiresAt) info(`Scade il ${new Date(result.expiresAt).toLocaleString('it-IT')}.`)
     if (result.claimed) info('Aggiunto al tuo account: lo trovi fra i tuoi link sul sito.')
-    return result.link
+    return result
   } catch (error) {
     // Un token revocato dal sito resta sul disco finché non si prova a usarlo: lo si toglie,
     // così il prossimo invio ricollega il computer invece di fallire di nuovo.

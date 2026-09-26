@@ -3,8 +3,10 @@
 Novren da terminale. I file si cifrano e si decifrano **su questo computer**, con lo stesso
 codice del sito: la chiave non lascia mai la macchina e non arriva mai ai server di Novren.
 
-> `send` e `login` funzionano solo con un backend che ha `CLI_AUTH_ENABLED=true`
-> (vedi il README di leTransferBackend). Se il flag è spento, la CLI lo dice e non invia.
+```bash
+npm install -g @novren/cli     # serve Node.js 20.12 o più recente
+novren --help
+```
 
 ## Inviare
 
@@ -23,6 +25,30 @@ novren send report.pdf --expires 24 --max-downloads 3
   al massimo 20 invii al giorno da questo computer.
 - `novren revoke` elenca gli invii senza account fatti da qui; `novren revoke <codice|link>`
   ne ritira uno. Quelli nel tuo account si gestiscono dal sito.
+
+### Consegnare il link
+
+Dopo l'invio, in un terminale, la CLI chiede cosa fare del link: copiarlo, mostrarlo come QR
+code (lo inquadri con il telefono e il file è lì), aprire il tuo programma di posta o
+WhatsApp/Telegram con il messaggio già scritto. Le stesse cose, senza domande:
+
+```bash
+novren send contratto.pdf --copy
+novren send foto.zip --qr
+novren send preventivo.pdf --mail mario@example.com
+novren send video.mp4 --whatsapp        # oppure --telegram
+novren send report.pdf --no-menu        # solo il link, niente domande
+```
+
+- **Il link lo consegna il tuo computer, non Novren.** Il link contiene la chiave: se lo
+  mandasse il server di Novren, il server la vedrebbe. Così invece Novren resta fuori, come
+  quando copi il link a mano.
+- **Chi vede il link apre il file**: scegli il canale di conseguenza. Per file delicati usa
+  `--password` e manda la password su un canale diverso da quello del link.
+- WhatsApp e Telegram si aprono nelle **app** installate, non nelle pagine web wa.me / t.me,
+  che riceverebbero il testo, chiave compresa. Se l'app non c'è, usa `--copy`.
+- Via SSH ci sono solo appunti e QR. Gli appunti passano dal terminale (OSC 52) e arrivano al
+  computer davanti a cui sei seduto, se il terminale lo supporta.
 
 ## Collegare il computer
 
@@ -82,15 +108,29 @@ Codici d'uscita: `0` riuscito · `1` errore (link, rete, decifratura) · `2` uso
 | `NOVREN_WEB_URL` | il sito per il login e per i link (default `https://novren.net`) |
 | `NOVREN_LINK_PASSWORD` | la password di un link, per gli script (in `get` e in `send --password`) |
 | `NOVREN_CONFIG_DIR` | dove tenere token e cronologia degli invii |
-| `NOVREN_OPEN_BROWSER=0` | non aprire il browser: la CLI stampa l'indirizzo da copiare |
+| `NOVREN_OPEN_BROWSER=0` | non aprire browser, posta o app: la CLI stampa l'indirizzo da aprire a mano |
+| `NOVREN_CLIPBOARD=osc52` | copia sempre tramite il terminale (OSC 52), anche in locale |
 | `NOVREN_DEBUG` | dettagli tecnici sugli errori inattesi |
+
+## Licenza
+
+La CLI è rilasciata sotto [FSL-1.1-ALv2](https://fsl.software): puoi leggerla, usarla e
+modificarla, ma non per offrire un prodotto concorrente; ogni versione diventa Apache 2.0 due
+anni dopo l'uscita. Il nucleo crittografico incluso è Apache 2.0. Testi completi in
+`dist/LICENSE` e `dist/THIRD-PARTY-NOTICES.txt`.
 
 ## Sviluppo
 
 ```bash
 npm install
 npm run verify      # typecheck + build + test
+npm pack            # il pacchetto, come andrebbe su npm (rilancia prima verify)
 ```
+
+- `send` e `login` funzionano solo con un backend che ha `CLI_AUTH_ENABLED=true` (vedi il
+  README di leTransferBackend). Se il flag è spento, la CLI lo dice e non invia.
+- Nel pacchetto finisce solo `dist/`: il bundle, `LICENSE` e le note di terzi, generate dal
+  build a partire da ciò che esbuild ha davvero impacchettato.
 
 - **Un solo file, nessuna dipendenza a runtime.** esbuild impacchetta la CLI e il nucleo
   crittografico in `dist/novren.mjs`, lasciato leggibile di proposito: chi installa uno

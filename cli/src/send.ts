@@ -72,6 +72,9 @@ export interface SendResult {
   link: string
   expiresAt: string | null
   claimed: boolean
+  /** Il nome del file o dell'archivio: resta su questo computer, finisce solo nel messaggio. */
+  name: string
+  passwordProtected: boolean
 }
 
 interface Part {
@@ -228,7 +231,7 @@ export async function send(options: SendOptions): Promise<SendResult> {
     claimed,
   }).catch(() => {})
 
-  return { link, expiresAt: completed.expiresAt ?? null, claimed }
+  return { link, expiresAt: completed.expiresAt ?? null, claimed, name: source.name, passwordProtected: Boolean(options.password) }
 }
 
 /** File singolo: parti lette dal disco a pezzi, cifrate e caricate con un po' di parallelismo. */

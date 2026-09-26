@@ -329,6 +329,61 @@ describe('novren send', () => {
     expect(novren.requests.length).toBe(before)
   })
 
+  it('--mail: apre la posta con il link nel corpo; su stdout resta solo il link', async () => {
+    await saveToken('device')
+    await writeFile(join(work, 'preventivo.pdf'), 'x')
+    // NOVREN_OPEN_BROWSER=0 (in baseEnv): invece di aprire, la CLI stampa l'indirizzo.
+    const result = await run(['send', join(work, 'preventivo.pdf'), '--mail', 'mario@example.com'])
+    expect(result.code, result.stderr).toBe(0)
+    const link = result.stdout.trim()
+    expect(result.stdout).toBe(`${link}\n`)
+
+    const mailto = result.stderr.match(/mailto:\S+/)![0]
+    const url = new URL(mailto)
+    expect(url.pathname).toBe('mario@example.com')
+    expect(url.searchParams.get('body')).toContain(link)
+    expect(url.searchParams.get('subject')).toContain('preventivo.pdf')
+  })
+
+  it('--mail con un indirizzo sbagliato: si ferma PRIMA di caricare', async () => {
+    await saveToken('device')
+    await writeFile(join(work, 'a.txt'), 'x')
+    const before = novren.completed.length
+    const result = await run(['send', join(work, 'a.txt'), '--mail', 'mario@example.com?bcc=spia@x.it'])
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('non sembra un indirizzo')
+    expect(novren.completed.length).toBe(before)
+  })
+
+  it('--copy (via terminale, OSC 52) e --qr', async () => {
+    await saveToken('device')
+    await writeFile(join(work, 'a.txt'), 'x')
+    const result = await run(['send', join(work, 'a.txt'), '--copy', '--qr'], { NOVREN_CLIPBOARD: 'osc52' })
+    expect(result.code, result.stderr).toBe(0)
+    const link = result.stdout.trim()
+    expect(result.stderr).toContain(`\x1b]52;c;${Buffer.from(link).toString('base64')}\x07`)
+    expect(result.stderr).toContain('▀')
+    expect(result.stderr).toContain('Inquadralo')
+  })
+
+  it('--whatsapp e --telegram: le app, con il link', async () => {
+    await saveToken('device')
+    await writeFile(join(work, 'a.txt'), 'x')
+    const result = await run(['send', join(work, 'a.txt'), '--whatsapp', '--telegram'])
+    expect(result.code, result.stderr).toBe(0)
+    const link = result.stdout.trim()
+    expect(new URL(result.stderr.match(/whatsapp:\S+/)![0]).searchParams.get('text')).toContain(link)
+    expect(new URL(result.stderr.match(/tg:\S+/)![0]).searchParams.get('url')).toBe(link)
+  })
+
+  it('in uno script (niente terminale) non chiede niente', async () => {
+    await saveToken('device')
+    await writeFile(join(work, 'a.txt'), 'x')
+    const result = await run(['send', join(work, 'a.txt')])
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stderr).not.toContain('Cosa ne faccio')
+  })
+
   it('revoke: ritira un invio senza account, e il link smette di funzionare', async () => {
     await saveToken('device')
     await writeFile(join(work, 'a.txt'), 'x')

@@ -4,6 +4,7 @@ import { InvalidLink } from './link'
 import { get, UserError } from './commands/get'
 import { login, logout, status } from './commands/account'
 import { revoke, send } from './commands/send'
+import { shareLink } from './share'
 import { DownloadError } from '../../vue-app/src/crypto/streamingDownload'
 
 /**
@@ -24,6 +25,12 @@ Uso:
       --password               protegge il link con una password (chiesta, nascosta)
       --expires <ore>          scadenza in ore (default e massimo: 7 giorni)
       --max-downloads <n>      numero massimo di download
+    e poi, per consegnare il link (senza opzioni, in un terminale, te lo chiede):
+      --copy                   copialo negli appunti
+      --qr                     mostralo come QR code, da inquadrare con il telefono
+      --mail <indirizzo>       apri il tuo programma di posta con il messaggio pronto
+      --whatsapp, --telegram   apri l'app con il messaggio pronto
+      --no-menu                stampa solo il link, senza chiedere niente
 
   novren get [link]            scarica e decifra un invio (senza link: te lo chiede)
       -o, --output <cartella>  dove salvarlo (default: la cartella corrente)
@@ -81,16 +88,31 @@ export async function main(argv: string[]): Promise<number> {
             password: { type: 'boolean' },
             expires: { type: 'string' },
             'max-downloads': { type: 'string' },
+            copy: { type: 'boolean' },
+            qr: { type: 'boolean' },
+            mail: { type: 'string' },
+            whatsapp: { type: 'boolean' },
+            telegram: { type: 'boolean' },
+            'no-menu': { type: 'boolean' },
           },
         })
-        const link = await send({
+        const sent = await send({
           paths: positionals,
           askPassword: values.password,
           expiresInHours: values.expires,
           maxDownloads: values['max-downloads'],
+          mail: values.mail,
         })
-        process.stdout.write(`${link}
-`)
+        // Prima il link su stdout (per gli script), poi — su stderr — il modo di consegnarlo.
+        process.stdout.write(`${sent.link}\n`)
+        await shareLink(sent, {
+          copy: values.copy,
+          qr: values.qr,
+          mail: values.mail,
+          whatsapp: values.whatsapp,
+          telegram: values.telegram,
+          noMenu: values['no-menu'],
+        })
         return 0
       }
       case 'login': {

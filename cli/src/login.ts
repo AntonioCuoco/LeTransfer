@@ -1,10 +1,10 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { spawn } from 'node:child_process'
 import { apiBaseUrl, exchangeCode, pollDeviceLogin, startDeviceLogin, whoami, ApiError, type IssuedToken } from './api'
 import { saveCredentials, webBaseUrl, type Credentials } from './config'
 import { info } from './ui'
+import { openExternal } from './open'
 import { UserError } from './commands/get'
 
 /**
@@ -35,24 +35,6 @@ export function looksHeadless(): boolean {
     return !(process.env.DISPLAY || process.env.WAYLAND_DISPLAY) || process.platform !== 'linux'
   }
   return process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY
-}
-
-/**
- * Apre l'URL nel browser di sistema. Senza shell (`spawn` con argomenti separati): l'URL
- * contiene `&`, e passato a una shell verrebbe spezzato in due comandi.
- * `NOVREN_OPEN_BROWSER=0` lo disattiva (test, ambienti in cui si preferisce copiare l'URL).
- */
-function openBrowser(url: string): void {
-  if (process.env.NOVREN_OPEN_BROWSER === '0') return
-  const [command, args] =
-    process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
-    : process.platform === 'darwin' ? ['open', [url]]
-    : ['xdg-open', [url]]
-  try {
-    spawn(command, args as string[], { stdio: 'ignore', detached: true }).on('error', () => {}).unref()
-  } catch {
-    // Nessun browser apribile: resta l'URL stampato, da copiare a mano.
-  }
 }
 
 const PAGE = (title: string, text: string) => `<!doctype html><html lang="it"><meta charset="utf-8">
@@ -107,7 +89,7 @@ async function loginWithBrowser(deviceName: string): Promise<IssuedToken> {
   info('Apro il browser per collegare questo computer.')
   info(`Se non si apre, visita:\n  ${url}`)
   info(`Codice di controllo: ${check}  (la pagina deve mostrare lo stesso)`)
-  openBrowser(url)
+  openExternal(url)
 
   const timeout = setTimeout(() => rejectCode(new UserError('Tempo scaduto: rilancia «novren login».')), LOGIN_TIMEOUT_MS)
   try {
