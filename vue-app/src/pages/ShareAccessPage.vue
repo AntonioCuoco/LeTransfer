@@ -10,6 +10,8 @@ import LinkAccessForm from '@/src/components/LinkAccess/LinkAccessForm.vue'
 import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
 import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
 import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
+import HandoffCard from '@/src/components/LinkAccess/HandoffCard.vue'
+import { isHandoff, shareableLink, stripHandoffFromAddressBar } from '@/src/utils/linkHandoff'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
@@ -44,15 +46,31 @@ const isDone = ref(false)
 
 const { linkInfo, linkStatus, isLoading, error, getLinkInfo, accessLink, downloadFile } = usePublicLink()
 
+// ── Consegna: il mittente ha inquadrato il QR di `novren send` (vedi utils/linkHandoff) ──
+// Si legge PRIMA di tutto e si toglie subito dalla barra degli indirizzi: da lì in poi
+// l'indirizzo della pagina è il link pulito, qualunque cosa la persona faccia.
+const handoff = ref(isHandoff(window.location.hash))
+const handoffLink = ref(handoff.value ? shareableLink(window.location) : '')
+if (handoff.value) stripHandoffFromAddressBar()
+
+/** «Scarica su questo telefono»: si torna al flusso normale di chi riceve. */
+const leaveHandoff = () => {
+  handoff.value = false
+}
+
 // ── Copy: la relazione umana prima del form ────────────────────────────────────
 const senderName = computed(() => linkInfo.value?.ownerName?.trim() || '')
 
 const headline = computed(() => {
+  if (handoff.value) return 'Il link è pronto. Mandalo tu.'
   if (isDone.value) return 'Decifrato. È tuo.'
   return senderName.value ? `${senderName.value} ti ha mandato un file.` : 'Ti hanno mandato un file.'
 })
 
 const subline = computed(() => {
+  if (handoff.value) {
+    return 'Inoltralo da questo telefono con l’app che vuoi: chi lo riceve apre il file nel browser. Il link porta con sé la chiave — noi non l’abbiamo mai vista.'
+  }
   if (isDone.value) {
     return 'Il file è stato decifrato qui, nel tuo browser. Il nostro server non ha mai avuto la chiave per aprirlo.'
   }
@@ -297,7 +315,7 @@ const handlePreview = () => {
           <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
             <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
               <BrandSeal :size="19" :variant="isDone ? 'check' : 'plain'" />
-              {{ isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
+              {{ handoff ? 'Da inoltrare' : isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
             </div>
             <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em]" :class="stateLabelClass">
               {{ stateLabel }}
@@ -343,8 +361,14 @@ const handlePreview = () => {
             <div class="lt-rule my-3" />
 
             <div class="px-2.5 pb-2.5">
+              <HandoffCard
+                v-if="handoff"
+                :link="handoffLink"
+                :file-name="displayName"
+                @download="leaveHandoff"
+              />
               <LinkAccessForm
-                v-if="pageState === 'access_form'"
+                v-else-if="pageState === 'access_form'"
                 :is-password-protected="linkInfo.isPasswordProtected"
                 :is-loading="isLoading"
                 :error="error"
@@ -368,7 +392,7 @@ const handlePreview = () => {
               />
 
               <!-- La ricevuta: dopo la decifratura è un fatto, prima è una promessa -->
-              <div v-if="encryptionInfo" class="pt-3">
+              <div v-if="encryptionInfo && !handoff" class="pt-3">
                 <PrivacyReceipt v-if="isDone" variant="receive" />
                 <div v-else class="flex items-center gap-2 px-1.5 font-mono text-[0.7rem] text-[#6a5f8c]">
                   <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 flex-none" fill="none" stroke="#12b89a" stroke-width="2">

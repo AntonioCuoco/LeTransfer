@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    /* DOM solo per i TIPI: il nucleo crittografico di vue-app dichiara CryptoKey, Blob e
+       ReadableStream, che Node implementa ma che TypeScript tipizza in lib.dom. La CLI non
+       usa il DOM: lo vieta `boundaries.test.ts` del nucleo, e la CLI importa solo i file
+       che non ne hanno bisogno. */
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*"]
+}
