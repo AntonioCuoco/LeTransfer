@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import axios from 'axios'
 import novrenIcon from '@/src/assets/novren-icon.png'
@@ -9,6 +9,7 @@ import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 import { forgetMasterKey } from '@/src/crypto/rememberedDevice'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
 import { notify } from '@/src/utils/notify'
+import { NOVREN_PRODUCTS } from '@/src/constants/products'
 
 /**
  * Barra laterale dell'area autenticata (roadmap F5).
@@ -22,15 +23,34 @@ const route = useRoute()
 const encryptionStore = useEncryptionStore()
 const { canUnlock, requestUnlock } = useSecurityPrompt()
 
-const navItems = [
-  { path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
-  { path: '/app/profile', icon: 'pi pi-folder', label: 'I tuoi file', exact: false },
-  { path: '/app/richieste', icon: 'pi pi-inbox', label: 'Richiedi file', exact: false },
-  { path: '/app/settings', icon: 'pi pi-cog', label: 'Impostazioni', exact: false },
+interface NavLink { kind: 'link'; path: string; icon: string; label: string; exact: boolean }
+
+/**
+ * L'ordine della barra, dall'alto. «Prodotti» è una voce della lista e non un blocco a parte
+ * nel template: così la sua posizione si legge e si sposta qui, insieme alle altre.
+ */
+const navItems: (NavLink | { kind: 'products' })[] = [
+  { kind: 'link', path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
+  { kind: 'link', path: '/app/profile', icon: 'pi pi-folder', label: 'I tuoi file', exact: false },
+  { kind: 'link', path: '/app/richieste', icon: 'pi pi-inbox', label: 'Richiedi file', exact: false },
+  { kind: 'products' },
+  { kind: 'link', path: '/app/settings', icon: 'pi pi-cog', label: 'Impostazioni', exact: false },
 ]
 
-const isCurrent = (item: { path: string; exact: boolean }) =>
+const isCurrent = (item: NavLink) =>
   item.exact ? route.path === item.path : route.path.startsWith(item.path)
+
+// ── Menu «Prodotti» ─────────────────────────────────────────────────────────────
+// Non porta a nessuna pagina: si apre al passaggio del mouse (CSS), al focus da tastiera
+// (CSS, solo :focus-visible — un click del mouse non deve lasciarlo bloccato aperto) e al tap — su touch l'hover non esiste, quindi serve lo stato.
+const productsOpen = ref(false)
+const closeProducts = () => { productsOpen.value = false }
+
+/** Si chiude quando il focus esce dal menu, non quando passa dal bottone a una voce. */
+const onProductsFocusOut = (event: FocusEvent) => {
+  const menu = event.currentTarget as HTMLElement
+  if (!menu.contains(event.relatedTarget as Node | null)) closeProducts()
+}
 
 // L'indicatore è una CHIAVE, non un pallino colorato: un cerchio verde non dice di
 // cosa parla, e per chi non distingue verde e ambra non dice proprio niente. La
@@ -81,18 +101,70 @@ const handleLogout = async () => {
       </RouterLink>
 
       <nav class="flex w-full flex-col items-center gap-2">
-        <button
-          v-for="item in navItems"
-          :key="item.path"
-          type="button"
-          class="lt-rail group"
-          :class="isCurrent(item) ? 'lt-rail-on' : 'lt-rail-off'"
-          :aria-current="isCurrent(item) ? 'page' : undefined"
-          @click="router.push(item.path)"
-        >
-          <i :class="item.icon" class="text-xl" />
-          <span class="lt-tip">{{ item.label }}</span>
-        </button>
+        <template v-for="item in navItems" :key="item.kind === 'link' ? item.path : item.kind">
+          <button
+            v-if="item.kind === 'link'"
+            type="button"
+            class="lt-rail group"
+            :class="isCurrent(item) ? 'lt-rail-on' : 'lt-rail-off'"
+            :aria-current="isCurrent(item) ? 'page' : undefined"
+            @click="router.push(item.path)"
+          >
+            <i :class="item.icon" class="text-xl" />
+            <span class="lt-tip">{{ item.label }}</span>
+          </button>
+
+          <!-- Prodotti: non una pagina, un menu che si apre sul posto -->
+          <div
+            v-else
+            class="lt-products"
+            :class="{ 'lt-products-open': productsOpen }"
+            @focusout="onProductsFocusOut"
+            @keydown.esc="closeProducts"
+            @mouseleave="closeProducts"
+          >
+            <button
+              type="button"
+              class="lt-rail lt-rail-off"
+              aria-haspopup="true"
+              :aria-expanded="productsOpen"
+              aria-controls="lt-products-panel"
+              aria-label="Prodotti Novren"
+              @click="productsOpen = !productsOpen"
+            >
+              <i class="pi pi-th-large text-xl" />
+            </button>
+
+            <div id="lt-products-panel" class="lt-products-panel" role="menu" aria-label="Prodotti Novren">
+              <p class="lt-products-title">Prodotti Novren</p>
+
+              <ul class="lt-products-list">
+                <li v-for="product in NOVREN_PRODUCTS" :key="product.id" role="none">
+                  <!-- Uscito: logo, nome e link -->
+                  <a
+                    v-if="product.href"
+                    :href="product.href"
+                    target="_blank"
+                    rel="noopener"
+                    role="menuitem"
+                    class="lt-product lt-product-live"
+                  >
+                    <img v-if="product.logo" :src="product.logo" :alt="''" class="lt-product-logo" />
+                    <span v-else class="lt-product-seal" aria-hidden="true">N</span>
+                    <span class="lt-product-name">{{ product.name }}</span>
+                    <span v-if="product.tagline" class="lt-product-tagline">{{ product.tagline }}</span>
+                  </a>
+
+                  <!-- In arrivo: niente nome, niente logo. Solo l'annuncio e il sigillo sfocato. -->
+                  <div v-else class="lt-product" role="menuitem" aria-disabled="true" aria-label="Nuovo prodotto Novren in arrivo">
+                    <span class="lt-product-soon">Coming soon</span>
+                    <span class="lt-product-seal lt-product-seal-blur" aria-hidden="true">N</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </template>
       </nav>
     </div>
 
@@ -209,7 +281,158 @@ const handleLogout = async () => {
   transform: translateX(0);
 }
 
+/* ── Menu «Prodotti» ──────────────────────────────────────────────────────────
+   Stessa superficie e stessa freccia del tooltip: è lo stesso oggetto, solo più grande. */
+.lt-products {
+  position: relative;
+  width: 100%;
+}
+
+.lt-products-panel {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 12px);
+  z-index: 1000;
+  width: 15rem;
+  border-radius: var(--radius-panel);
+  background: var(--color-deep-800);
+  border: 1px solid rgb(255 255 255 / 0.06);
+  padding: 0.9rem;
+  box-shadow: 0 18px 40px -18px rgb(0 0 0 / 0.7);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-4px, -50%);
+  transition: opacity var(--duration-quick), transform var(--duration-quick), visibility var(--duration-quick);
+}
+
+/* Il ponte sui 12px di vuoto fra bottone e pannello: senza, il mouse esce dal menu
+   mentre lo attraversa e il pannello si chiude prima di poterlo raggiungere. */
+.lt-products-panel::after {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 0;
+  width: 14px;
+  height: 100%;
+}
+
+.lt-products-panel::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: var(--color-deep-800);
+}
+
+.lt-products:hover .lt-products-panel,
+.lt-products:has(:focus-visible) .lt-products-panel,
+.lt-products-open .lt-products-panel {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(0, -50%);
+}
+
+/* Il bottone resta acceso finché il suo menu è aperto: si vede da dove viene il pannello. */
+.lt-products:hover > .lt-rail,
+.lt-products:has(:focus-visible) > .lt-rail,
+.lt-products-open > .lt-rail {
+  background: rgb(114 76 249 / 0.15);
+  color: var(--color-haze-100);
+}
+
+.lt-products-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-haze-400);
+}
+
+.lt-products-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lt-product {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: var(--radius-well);
+  background: rgb(255 255 255 / 0.03);
+  border: 1px dashed rgb(255 255 255 / 0.08);
+  padding: 0.9rem 0.75rem 1rem;
+  text-align: center;
+  cursor: default;
+}
+
+.lt-product-live {
+  border-style: solid;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--duration-quick), border-color var(--duration-quick);
+}
+
+.lt-product-live:hover,
+.lt-product-live:focus-visible {
+  background: rgb(114 76 249 / 0.15);
+  border-color: rgb(114 76 249 / 0.4);
+}
+
+.lt-product-soon {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-brand-300);
+}
+
+/* Il sigillo: il quadrato con la N che, al lancio, lascerà il posto al logo vero. */
+.lt-product-seal {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--radius-control);
+  background: linear-gradient(135deg, var(--color-brand-400), var(--color-brand-700));
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 8px 22px -10px rgb(114 76 249 / 0.8);
+}
+
+/* Sfocato quanto basta a far capire che c'è qualcosa, non abbastanza da sparire. */
+.lt-product-seal-blur {
+  filter: blur(3px);
+  opacity: 0.75;
+  user-select: none;
+}
+
+.lt-product-logo {
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: contain;
+}
+
+.lt-product-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-haze-100);
+}
+
+.lt-product-tagline {
+  margin-top: -0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-haze-400);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .lt-rail, .lt-tip { transition: none; }
+  .lt-rail, .lt-tip, .lt-products-panel, .lt-product-live { transition: none; }
 }
 </style>
