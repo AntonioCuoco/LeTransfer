@@ -272,8 +272,8 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 | File | Responsabilità |
 |---|---|
 | `crypto.ts` | Primitive, formato v2 a chunk, **nome del file cifrato**, chiavi RSA, PBKDF2, frammento del link |
-| `streamingDownload.ts` | Download + decifratura a chunk verso un **`PlaintextSink`** (adattatore di sink): un solo motore (`decryptToSink`) per tutte le destinazioni, perché interpretazioni diverse dello stesso formato sono occasioni di divergere. Include i sink **memoria** (`decryptToBlob`, anteprime) e **stream** (`decryptToStream`, export zip). Nessun DOM: gira in Node |
-| `browserDownload.ts` | Adattatore browser del sink: **disco** con la File System Access API, Blob altrove (`downloadAndDecryptV2`) |
+| `streamingDownload.ts` | Download + decifratura a chunk verso un **`PlaintextSink`** (adattatore di sink): un solo motore (`decryptToSink`) per tutte le destinazioni, perché interpretazioni diverse dello stesso formato sono occasioni di divergere. Include i sink **memoria** (`decryptToBlob`, anteprime) e **stream** (`decryptToStream`, export zip). Errori tipizzati sotto `UserFacingError`: `DownloadError` (storage, rete, metadati che non corrispondono all'oggetto — controllati via `content-length` prima di decifrare) e `DecryptionError` (tag GCM, con l'indice del chunk: il primo = chiave o metadati, uno in mezzo = file corrotto). `downloadErrorMessage` non restituisce mai il solo testo di ripiego: un errore sconosciuto porta con sé il dettaglio tecnico. Nessun DOM: gira in Node |
+| `browserDownload.ts` | Adattatore browser del sink: **disco** con la File System Access API, Blob altrove (`downloadAndDecryptV2`). I guasti del salvataggio sono `SaveError`, distinti dalla decifratura: sul fallback Blob il file intero passa dalla RAM, e su un telefono il limite è la memoria, non la chiave |
 | `storage.ts` | Adattatore di storage delle chiavi (`KeyStorage`) e implementazione in memoria per Node e test |
 | `keyStore.ts` | Adattatore browser dello storage: `CryptoKey` non estraibili in IndexedDB |
 | `recovery-key.ts` | Mnemonica BIP39 a 24 parole → master key |

@@ -1,7 +1,8 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import type { SharedLinkAccessInfo, SharedLinkAccessRequest, SharedLinkAccessResponse, SharedLinkFileResponse, SharedLinkError } from '@/src/types'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
+import { unexpectedResponse } from '@/src/utils/errorDetail'
 
 export type LinkStatus = 'loading' | 'valid' | 'expired' | 'revoked' | 'not_found' | 'download_limit' | 'error'
 
@@ -38,7 +39,7 @@ export const usePublicLink = () => {
         return data.data
       }
       linkStatus.value = 'error'
-      error.value = 'Risposta non valida dal server'
+      error.value = unexpectedResponse('le informazioni del link', data)
       return null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
@@ -50,7 +51,7 @@ export const usePublicLink = () => {
       } else if (e.response?.status === 410) {
         linkStatus.value = 'expired'; error.value = 'Link scaduto o revocato'
       } else {
-        linkStatus.value = 'error'; error.value = apiErrorMessage(err) ?? 'Errore durante il recupero delle informazioni'
+        linkStatus.value = 'error'; error.value = describeApiError(err, 'Non siamo riusciti a leggere le informazioni del link.')
       }
       return null
     } finally {
@@ -68,11 +69,13 @@ export const usePublicLink = () => {
         sessionExpiresAt.value = data.data.expiresAt
         return data.data
       }
-      error.value = 'Risposta non valida dal server'
+      error.value = unexpectedResponse('la sessione di accesso', data)
       return null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
-      error.value = apiErrorMessage(err) ?? (e.response?.status === 401 ? 'Password non corretta' : "Errore durante l'autenticazione")
+      error.value = e.response?.status === 401
+        ? apiErrorMessage(err) ?? 'Password non corretta'
+        : describeApiError(err, 'Accesso al link non riuscito.')
       return null
     } finally {
       isLoading.value = false
@@ -90,7 +93,7 @@ export const usePublicLink = () => {
         skipAuth: true,
       })
       if (data.success && data.data?.url) return data.data.url
-      error.value = 'Risposta non valida dal server'
+      error.value = unexpectedResponse('l’indirizzo per scaricare il file', data)
       return null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
@@ -98,7 +101,7 @@ export const usePublicLink = () => {
         error.value = apiErrorMessage(err) ?? "Sessione scaduta. Effettua nuovamente l'accesso."
         sessionToken.value = null; sessionExpiresAt.value = null
       } else {
-        error.value = apiErrorMessage(err) ?? 'Errore durante il download'
+        error.value = describeApiError(err, 'Non siamo riusciti a ottenere il file da scaricare.')
       }
       return null
     } finally {

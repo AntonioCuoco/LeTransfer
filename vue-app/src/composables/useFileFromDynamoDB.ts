@@ -163,8 +163,8 @@ export const useFileFromDynamoDB = () => {
           const key = await importKeyFromBase64(keyData.key)
           const iv = importIVFromBase64(keyData.iv)
           finalBlob = await decryptFile(blob, key, iv)
-        } catch {
-          notify.error('Impossibile decifrare il file.', 'Decifratura non riuscita')
+        } catch (err) {
+          notify.error(downloadErrorMessage(err, 'Impossibile decifrare il file.'), 'Decifratura non riuscita')
           return false
         }
       } else if (file.isEncrypted) {

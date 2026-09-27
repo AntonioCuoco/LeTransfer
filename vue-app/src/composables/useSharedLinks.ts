@@ -2,6 +2,8 @@ import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { notifyApiError } from '@/src/utils/apiError'
+import { notify } from '@/src/utils/notify'
+import { unexpectedResponse } from '@/src/utils/errorDetail'
 import type { SharedLink, CreateSharedLinkRequest, CreateSharedLinkResponse } from '@/src/types'
 import { createKeyHash } from '@/src/crypto/crypto'
 
@@ -63,7 +65,8 @@ export const useSharedLinks = () => {
         links.value = [data.data, ...links.value]
         return result
       }
-      error.value = 'Risposta non valida dal server'
+      error.value = unexpectedResponse('il link creato', data)
+      notify.error(error.value, 'Link non creato')
       return null
     } catch (err: unknown) {
       error.value = notifyApiError(err, 'Link non creato', 'Errore durante la creazione del link')

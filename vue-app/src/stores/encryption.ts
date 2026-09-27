@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { shallowRef } from 'vue'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import { wrapFileKey, unwrapFileKey, arrayBufferToBase64, base64ToArrayBuffer } from '@/src/crypto/crypto'
 import { useFileKeysAPI } from '@/src/composables/useFileKeysAPI'
 import type { EncryptionKeyData } from '@/src/types'
@@ -43,7 +44,7 @@ export const useEncryptionStore = defineStore('encryption', () => {
 
   async function storeKey(s3Key: string, keyData: EncryptionKeyData): Promise<boolean> {
     if (!masterKey.value) {
-      notify.error('Impossibile salvare la chiave: Master Key non disponibile')
+      notify.error('I file sono bloccati su questo dispositivo: sbloccali con le 24 parole prima di caricare.', 'Chiave non salvata')
       return false
     }
     try {
@@ -53,8 +54,8 @@ export const useEncryptionStore = defineStore('encryption', () => {
       const success = await saveFileKey({ s3Key, wrappedKey, fileIV: keyData.iv, wrapIV })
       if (success) keyCache.value = { ...keyCache.value, [s3Key]: keyData }
       return success
-    } catch {
-      notify.error('Errore nel salvataggio della chiave di cifratura')
+    } catch (err) {
+      notify.error(withDetail('La chiave di cifratura del file non è stata salvata.', err), 'Chiave non salvata')
       return false
     }
   }
@@ -70,8 +71,8 @@ export const useEncryptionStore = defineStore('encryption', () => {
       const keyData: EncryptionKeyData = { key: arrayBufferToBase64(exportedRaw), iv: wrappedData.fileIV }
       keyCache.value = { ...keyCache.value, [s3Key]: keyData }
       return keyData
-    } catch {
-      notify.error('Errore nel recupero della chiave di cifratura')
+    } catch (err) {
+      notify.error(withDetail('La chiave di cifratura del file non si apre con la tua master key.', err), 'Chiave non recuperata')
       return null
     }
   }

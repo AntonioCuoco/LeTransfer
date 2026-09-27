@@ -3,6 +3,24 @@ import Cookies from 'js-cookie'
 import { setAuthCookie, clearAuthCookies } from './cookieStore'
 import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId } from './cognitoClient'
+import { withDetail } from './errorDetail'
+
+/** Il motivo dell'ultimo rimando al login, per un solo giro (vedi `takeLoginNotice`). */
+export const LOGIN_NOTICE_KEY = 'login_notice'
+
+/**
+ * Il motivo per cui si è finiti sul login, se c'è, e lo cancella. Serve perché il rimando è un
+ * `window.location.href`: un toast mostrato prima morirebbe con la pagina.
+ */
+export function takeLoginNotice(): string | null {
+  try {
+    const notice = sessionStorage.getItem(LOGIN_NOTICE_KEY)
+    sessionStorage.removeItem(LOGIN_NOTICE_KEY)
+    return notice
+  } catch {
+    return null // storage negato: il login funziona lo stesso, solo senza spiegazione
+  }
+}
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -96,6 +114,12 @@ export const setupResponseInterceptor = () => {
           return axios(original)
         } catch (refreshError) {
           processQueue(refreshError as Error, null)
+          try {
+            sessionStorage.setItem(
+              LOGIN_NOTICE_KEY,
+              withDetail('La sessione è scaduta e non è stato possibile rinnovarla: accedi di nuovo.', refreshError),
+            )
+          } catch { /* storage negato: si va al login lo stesso, senza spiegazione */ }
           window.location.href = '/login'
           return Promise.reject(refreshError)
         } finally {

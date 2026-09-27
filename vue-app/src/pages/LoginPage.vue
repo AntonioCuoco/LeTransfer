@@ -7,6 +7,8 @@ import { postLoginPath } from '@/src/utils/cliAuthorization'
 import Swal from 'sweetalert2'
 import { AuthFlowType, ChallengeNameType, InitiateAuthCommand, RespondToAuthChallengeCommand, ForgotPasswordCommand, ConfirmForgotPasswordCommand } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
+import { takeLoginNotice } from '@/src/utils/axiosInterceptor'
+import { notify } from '@/src/utils/notify'
 import { isPasswordValid, PASSWORD_MIN_LENGTH } from '@/src/utils/passwordPolicy'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import novrenIcon from '@/src/assets/novren-icon.png'
@@ -30,6 +32,10 @@ const session = ref('')
 const mfaCode = ref('')
 // Precompilata quando si arriva dalla registrazione con un'email già esistente.
 const email = ref(typeof route.query.email === 'string' ? route.query.email : '')
+
+// Rimandati qui dall'interceptor (sessione non rinnovabile): si dice perché.
+const loginNotice = takeLoginNotice()
+if (loginNotice) notify.warning(loginNotice, 'Sessione scaduta')
 const password = ref('')
 const newPassword = ref('')
 const isLoading = ref(false)

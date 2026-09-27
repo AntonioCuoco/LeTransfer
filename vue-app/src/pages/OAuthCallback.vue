@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { setAuthCookie } from '@/src/utils/cookieStore'
 import { postLoginPath } from '@/src/utils/cliAuthorization'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 
 const router = useRouter()
 
@@ -48,19 +49,26 @@ onMounted(async () => {
     const res = await fetch(`${domain}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body })
     if (!res.ok) {
       const body = await res.json().catch(() => ({})) as { error?: string; error_description?: string }
-      fail(describeOAuthError(body.error, body.error_description))
+      // Senza codice né descrizione resta solo lo status: meglio quello di una frase vuota.
+      fail(body.error || body.error_description
+        ? describeOAuthError(body.error, body.error_description)
+        : `${describeOAuthError()} [HTTP ${res.status} dal servizio di accesso]`)
       return
     }
 
     const data = await res.json()
-    if (data.access_token && data.id_token) {
-      setAuthCookie('accessToken', data.access_token, 1 / 24)
-      setAuthCookie('idToken', data.id_token, 1 / 24)
-      if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
+    // Prima, senza token si proseguiva lo stesso: la pagina successiva rimandava al login
+    // senza una parola, e sembrava che il bottone Google non facesse niente.
+    if (!data.access_token || !data.id_token) {
+      fail(`Il servizio di accesso ha risposto senza i token di sessione [campi ricevuti: ${Object.keys(data).join(', ') || 'nessuno'}].`)
+      return
     }
+    setAuthCookie('accessToken', data.access_token, 1 / 24)
+    setAuthCookie('idToken', data.id_token, 1 / 24)
+    if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
     sessionStorage.removeItem('pkce_verifier')
     router.replace(postLoginPath())
-  } catch { fail(describeOAuthError()) }
+  } catch (err) { fail(withDetail(describeOAuthError(), err)) }
 })
 </script>
 

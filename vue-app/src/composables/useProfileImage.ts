@@ -1,7 +1,8 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
+import { withDetail } from '@/src/utils/errorDetail'
 
 export const useProfileImage = () => {
   const profileImageUrl = ref('')
@@ -20,7 +21,7 @@ export const useProfileImage = () => {
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: { error?: string } }; message?: string }
       if (e.response?.status === 404) profileImageUrl.value = ''
-      else error.value = apiErrorMessage(err) ?? 'Errore nel caricamento della foto profilo'
+      else error.value = describeApiError(err, 'Non siamo riusciti a caricare la foto profilo.')
     } finally {
       isLoading.value = false
     }
@@ -48,7 +49,7 @@ export const useProfileImage = () => {
       throw new Error(response.data.error || "Errore durante l'upload")
     } catch (err: unknown) {
       const e = err as { isAxiosError?: boolean; message?: string }
-      const msg = apiErrorMessage(err) ?? (!e.isAxiosError && e.message ? e.message : "Errore durante l'upload")
+      const msg = apiErrorMessage(err) ?? (!e.isAxiosError && e.message ? e.message : withDetail('Caricamento della foto non riuscito.', err))
       error.value = msg
       throw new Error(msg)
     } finally {
@@ -66,7 +67,7 @@ export const useProfileImage = () => {
       else throw new Error(response.data.error || "Errore durante l'eliminazione")
     } catch (err: unknown) {
       const e = err as { isAxiosError?: boolean; message?: string }
-      const msg = apiErrorMessage(err) ?? (!e.isAxiosError && e.message ? e.message : "Errore durante l'eliminazione")
+      const msg = apiErrorMessage(err) ?? (!e.isAxiosError && e.message ? e.message : withDetail('Eliminazione della foto non riuscita.', err))
       error.value = msg
       throw new Error(msg)
     } finally {

@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
 
 /**
  * "Reclama questo invio" (roadmap F3) — il ponte tra un invio guest e un account.
@@ -104,8 +104,7 @@ export async function redeemPendingClaim(): Promise<boolean> {
     } else {
       // Transitorio (rete, 5xx): il claim resta in coda e si ritenta al prossimo ingresso.
       notify.warning(
-        apiErrorMessage(error) ??
-          'Non siamo riusciti a collegare l’ultimo invio al tuo account. Riproveremo al prossimo accesso.',
+        describeApiError(error, 'Non siamo riusciti a collegare l’ultimo invio al tuo account. Riproveremo al prossimo accesso.'),
         'Invio non ancora reclamato',
       )
     }

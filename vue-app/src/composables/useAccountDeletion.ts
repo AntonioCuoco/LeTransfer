@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 import { AUTH_COOKIES } from '@/src/utils/cookieStore'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
 
 /**
  * Cancellazione dell'account (GDPR art. 17).
@@ -204,7 +204,7 @@ export function useAccountDeletion() {
       // 404/501 = il backend non ha ancora l'endpoint. Non è un errore dell'utente e non
       // va mostrato come tale: è una capacità che manca, e va detta con quelle parole.
       if (status === 404 || status === 501) return { status: 'unavailable', message }
-      return { status: 'error', message }
+      return { status: 'error', message: describeApiError(error, 'Non siamo riusciti a completare la richiesta.') }
     } finally {
       isDeleting.value = false
     }

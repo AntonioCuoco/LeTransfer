@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { describeApiError } from '@/src/utils/apiError'
 
 /**
  * Le due leve anti-abuso del canale senza account: **segnalare** e **revocare**.
@@ -72,7 +72,7 @@ export function useGuestModeration() {
       await api.post(`/guest/${publicToken}/revoke`, { manageToken })
       return true
     } catch (error) {
-      revokeError.value = apiErrorMessage(error)
+      revokeError.value = describeApiError(error, 'Non è stato possibile revocare l’invio.')
       return false
     } finally {
       isRevoking.value = false

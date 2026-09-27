@@ -15,7 +15,7 @@ import { hybridThumbprint } from '@/src/crypto/fingerprint'
 import { wrapFileKeyForRecipient, xwingPublicKeyFromBase64, type RecipientPublicKeys } from '@/src/crypto/hybrid'
 import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { parsePlanLimitError } from '@/src/utils/planLimitError'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
 
 /**
  * Caricamento su una richiesta file — lato di chi carica, **senza account**.
@@ -234,7 +234,7 @@ export function useRequestUpload(publicToken: string) {
       } else if (limit) {
         errorMessage.value = apiErrorMessage(error) ?? 'Il file supera la dimensione ammessa da questa richiesta.'
       } else {
-        errorMessage.value = apiErrorMessage(error) ?? 'Il caricamento non è riuscito. Riprova.'
+        errorMessage.value = describeApiError(error, 'Il caricamento non è riuscito.')
       }
       status.value = 'error'
       return false

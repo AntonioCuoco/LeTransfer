@@ -1,4 +1,5 @@
 import { notify } from './notify'
+import { withDetail } from './errorDetail'
 
 /**
  * Il messaggio d'errore scritto dal backend, se c'è.
@@ -21,12 +22,23 @@ export function apiErrorMessage(error: unknown): string | null {
 }
 
 /**
- * Toast d'errore per una chiamata al backend: titolo fisso, descrizione dal server,
- * `fallback` solo se il server non ha mandato un messaggio. Restituisce il testo mostrato,
- * per chi deve anche tenerlo in pagina.
+ * Il testo da mostrare per una chiamata al backend fallita: il messaggio del server se l'ha
+ * scritto; altrimenti il `fallback` **con il dettaglio tecnico in coda** (status, metodo e
+ * percorso, o il codice di rete se una risposta non c'è proprio).
+ *
+ * Il ripiego da solo non esce più: è esattamente il caso in cui serve di più sapere cosa è
+ * successo — rete assente, 502 di Fly, 413 del proxy, CORS — e il server non l'ha detto.
+ */
+export function describeApiError(error: unknown, fallback: string): string {
+  return apiErrorMessage(error) ?? withDetail(fallback, error)
+}
+
+/**
+ * Toast d'errore per una chiamata al backend: titolo fisso, descrizione da `describeApiError`.
+ * Restituisce il testo mostrato, per chi deve anche tenerlo in pagina.
  */
 export function notifyApiError(error: unknown, title: string, fallback: string): string {
-  const message = apiErrorMessage(error) ?? fallback
+  const message = describeApiError(error, fallback)
   notify.error(message, title)
   return message
 }

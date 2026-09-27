@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { generateCodeVerifier, generateCodeChallenge } from '@/src/utils/pkce'
+import { withDetail } from '@/src/utils/errorDetail'
 
 /**
  * Accesso con Google via Cognito Hosted UI + PKCE.
@@ -45,8 +46,8 @@ const handleGoogleLogin = async () => {
     const challenge = await generateCodeChallenge(verifier)
     const scope = 'openid email profile'
     window.location.href = `${domain}/oauth2/authorize?identity_provider=Google&redirect_uri=${encodeURIComponent(redirect)}&response_type=code&client_id=${clientId}&scope=${encodeURIComponent(scope)}&code_challenge_method=S256&code_challenge=${challenge}`
-  } catch {
-    props.onError?.('Non siamo riusciti ad aprire l’accesso con Google. Riprova, oppure entra con email e password.')
+  } catch (err) {
+    props.onError?.(withDetail('Non siamo riusciti ad aprire l’accesso con Google. Riprova, oppure entra con email e password.', err))
   } finally {
     isLoading.value = false
   }

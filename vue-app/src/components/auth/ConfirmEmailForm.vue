@@ -9,6 +9,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider'
 import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import FieldInput from '@/src/components/ui/FieldInput.vue'
 
 /**
@@ -103,8 +104,8 @@ async function confirm() {
     return
   }
 
-  // Da qui l'account è attivo. Il login automatico è una comodità: se fallisce non si
-  // mostra un errore, perché non c'è niente di rotto — basta accedere.
+  // Da qui l'account è attivo. Il login automatico è una comodità: se fallisce non è un
+  // errore (basta accedere), ma il motivo si dice lo stesso — con un avviso, non in rosso.
   let tokens: AuthenticationResultType | null = null
   if (props.password) {
     try {
@@ -114,8 +115,9 @@ async function confirm() {
         ClientId: clientId,
       }))
       tokens = response.AuthenticationResult ?? null
-    } catch {
+    } catch (err) {
       tokens = null
+      notify.info(withDetail('Email confermata, ma l’accesso automatico non è riuscito: entra con email e password.', err), 'Accesso automatico non riuscito')
     }
   }
 

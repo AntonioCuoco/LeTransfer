@@ -9,6 +9,7 @@ import { supportsStreamingToDisk, shouldWarnLargeDownload } from '@/src/crypto/b
 import { decryptFile, importKeyFromBase64, importIVFromBase64 } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
 import { apiErrorMessage } from '@/src/utils/apiError'
+import { withDetail } from '@/src/utils/errorDetail'
 import type { DynamoDBFile } from '@/src/types'
 
 /**
@@ -289,7 +290,7 @@ export function useAccountExport() {
       const isHttp = (err as { isAxiosError?: boolean }).isAxiosError === true
       errorMessage.value =
         apiErrorMessage(err) ??
-        (!isHttp && err instanceof Error && err.message ? err.message : 'Non siamo riusciti a creare l’archivio.')
+        (!isHttp && err instanceof Error && err.message ? err.message : withDetail('Non siamo riusciti a creare l’archivio.', err))
       phase.value = 'error'
     } finally {
       currentFile.value = null

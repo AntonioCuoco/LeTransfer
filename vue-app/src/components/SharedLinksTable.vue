@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { useShareLink } from '@/src/composables/useShareLink'
@@ -84,8 +85,8 @@ const handleCopyLink = async (link: SharedLink) => {
   try {
     await navigator.clipboard.writeText(resolved.url)
     notify.success(link.isEncrypted ? 'Link copiato — chiave inclusa nel frammento #' : 'Link copiato negli appunti')
-  } catch {
-    notify.error('Impossibile copiare negli appunti')
+  } catch (err) {
+    notify.error(withDetail('Impossibile copiare negli appunti.', err), 'Copia non riuscita')
   }
 }
 

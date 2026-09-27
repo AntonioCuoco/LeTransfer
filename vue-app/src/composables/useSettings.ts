@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import axios from 'axios'
 import { notify } from '@/src/utils/notify'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { describeApiError } from '@/src/utils/apiError'
 import type {
   UserSettings,
   NotificationSettings,
@@ -192,8 +192,7 @@ export const useSettings = () => {
         const status = (err as { response?: { status?: number } }).response?.status
         if (status !== 404 && status !== 501) {
           notify.warning(
-            apiErrorMessage(err) ??
-              'Salvate su questo browser, ma le preferenze email non sono arrivate al server.',
+            describeApiError(err, 'Salvate su questo browser, ma le preferenze email non sono arrivate al server.'),
             'Notifiche non sincronizzate',
           )
         }
@@ -203,8 +202,8 @@ export const useSettings = () => {
       settings.value = { ...settings.value, password: emptyPassword() }
       originalSettings.value = clone(settings.value)
       notify.success('Impostazioni salvate con successo')
-    } catch {
-      notify.error('Errore durante il salvataggio delle impostazioni', 'Impostazioni non salvate')
+    } catch (err) {
+      notify.error(describeApiError(err, 'Le impostazioni non sono state salvate.'), 'Impostazioni non salvate')
       throw new Error('Save failed')
     } finally {
       isSaving.value = false

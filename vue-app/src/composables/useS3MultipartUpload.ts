@@ -241,7 +241,11 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       partsQueue.value = queue
 
       if (!currentUploadId || !currentFileKey) {
-        notify.error("Errore interno durante l'upload", 'Caricamento non riuscito')
+        // Non dovrebbe succedere mai: se succede, dire QUALE dei due manca è metà della diagnosi.
+        notify.error(
+          `Stato del caricamento incoerente: manca ${!currentUploadId ? 'l’uploadId' : 'la chiave del file'}, con ${partsQueue.value.length + 1} parti ancora da inviare.`,
+          'Caricamento non riuscito',
+        )
         return
       }
 

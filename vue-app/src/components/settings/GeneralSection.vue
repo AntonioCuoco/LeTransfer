@@ -2,6 +2,7 @@
 import { computed, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import SettingsSection from './SettingsSection.vue'
 import SettingsInput from './SettingsInput.vue'
 import SettingsSelect from './SettingsSelect.vue'
@@ -48,8 +49,8 @@ async function forgetThisDevice() {
     await forgetMasterKey({ sub: getCurrentUser()?.sub })
     deviceRememberedUntil.value = null
     notify.success('Alla prossima sessione ti chiederemo di nuovo le 24 parole.', 'Dispositivo dimenticato')
-  } catch {
-    notify.error('Non siamo riusciti a dimenticare questo dispositivo. Riprova.', 'Operazione non riuscita')
+  } catch (err) {
+    notify.error(withDetail('Non siamo riusciti a dimenticare questo dispositivo.', err), 'Operazione non riuscita')
   }
 }
 

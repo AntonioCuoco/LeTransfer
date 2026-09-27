@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import { generateRecoveryKey, deriveMasterKeyFromMnemonic, createVerificationHash } from '@/src/crypto/recovery-key'
 import { rememberMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
@@ -108,8 +109,8 @@ const copyMnemonic = async () => {
   try {
     await navigator.clipboard.writeText(mnemonic.value)
     notify.warning("Copiata. Svuota gli appunti appena l'hai incollata nel gestore password.")
-  } catch {
-    notify.error('Impossibile copiare: usa il download oppure trascrivile a mano.')
+  } catch (err) {
+    notify.error(withDetail('Impossibile copiare: usa il download oppure trascrivile a mano.', err), 'Copia non riuscita')
   }
 }
 
@@ -128,9 +129,9 @@ const performSetup = async () => {
       if (rememberDevice.value) {
         try {
           await rememberMasterKey(masterKey, { sub: getCurrentUser()?.sub })
-        } catch {
+        } catch (err) {
           notify.warning(
-            'La chiave è attiva, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo le 24 parole.',
+            withDetail('La chiave è attiva, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo le 24 parole.', err),
             'Dispositivo non ricordato',
           )
         }
@@ -141,8 +142,8 @@ const performSetup = async () => {
       notify.success('Chiave di recupero attiva.')
       emit('complete')
     }
-  } catch {
-    notify.error('Errore durante la configurazione.')
+  } catch (err) {
+    notify.error(withDetail('La chiave di recupero non è stata attivata.', err), 'Configurazione non riuscita')
   } finally {
     isVerifying.value = false
   }

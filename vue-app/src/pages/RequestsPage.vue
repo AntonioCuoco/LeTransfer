@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import { useFileRequests, requestUrl, isOpen, type FileRequest } from '@/src/composables/useFileRequests'
 import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
 
@@ -49,8 +50,8 @@ async function copy(request: FileRequest) {
   try {
     await navigator.clipboard.writeText(requestUrl(request.publicToken))
     notify.success('Link copiato.')
-  } catch {
-    notify.error('Non siamo riusciti a copiare il link.')
+  } catch (err) {
+    notify.error(withDetail('Non siamo riusciti a copiare il link.', err), 'Copia non riuscita')
   }
 }
 

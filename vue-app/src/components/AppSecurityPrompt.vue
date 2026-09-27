@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
@@ -79,8 +80,10 @@ const handleVerify = async () => {
     let masterKey: CryptoKey
     try {
       masterKey = await deriveMasterKeyFromMnemonic(mnemonic.value.trim(), salt)
-    } catch {
-      notify.error(WORDS_MISMATCH, 'Parole non valide')
+    } catch (err) {
+      // Checksum sbagliato è il caso normale, ma non l'unico (salt illeggibile, Web Crypto
+      // assente): la frase resta quella per chi digita, il dettaglio dice quale dei due.
+      notify.error(withDetail(WORDS_MISMATCH, err), 'Parole non valide')
       return
     }
     if (!(await verifyMasterKey(masterKey, verificationHash.value))) {
@@ -93,9 +96,9 @@ const handleVerify = async () => {
     if (rememberDevice.value) {
       try {
         await rememberMasterKey(masterKey, { sub: getCurrentUser()?.sub })
-      } catch {
+      } catch (err) {
         notify.warning(
-          'I file sono sbloccati, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo di nuovo le 24 parole.',
+          withDetail('I file sono sbloccati, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo di nuovo le 24 parole.', err),
           'Dispositivo non ricordato',
         )
       }
@@ -103,8 +106,8 @@ const handleVerify = async () => {
     notify.success('File sbloccati.')
     close()
     mnemonic.value = ''
-  } catch {
-    notify.error('Errore durante la verifica. Riprova.', 'Sblocco non riuscito')
+  } catch (err) {
+    notify.error(withDetail('La verifica delle parole non è andata a buon fine.', err), 'Sblocco non riuscito')
   } finally {
     verifying.value = false
   }

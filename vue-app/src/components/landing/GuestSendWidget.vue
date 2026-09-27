@@ -14,6 +14,7 @@ import { usePreSendCheck } from '@/src/composables/usePreSendCheck'
 import { savePendingClaim } from '@/src/composables/usePendingClaim'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
+import { withDetail } from '@/src/utils/errorDetail'
 import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
 
 /**
@@ -228,13 +229,18 @@ async function revokeCurrent() {
   }
 }
 
-function copyLink() {
+async function copyLink() {
   const url = result.value?.shareUrl
   if (!url) return
+  // La promise va ATTESA: prima non lo era, quindi un rifiuto (permesso negato, pagina non in
+  // primo piano, contesto non sicuro) passava inosservato e il bottone diceva «Copiato ✓» lo
+  // stesso. Chi poi incollava si trovava negli appunti qualcos'altro, senza sapere perché.
   try {
-    navigator.clipboard?.writeText(url)
-  } catch {
-    // clipboard non disponibile
+    if (!navigator.clipboard) throw new Error('Appunti non disponibili in questo browser (serve HTTPS).')
+    await navigator.clipboard.writeText(url)
+  } catch (err) {
+    notify.error(withDetail('Il link non è stato copiato: selezionalo e copialo a mano.', err), 'Copia non riuscita')
+    return
   }
   copyLabel.value = 'Copiato ✓'
   window.setTimeout(() => { copyLabel.value = 'Copia' }, 1400)

@@ -1,4 +1,4 @@
-import { decryptChunkFramed, encryptedChunkSizeV2 } from './crypto'
+import { decryptChunkFramed, encryptedChunkSizeV2, encryptedSizeV2 } from './crypto'
 
 // Download + decifratura in STREAMING per i file in formato v2 (#6) — il NUCLEO, senza browser.
 //
@@ -20,19 +20,63 @@ export class DownloadCancelled extends Error {
 }
 
 /**
+ * Il dettaglio tecnico di un errore, da mettere **in coda** al messaggio mostrato.
+ *
+ * Non è cosmesi. Un download cifrato fallisce in un posto che nessun log può raggiungere: il
+ * server ha già fatto il suo lavoro (firma l'URL e non vede altro), quindi nei log di Fly non
+ * comparirà mai niente. Il toast è l'**unico** punto in cui quell'informazione esiste, e se lo
+ * si sostituisce con una frase generica l'errore non è più diagnosticabile da nessuna parte.
+ *
+ * Vale doppio per Web Crypto: `decryptChunkFramed` fallisce con un `OperationError` **senza
+ * messaggio**, quindi il nome della classe è letteralmente tutto ciò che il browser concede.
+ */
+export function technicalDetail(error: unknown): string {
+  if (error instanceof Error) return error.message ? `${error.name}: ${error.message}` : error.name
+  return String(error)
+}
+
+/**
+ * Base di tutti gli errori che portano un motivo **già scritto per chi legge**.
+ *
+ * L'esistenza di questa base è la regola: un errore o sa dire perché è successo — e allora il
+ * suo messaggio arriva intatto all'utente — oppure non lo sa, e allora chi lo mostra ci mette
+ * il proprio testo **più** il dettaglio tecnico. Quello che non deve più succedere è la terza
+ * via di prima: un errore che sapeva il motivo, coperto da una frase generica del chiamante.
+ */
+export class UserFacingError extends Error {}
+
+/**
  * Un errore del download con un motivo **da dire all'utente così com'è**: risposta dello
- * storage, rete assente, file troncato, limite dell'anteprima.
+ * storage, rete assente, file troncato, metadati che non corrispondono all'oggetto.
  *
  * Perché esiste: prima lo storage che rispondeva 403 (link firmato scaduto) diventava un
  * generico «Download non riuscito», e i chiamanti lo coprivano con «errore durante la
- * decifratura» — un'altra causa, che manda a cercare il guasto dove non è. Tutto ciò che NON
- * è un DownloadError (es. un `OperationError` di Web Crypto, testo tecnico) resta al testo
- * di ripiego del chiamante.
+ * decifratura» — un'altra causa, che manda a cercare il guasto dove non è.
  */
-export class DownloadError extends Error {
+export class DownloadError extends UserFacingError {
   constructor(message: string, readonly status?: number) {
     super(message)
     this.name = 'DownloadError'
+  }
+}
+
+/**
+ * La decifratura di un chunk è fallita: il tag GCM non torna.
+ *
+ * Perché merita una classe propria: **quale** chunk non torna separa due cause lontanissime,
+ * e senza l'indice restano indistinguibili sotto lo stesso «errore di decifratura».
+ *  • fallisce il **primo** chunk → la chiave nel link non è quella del file, oppure
+ *    `chunkSize`/`originalSize` non sono quelli con cui è stato cifrato (metadati disallineati);
+ *  • fallisce un chunk **in mezzo** → i byte sono corrotti o manomessi, e la chiave va bene.
+ */
+export class DecryptionError extends UserFacingError {
+  constructor(readonly chunkIndex: number, readonly totalChunks: number, readonly reason: unknown) {
+    super(
+      chunkIndex === 0
+        ? `Il primo blocco non si apre con questa chiave: o la chiave nel link non è quella del file, o i metadati (dimensione e dimensione del blocco) non corrispondono all'oggetto cifrato. [${technicalDetail(reason)}]`
+        : `File corrotto: il blocco ${chunkIndex + 1} di ${totalChunks} non ha superato il controllo di integrità — la chiave è giusta, i byte no. [${technicalDetail(reason)}]`,
+    )
+    this.name = 'DecryptionError'
   }
 }
 
@@ -48,9 +92,17 @@ export function assertStorageResponse(response: Response): void {
   if (!response.ok) throw new DownloadError(storageErrorMessage(response.status), response.status)
 }
 
-/** Il testo da mostrare per un errore di download o decifratura. */
+/**
+ * Il testo da mostrare per un errore di download, decifratura o salvataggio.
+ *
+ * Chi sa dire il motivo passa intatto; chi non lo sa conserva la frase del chiamante **ma si
+ * porta dietro il dettaglio tecnico fra parentesi quadre**. Nessun errore arriva più all'utente
+ * spogliato di tutto: un toast che dice solo «errore durante la decifratura» non lascia niente
+ * su cui indagare, e fuori dal browser quel dato non esiste da nessuna parte.
+ */
 export function downloadErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof DownloadError ? error.message : fallback
+  if (error instanceof UserFacingError) return error.message
+  return `${fallback} [${technicalDetail(error)}]`
 }
 
 /** Un file v2 da scaricare e decifrare. */
@@ -99,8 +151,30 @@ export async function decryptToSink(source: EncryptedSource, sink: PlaintextSink
       throw new DownloadError('Non riusciamo a raggiungere lo storage: controlla la connessione e riprova.')
     }
     assertStorageResponse(response)
-    if (!response.body) throw new DownloadError('Lo storage non ha restituito il contenuto del file.')
+    if (!response.body) {
+      // Nessun body leggibile: su un browser vecchio significa che `fetch` non espone lo
+      // stream della risposta. È un limite della piattaforma, non un file rotto — e dirlo
+      // evita di mandare a cercare il guasto nella chiave.
+      throw new DownloadError('Questo browser non espone il contenuto della risposta in streaming: aprilo con Chrome, Edge o Firefox aggiornati.')
+    }
     const reader = response.body.getReader()
+
+    // Coerenza fra metadati e oggetto, PRIMA di decifrare. Se l'oggetto non è grande quanto i
+    // metadati prevedono, la decifratura fallirebbe comunque — ma con un «la chiave non apre
+    // il file», che manda a cercare il guasto sulla chiave invece che sui metadati. Qui si
+    // dicono i due numeri e la diagnosi è immediata.
+    // Solo su 200 e solo se l'header c'è: con una risposta chunked non arriva, e va bene così.
+    const declaredLength = response.status === 200 ? response.headers.get('content-length') : null
+    if (declaredLength !== null) {
+      const actual = Number(declaredLength)
+      const expected = encryptedSizeV2(originalSize, chunkSize)
+      if (Number.isFinite(actual) && actual !== expected) {
+        throw new DownloadError(
+          `L'oggetto cifrato è di ${actual} byte, ma i metadati ne prevedono ${expected} ` +
+          `(dimensione in chiaro ${originalSize}, blocco ${chunkSize}): i metadati non corrispondono all'oggetto nello storage.`,
+        )
+      }
+    }
 
     const totalChunks = Math.max(1, Math.ceil(originalSize / chunkSize))
     let buffer = new Uint8Array(0)
@@ -112,7 +186,14 @@ export async function decryptToSink(source: EncryptedSource, sink: PlaintextSink
       while (index < totalChunks) {
         const size = encryptedChunkSizeV2(index, originalSize, chunkSize)
         if (buffer.length < size) break
-        const plain = await decryptChunkFramed(buffer.subarray(0, size), key, index)
+        let plain: ArrayBuffer
+        try {
+          plain = await decryptChunkFramed(buffer.subarray(0, size), key, index)
+        } catch (err) {
+          // Web Crypto lancia un OperationError muto: qui prende l'indice del chunk, che è
+          // l'unico dato in grado di separare «chiave sbagliata» da «file corrotto».
+          throw new DecryptionError(index, totalChunks, err)
+        }
         await sink.write(new Uint8Array(plain))
         decrypted += plain.byteLength
         onProgress?.(decrypted, originalSize)

@@ -187,7 +187,7 @@ const currentPageFiles = computed(() => {
 
 const handleDeleteFile = async (fileId: string) => {
   const file = dynamoFiles.value.find(f => f.fileId === fileId || f.s3Key === fileId)
-  if (!file) { notify.error('File non trovato'); return }
+  if (!file) { notify.error(`Il file ${fileId} non è più nell’elenco caricato in questa pagina: ricaricala e riprova.`, 'File non trovato'); return }
   await deleteFileFromDynamo(file.fileId, file.s3Key, {
     // L'errore lo mostra già deleteFile, con il messaggio del server.
     // Con il file il backend toglie anche i suoi link: si ricarica pure quell'elenco.

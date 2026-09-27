@@ -236,8 +236,8 @@ export const useShareFile = () => {
       URL.revokeObjectURL(url)
       return true
     } catch (err: unknown) {
-      // Il motivo vero se lo conosciamo (storage, rete, chiavi non pronte). Il resto sono errori
-      // di Web Crypto, il cui testo tecnico non direbbe niente a chi legge.
+      // Il motivo vero se lo conosciamo (storage, rete, chiavi, decifratura, salvataggio); per il
+      // resto il testo di ripiego più il dettaglio tecnico, mai il ripiego da solo.
       notify.error(downloadErrorMessage(err, 'Non è stato possibile decifrare il file condiviso.'), 'Download non riuscito')
       return false
     }

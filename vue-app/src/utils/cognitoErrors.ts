@@ -64,11 +64,17 @@ export function cognitoErrorMessage(error: unknown): string {
   const { name, message } = (error ?? {}) as { name?: string; message?: string }
 
   if (name === 'NetworkingError' || name === 'TimeoutError' || /failed to fetch|network/i.test(message ?? '')) {
-    return NETWORK_ERROR
+    // La frase resta per l'utente; il dettaglio dice se era timeout, DNS, CORS o rete assente.
+    const detail = [name, message].filter(Boolean).join(': ')
+    return detail ? `${NETWORK_ERROR} [${detail}]` : NETWORK_ERROR
   }
 
   const text = (message ?? '').trim()
-  if (!text) return name ? `Errore del servizio di accesso (${name}).` : 'Errore del servizio di accesso.'
+  if (!text) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } } | null)?.$metadata?.httpStatusCode
+    const detail = [name, status ? `HTTP ${status}` : null].filter(Boolean).join(' · ')
+    return detail ? `Errore del servizio di accesso [${detail}].` : `Errore del servizio di accesso [${String(error)}].`
+  }
 
   const policy = /^Password did not conform with policy:\s*(.+?)\.?$/i.exec(text)
   if (policy) {

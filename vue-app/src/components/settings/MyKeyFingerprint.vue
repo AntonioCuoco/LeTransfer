@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import KeyFingerprint from '@/src/components/ui/KeyFingerprint.vue'
 import { useUserKeyPair } from '@/src/composables/useUserKeyPair'
 import { hybridThumbprint } from '@/src/crypto/fingerprint'
+import { withDetail } from '@/src/utils/errorDetail'
 
 /**
  * La MIA impronta (roadmap F2).
@@ -27,8 +28,8 @@ async function computeThumbprint() {
     if (!jwk) return
     thumbprint.value = await hybridThumbprint(jwk, xwingPublicKey.value)
     error.value = ''
-  } catch {
-    error.value = 'Impossibile calcolare l’impronta della tua chiave.'
+  } catch (err) {
+    error.value = withDetail('Impossibile calcolare l’impronta della tua chiave.', err)
   }
 }
 

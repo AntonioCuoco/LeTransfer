@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT, DownloadError, downloadErrorMessage } from './streamingDownload'
+import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT, DownloadError, DecryptionError, downloadErrorMessage } from './streamingDownload'
 import { generateAESKey, encryptChunkFramed } from './crypto'
 
 /**
@@ -165,7 +165,7 @@ describe('errori del download — il motivo vero', () => {
     expect(downloadErrorMessage(error, 'ripiego')).toMatch(/connessione/)
   })
 
-  it('un errore di decifratura vero lascia il testo del chiamante', async () => {
+  it('il primo blocco che non si apre punta a chiave o metadati, e conserva il nome dell’errore', async () => {
     const key = await generateAESKey()
     const chunkSize = 1024
     const encrypted = await encryptWhole(bytes(chunkSize), key, chunkSize)
@@ -174,8 +174,49 @@ describe('errori del download — il motivo vero', () => {
 
     const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: chunkSize }).catch((e) => e)
 
-    expect(error).not.toBeInstanceOf(DownloadError)
-    expect(downloadErrorMessage(error, 'Errore durante la decifratura del file.')).toBe('Errore durante la decifratura del file.')
+    expect(error).toBeInstanceOf(DecryptionError)
+    expect(error.chunkIndex).toBe(0)
+    const message = downloadErrorMessage(error, 'ripiego')
+    expect(message).toMatch(/chiave/)
+    // Web Crypto non dà un messaggio: il nome della classe è tutto ciò che concede, e deve restare.
+    expect(message).toMatch(/OperationError/)
+  })
+
+  it('un blocco in mezzo che non torna parla di file corrotto e dice quale', async () => {
+    const key = await generateAESKey()
+    const chunkSize = 1024
+    const plain = bytes(chunkSize * 3)
+    const encrypted = await encryptWhole(plain, key, chunkSize)
+    encrypted[chunkSize + 28 + 100] ^= 0xff // dentro il secondo blocco (ogni blocco cifrato è chunkSize + 28)
+    mockFetch(encrypted)
+
+    const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.byteLength }).catch((e) => e)
+
+    expect(error).toBeInstanceOf(DecryptionError)
+    expect(error.chunkIndex).toBe(1)
+    expect(downloadErrorMessage(error, 'ripiego')).toMatch(/blocco 2 di 3/)
+  })
+
+  it('metadati che non corrispondono all’oggetto lo dicono con i due numeri, prima di decifrare', async () => {
+    const key = await generateAESKey()
+    const chunkSize = 1024
+    const encrypted = await encryptWhole(bytes(chunkSize), key, chunkSize)
+    globalThis.fetch = vi.fn(async () => new Response(encrypted, {
+      status: 200,
+      headers: { 'content-length': String(encrypted.byteLength) },
+    })) as unknown as typeof fetch
+
+    // I metadati dichiarano un file grande il doppio di quello presente nello storage.
+    const error = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: chunkSize * 2 }).catch((e) => e)
+
+    expect(error).toBeInstanceOf(DownloadError)
+    expect(error.message).toMatch(/non corrispondono/)
+    expect(error.message).toMatch(String(encrypted.byteLength))
+  })
+
+  it('un errore sconosciuto tiene il testo del chiamante MA anche il dettaglio tecnico', () => {
+    const message = downloadErrorMessage(new RangeError('Array buffer allocation failed'), 'Errore durante il download.')
+    expect(message).toBe('Errore durante il download. [RangeError: Array buffer allocation failed]')
   })
 })
 

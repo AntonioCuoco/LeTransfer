@@ -67,7 +67,7 @@ export function useBilling() {
         `${import.meta.env.VITE_API_URL}${endpoint}`,
         body,
       )
-      if (!data?.url) throw new Error('missing url')
+      if (!data?.url) throw new Error('Il server ha risposto senza l’indirizzo della pagina di pagamento.')
       // Redirect pieno: Stripe Checkout non vive in un iframe, e non deve.
       window.location.assign(data.url)
     } catch (error) {

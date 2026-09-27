@@ -1,4 +1,4 @@
-import { decryptToSink, DownloadCancelled, type EncryptedSource, type PlaintextSink } from './streamingDownload'
+import { decryptToSink, DownloadCancelled, UserFacingError, technicalDetail, type EncryptedSource, type PlaintextSink } from './streamingDownload'
 
 // I sink del BROWSER per il download di un file v2 (roadmap O3.1): l'unica parte del download che
 // conosce `window` e `document`. Il motore di decifratura è in streamingDownload.ts e non ne sa nulla.
@@ -46,6 +46,24 @@ export const BLOB_DOWNLOAD_LIMIT = 2 * 1024 * 1024 * 1024 // ~2 GB
 export const shouldWarnLargeDownload = (originalSize: number): boolean =>
   !supportsStreamingToDisk() && originalSize > BLOB_DOWNLOAD_LIMIT
 
+/**
+ * Il file è stato decifrato, ma il browser non è riuscito a **salvarlo**.
+ *
+ * Perché serve una classe a parte: prima un guasto nel salvataggio arrivava al `catch` del
+ * chiamante insieme a tutto il resto, e diventava «errore durante la decifratura». Sui browser
+ * senza File System Access API (Firefox, Safari, e **tutti** i Chromium su Android, Samsung
+ * Internet compreso) il file intero passa dalla RAM: lì il guasto tipico è la memoria, che con
+ * la chiave non c'entra nulla.
+ */
+export class SaveError extends UserFacingError {
+  constructor(message: string, readonly reason: unknown) {
+    super(`${message} [${technicalDetail(reason)}]`)
+    this.name = 'SaveError'
+  }
+}
+
+const formatMB = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+
 /** Sink su disco. Il picker va aperto PRIMA di scaricare: il browser lo concede solo dopo un gesto dell'utente. */
 async function openDiskSink(fileName: string): Promise<PlaintextSink> {
   let writable: WritableFileStream
@@ -54,29 +72,65 @@ async function openDiskSink(fileName: string): Promise<PlaintextSink> {
     writable = await handle.createWritable()
   } catch (err) {
     if ((err as { name?: string }).name === 'AbortError') throw new DownloadCancelled()
-    throw err
+    throw new SaveError('Il browser non ha concesso di scrivere il file sul disco.', err)
   }
+  let written = 0
   return {
-    write: (chunk) => writable.write(chunk),
-    close: () => writable.close(),
+    write: async (chunk) => {
+      try {
+        await writable.write(chunk)
+      } catch (err) {
+        // Disco pieno, permesso revocato, cartella sparita: il decifrato era giusto.
+        throw new SaveError(`Scrittura sul disco interrotta dopo ${formatMB(written)} (disco pieno o permesso revocato?).`, err)
+      }
+      written += chunk.byteLength
+    },
+    close: async () => {
+      try {
+        await writable.close()
+      } catch (err) {
+        throw new SaveError('Il file è stato decifrato ma il browser non è riuscito a chiuderlo sul disco.', err)
+      }
+    },
     abort: async () => { await writable.abort?.() },
   }
 }
 
-/** Sink Blob (Firefox/Safari): accumula, e solo a file completo avvia il download con un link. */
+/** Sink Blob (Firefox/Safari/Android): accumula, e solo a file completo avvia il download con un link. */
 function blobDownloadSink(fileName: string): PlaintextSink {
   const parts: BlobPart[] = []
+  let accumulated = 0
   return {
-    write: (chunk) => { parts.push(chunk) },
+    write: (chunk) => {
+      try {
+        parts.push(chunk)
+      } catch (err) {
+        throw new SaveError(`Memoria del browser esaurita dopo ${formatMB(accumulated)}: su questo dispositivo il file è troppo grande per il download in memoria. Prova da Chrome o Edge su computer.`, err)
+      }
+      accumulated += chunk.byteLength
+    },
     close: () => {
-      const objectUrl = URL.createObjectURL(new Blob(parts))
-      const a = document.createElement('a')
-      a.href = objectUrl
-      a.download = fileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(objectUrl)
+      let objectUrl: string
+      try {
+        objectUrl = URL.createObjectURL(new Blob(parts))
+      } catch (err) {
+        // È qui che fallisce un telefono: il file intero in chiaro deve diventare un Blob.
+        throw new SaveError(`Il file è stato decifrato (${formatMB(accumulated)}) ma il browser non ha memoria sufficiente per salvarlo. Prova da Chrome o Edge su computer.`, err)
+      }
+      try {
+        const a = document.createElement('a')
+        a.href = objectUrl
+        a.download = fileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl)
+        throw new SaveError('Il file è stato decifrato ma il browser ha bloccato l’avvio del download.', err)
+      }
+      // NON subito: su WebKit (Safari e ogni browser su iOS) revocare l'URL nello stesso tick
+      // del click può annullare il download in silenzio — nessun errore, nessun file.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
     },
   }
 }

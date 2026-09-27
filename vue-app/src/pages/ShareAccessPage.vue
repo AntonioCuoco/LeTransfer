@@ -15,7 +15,7 @@ import { isHandoff, shareableLink, stripHandoffFromAddressBar } from '@/src/util
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
-import { decryptToBlob, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage } from '@/src/crypto/streamingDownload'
+import { decryptToBlob, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage, technicalDetail } from '@/src/crypto/streamingDownload'
 import { downloadAndDecryptV2, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 
 /**
@@ -119,8 +119,8 @@ const extractEncryptionKey = async (): Promise<EncryptionInfo | null> => {
     const key = await importKeyFromBase64(keyData.key)
     const iv = importIVFromBase64(keyData.iv)
     return { key, iv }
-  } catch {
-    notify.error('Impossibile importare la chiave di cifratura', 'Link incompleto')
+  } catch (err) {
+    notify.error(`La chiave nel link è incompleta o alterata (il link è stato troncato?). [${technicalDetail(err)}]`, 'Link incompleto')
     return null
   }
 }

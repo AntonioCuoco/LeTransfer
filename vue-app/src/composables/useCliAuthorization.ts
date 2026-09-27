@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { apiErrorMessage } from '@/src/utils/apiError'
+import { describeApiError } from '@/src/utils/apiError'
 import type { LoopbackRequest } from '@/src/utils/cliAuthorization'
 
 /**
@@ -27,7 +27,7 @@ export class CliUnavailable extends Error {
 function failure(error: unknown, fallback: string): Error {
   const status = (error as { response?: { status?: number } })?.response?.status
   if (status === 404) return new CliUnavailable()
-  return new Error(apiErrorMessage(error) ?? fallback)
+  return new Error(describeApiError(error, fallback))
 }
 
 export interface CliDevice {
