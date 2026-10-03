@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { decryptToBlob, decryptToStream, PREVIEW_SIZE_LIMIT, DownloadError, DecryptionError, downloadErrorMessage } from './streamingDownload'
+import { decryptToBlob, decryptToStream, decryptRangesToSink, PREVIEW_SIZE_LIMIT, DownloadError, DecryptionError, RangeNotSupported, downloadErrorMessage } from './streamingDownload'
 import { generateAESKey, encryptChunkFramed } from './crypto'
 
 /**
@@ -267,5 +267,213 @@ describe('decryptToStream — il chiaro come stream', () => {
         if (done) break
       }
     })()).rejects.toThrow()
+  })
+})
+
+describe('decryptToSink — come arrivano i byte dalla rete non conta', () => {
+  // La rete consegna pezzi di qualunque dimensione: un chunk può arrivare in mille pezzi, intero
+  // in un pezzo solo, o insieme ad altri. Il risultato deve essere sempre lo stesso.
+  const chunkSize = 4096
+  const framed = chunkSize + 28
+
+  it.each([
+    ['1 byte alla volta', 1],
+    ['pezzi più piccoli di un chunk', 1000],
+    ['esattamente un chunk cifrato', framed],
+    ['un chunk e un byte (a cavallo)', framed + 1],
+    ['più chunk in un pezzo solo', framed * 2 + 7],
+    ['tutto in un pezzo', 1 << 20],
+  ])('%s', async (_, sliceSize) => {
+    const key = await generateAESKey()
+    const plain = bytes(chunkSize * 5 + 333, 9)
+    mockFetch(await encryptWhole(plain, key, chunkSize), sliceSize)
+
+    const blob = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.byteLength })
+
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(plain)
+  })
+
+  it('un file vuoto è un solo chunk di soli IV e tag', async () => {
+    const key = await generateAESKey()
+    mockFetch(await encryptWhole(new Uint8Array(0), key, chunkSize), 5)
+
+    const blob = await decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: 0 })
+
+    expect(blob.size).toBe(0)
+  })
+
+  it('un chunk manomesso dopo uno decifrato senza copie dice ancora quale', async () => {
+    const key = await generateAESKey()
+    const plain = bytes(chunkSize * 3, 5)
+    const payload = await encryptWhole(plain, key, chunkSize)
+    payload[framed * 2 + 40] ^= 0xff
+    mockFetch(payload, framed * 3)
+
+    await expect(decryptToBlob({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.byteLength })).rejects.toMatchObject({
+      name: 'DecryptionError',
+      chunkIndex: 2,
+    })
+  })
+})
+
+describe('decryptRangesToSink — download a tratti su più connessioni', () => {
+  const chunkSize = 4096
+  const framed = chunkSize + 28
+
+  interface Storage {
+    /** Richieste ricevute: indirizzo e intervallo. */
+    requests: { url: string; range: string | null }[]
+    inFlight: number
+    maxInFlight: number
+  }
+
+  type Behaviour = 'ok' | 'ignore-range' | 'drop' | 'expired' | 'cors'
+
+  /**
+   * Uno storage finto che rispetta `Range`. `behave` decide, per ogni richiesta, se rispondere
+   * normalmente o simulare un guasto.
+   */
+  function rangedStorage(payload: Uint8Array, behave: (n: number, url: string) => Behaviour = () => 'ok') {
+    const storage: Storage = { requests: [], inFlight: 0, maxInFlight: 0 }
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const range = (init?.headers as Record<string, string> | undefined)?.Range ?? null
+      const n = storage.requests.push({ url, range }) - 1
+      const [from, to] = range ? range.replace('bytes=', '').split('-').map(Number) : [0, payload.length - 1]
+      const what = behave(n, url)
+      if (what === 'cors') throw new TypeError('Failed to fetch')
+      if (what === 'expired') return new Response(null, { status: 403 })
+      const body = what === 'ignore-range' ? payload : payload.subarray(from, to + 1)
+      storage.inFlight++
+      storage.maxInFlight = Math.max(storage.maxInFlight, storage.inFlight)
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          for (let offset = 0; offset < body.length; offset += 1500) {
+            if (what === 'drop' && offset >= framed + 100) {
+              storage.inFlight--
+              controller.error(new TypeError('network error'))
+              return
+            }
+            controller.enqueue(body.subarray(offset, Math.min(offset + 1500, body.length)))
+            await new Promise((resolve) => setTimeout(resolve, 0))
+          }
+          storage.inFlight--
+          controller.close()
+        },
+      })
+      return new Response(stream, { status: what === 'ignore-range' ? 200 : 206 })
+    }) as unknown as typeof fetch
+    return storage
+  }
+
+  /** Un file su «disco» che accetta scritture in qualunque ordine. */
+  function positionalSink(size: number) {
+    const file = new Uint8Array(size)
+    const state = { closed: false, aborted: false }
+    return {
+      file,
+      state,
+      sink: {
+        writeAt: (position: number, chunk: Uint8Array) => { file.set(chunk, position) },
+        close: () => { state.closed = true },
+        abort: () => { state.aborted = true },
+      },
+    }
+  }
+
+  async function encrypted(chunks: number, extra = 333) {
+    const key = await generateAESKey()
+    const plain = bytes(chunkSize * chunks + extra, 11)
+    return { key, plain, payload: await encryptWhole(plain, key, chunkSize) }
+  }
+
+  const startOf = (range: string | null) => Number(range!.replace('bytes=', '').split('-')[0])
+
+  it('ricompone il file da tratti scaricati insieme, ognuno con una richiesta Range', async () => {
+    const { key, plain, payload } = await encrypted(20)
+    const storage = rangedStorage(payload)
+    const disk = positionalSink(plain.length)
+
+    await decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 4 }, disk.sink)
+
+    expect(disk.file).toEqual(plain)
+    expect(disk.state.closed).toBe(true)
+    expect(storage.requests).toHaveLength(4)
+    expect(storage.maxInFlight).toBeGreaterThan(1)
+    // I tratti coprono tutto l'oggetto, senza buchi né sovrapposizioni.
+    const covered = storage.requests.map((r) => r.range!.replace('bytes=', '').split('-').map(Number)).sort((a, b) => a[0] - b[0])
+    expect(covered[0][0]).toBe(0)
+    expect(covered.at(-1)![1]).toBe(payload.length - 1)
+    covered.slice(1).forEach(([from], i) => expect(from).toBe(covered[i][1] + 1))
+  })
+
+  it('una connessione che cade riprende dal chunk mancante, non da capo', async () => {
+    const { key, plain, payload } = await encrypted(12)
+    const storage = rangedStorage(payload, (n) => (n === 1 ? 'drop' : 'ok'))
+    const disk = positionalSink(plain.length)
+
+    await decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 3 }, disk.sink)
+
+    expect(disk.file).toEqual(plain)
+    expect(storage.requests).toHaveLength(4)
+    expect(startOf(storage.requests[3].range)).toBe(startOf(storage.requests[1].range) + framed)
+  })
+
+  it('un indirizzo scaduto si rinnova una volta sola, anche se se ne accorgono tutte le connessioni', async () => {
+    const { key, plain, payload } = await encrypted(12)
+    const storage = rangedStorage(payload, (_, url) => (url.endsWith('vecchio') ? 'expired' : 'ok'))
+    const disk = positionalSink(plain.length)
+    const refreshUrl = vi.fn(async () => 'https://storage.test/nuovo')
+
+    await decryptRangesToSink({ url: 'https://storage.test/vecchio', key, chunkSize, originalSize: plain.length, connections: 3, refreshUrl }, disk.sink)
+
+    expect(disk.file).toEqual(plain)
+    expect(refreshUrl).toHaveBeenCalledTimes(1)
+    expect(storage.requests.filter((r) => r.url.endsWith('nuovo'))).toHaveLength(3)
+  })
+
+  it('senza rinnovo, l’indirizzo scaduto lo dice, e il file a metà si butta', async () => {
+    const { key, plain, payload } = await encrypted(6)
+    rangedStorage(payload, () => 'expired')
+    const disk = positionalSink(plain.length)
+
+    await expect(decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 2 }, disk.sink))
+      .rejects.toMatchObject({ name: 'DownloadError', status: 403 })
+    expect(disk.state.aborted).toBe(true)
+  })
+
+  it.each([
+    ['lo storage ignora Range e manda tutto (200)', 'ignore-range' as const],
+    ['il browser blocca la richiesta (CORS)', 'cors' as const],
+  ])('%s: RangeNotSupported, e il file non si butta (si ripiega in fila)', async (_, guasto) => {
+    const { key, plain, payload } = await encrypted(6)
+    rangedStorage(payload, () => guasto)
+    const disk = positionalSink(plain.length)
+
+    await expect(decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 3 }, disk.sink))
+      .rejects.toBeInstanceOf(RangeNotSupported)
+    expect(disk.state.aborted).toBe(false)
+  })
+
+  it('un chunk manomesso ferma tutto e dice quale', async () => {
+    const { key, plain, payload } = await encrypted(9)
+    payload[framed * 7 + 50] ^= 0xff
+    rangedStorage(payload)
+    const disk = positionalSink(plain.length)
+
+    await expect(decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 3 }, disk.sink))
+      .rejects.toMatchObject({ name: 'DecryptionError', chunkIndex: 7 })
+    expect(disk.state.aborted).toBe(true)
+  })
+
+  it('con più connessioni che chunk, una connessione per chunk', async () => {
+    const { key, plain, payload } = await encrypted(1, 10)
+    const storage = rangedStorage(payload)
+    const disk = positionalSink(plain.length)
+
+    await decryptRangesToSink({ url: 'https://storage.test/x', key, chunkSize, originalSize: plain.length, connections: 6 }, disk.sink)
+
+    expect(disk.file).toEqual(plain)
+    expect(storage.requests).toHaveLength(2)
   })
 })

@@ -47,3 +47,6 @@ export * from './hybrid'
 
 // Allineamento della chiave X-Wing fra dispositivo e server (rete e storage iniettati)
 export * from './xwingKeySync'
+
+// Cambio delle 24 parole: ricifratura di chiavi e backup con la master key nuova (rete iniettata)
+export * from './recoveryRotation'

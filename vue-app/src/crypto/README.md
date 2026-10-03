@@ -137,6 +137,23 @@ quella giusta" senza che il server possa risalire a nulla.
 PBKDF2: la master key ha già entropia piena, quindi il blob resta inattaccabile anche se il
 server viene compromesso.
 
+**Cambio delle 24 parole** (`recoveryRotation.ts`, stesso flusso di `rotation.rs` nel client
+desktop). La master key cifra quattro cose: il blob di verifica, le chiavi dei file, il backup
+della privata RSA e quello del seme X-Wing. Il client le apre con la master key attuale e le
+richiude con quella nuova; il server (`services/keyRotation.js`) le tiene **in attesa** accanto
+alle attuali e le attiva tutte in un solo commit, che pretende la password dell'account. Prima
+del commit vale tutto il vecchio, dopo tutto il nuovo. Regole:
+1. **si verifica prima la master key attuale** contro il blob del server: se le parole sono già
+   cambiate altrove, ci si ferma prima di aprire la rotazione;
+2. **una chiave di file che la master key attuale non apre blocca tutto**: attivare le parole
+   nuove senza di lei la renderebbe irrecuperabile in silenzio;
+3. il backup della privata si ricifra **byte per byte uguale** dentro (`rewrapPrivateKeyBackup`),
+   senza decodificare il JSON; le chiavi pre-#9 escono dalla rotazione con l'AAD;
+4. qualunque errore prima del commit **annulla** la rotazione.
+
+⚠️ Le chiavi d'identità (RSA e X-Wing) non cambiano: chi avesse avuto sia le parole vecchie sia
+l'accesso all'account potrebbe averne già copiato i backup.
+
 ### 4.4 Chiave X-Wing dell'utente (post-quantum)
 Un **seme di 32 byte** generato nel browser: è l'intera chiave segreta, e la chiave pubblica
 (1216 byte) se ne ricava. Il seme vive in IndexedDB (`letransfer_xwing_seed_<sub>`) e sul server
@@ -280,6 +297,7 @@ Scritto qui perché un modello crittografico senza i suoi limiti è pubblicità.
 | `fingerprint.ts` | JWK Thumbprint RFC 7638, impronta ibrida RSA + X-Wing, formattazione leggibile |
 | `hybrid.ts` | Wrapping v2 ibrido post-quantum, lettura v1/v2, seme X-Wing e suo backup |
 | `xwingKeySync.ts` | Regole di allineamento della chiave X-Wing fra dispositivo e server (rete iniettata) |
+| `recoveryRotation.ts` | Cambio delle 24 parole: ricifratura di chiavi e backup, commit unico lato server (rete iniettata) |
 | `rememberedDevice.ts` | Master key ricordata su questo dispositivo, con scadenza |
 | `bip39-wordlist.ts` | Wordlist BIP39 (dato statico) |
 
@@ -311,7 +329,11 @@ produce una schermata sbagliata ma **file che non si riaprono**:
   altro blob; la v1 resta leggibile dallo stesso punto di lettura;
 - **allineamento X-Wing** (`xwingKeySync.test.ts`): ripristino invece di generazione su un
   dispositivo nuovo, nessuna pubblicazione senza backup, corsa fra due dispositivi, backup che
-  non corrisponde alla chiave pubblicata.
+  non corrisponde alla chiave pubblicata;
+- **cambio delle 24 parole** (`recoveryRotation.test.ts`, contro un finto backend con la
+  semantica di `keyRotation.js`): dopo il cambio tutto si apre con le nuove e niente con le
+  vecchie, chiave illeggibile che blocca, errore a metà che non cambia niente, chiave arrivata
+  fra l'elenco e il commit.
 
 ⚠️ **Nota sulla wordlist.** La lista era corrotta due volte. Prima `"night"` compariva
 due volte (circa una frase su 86 risultava invalida per l'applicazione stessa); poi,

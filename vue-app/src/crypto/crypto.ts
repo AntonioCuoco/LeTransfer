@@ -250,6 +250,31 @@ export async function unwrapPrivateKeyWithMasterKey(backup: KeyPairBackup, maste
   return importPrivateKeyFromJWK(JSON.parse(new TextDecoder().decode(decrypted)), true)
 }
 
+/**
+ * Cambio delle 24 parole: apre il backup con la master key vecchia e lo richiude con la nuova,
+ * **byte per byte uguale** dentro. Il JSON non si decodifica e non si riscrive: non è canonico,
+ * e una riserializzazione potrebbe cambiare qualcosa che un altro client si aspetta (stessa
+ * scelta di `rewrap_backup` nel client desktop).
+ */
+export async function rewrapPrivateKeyBackup(
+  backup: KeyPairBackup,
+  oldMasterKey: CryptoKey,
+  newMasterKey: CryptoKey,
+  iv: Uint8Array = generateIV(),
+): Promise<KeyPairBackup> {
+  const plain = new Uint8Array(await crypto.subtle.decrypt(
+    { name: AES_ALGORITHM, iv: new Uint8Array(base64ToArrayBuffer(backup.iv)) },
+    oldMasterKey,
+    base64ToArrayBuffer(backup.encryptedPrivateKey),
+  ))
+  try {
+    const sealed = await crypto.subtle.encrypt({ name: AES_ALGORITHM, iv }, newMasterKey, plain)
+    return { encryptedPrivateKey: arrayBufferToBase64(sealed), iv: arrayBufferToBase64(iv.buffer) }
+  } finally {
+    plain.fill(0)
+  }
+}
+
 export async function wrapFileKey(
   fileKey: CryptoKey,
   wrappingKey: CryptoKey,

@@ -5,6 +5,7 @@ import { withDetail } from '@/src/utils/errorDetail'
 import { generateRecoveryKey, deriveMasterKeyFromMnemonic, createVerificationHash } from '@/src/crypto/recovery-key'
 import { rememberMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
+import { downloadRecoveryKeyFile } from '@/src/utils/recoveryKeyFile'
 import { generateSalt, arrayBufferToBase64 } from '@/src/crypto/crypto'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -81,27 +82,7 @@ const handleGenerate = async () => {
 }
 
 const downloadAsFile = () => {
-  const content = [
-    'Novren — chiave di recupero',
-    '',
-    "Queste 24 parole sono l'unico modo per riaprire i tuoi file se perdi",
-    "l'accesso a questo dispositivo. Chi le possiede può leggere i tuoi file.",
-    'Conservale offline. Non inviarle via email o chat.',
-    '',
-    `Generate il ${new Date().toLocaleString('it-IT')}`,
-    '',
-    ...words.value.map((word, index) => `${String(index + 1).padStart(2, '0')}. ${word}`),
-  ].join('\n')
-
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  // Il nome del file finisce sul disco dell'utente: è UI a tutti gli effetti.
-  anchor.download = 'novren-chiave-di-recupero.txt'
-  document.body.appendChild(anchor)
-  anchor.click()
-  document.body.removeChild(anchor)
-  URL.revokeObjectURL(url)
+  downloadRecoveryKeyFile(words.value)
   notify.info('File scaricato. Spostalo in un posto sicuro e offline.')
 }
 

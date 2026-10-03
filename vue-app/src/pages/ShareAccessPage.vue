@@ -15,7 +15,7 @@ import { isHandoff, shareableLink, stripHandoffFromAddressBar } from '@/src/util
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
 import { resolveFileName } from '@/src/utils/fileNames'
-import { decryptToBlob, DownloadCancelled, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage, technicalDetail } from '@/src/crypto/streamingDownload'
+import { decryptToBlob, DownloadCancelled, DownloadError, PREVIEW_SIZE_LIMIT, assertStorageResponse, downloadErrorMessage, technicalDetail } from '@/src/crypto/streamingDownload'
 import { downloadAndDecryptV2, shouldWarnLargeDownload } from '@/src/crypto/browserDownload'
 
 /**
@@ -173,8 +173,16 @@ const handleDownload = async () => {
           if (shouldWarnLargeDownload(info.originalSize)) {
             notify.warning('Su questo browser i file oltre ~2 GB potrebbero non scaricarsi: per file di queste dimensioni usa Chrome o Edge.', 'File molto grande')
           }
+          const token = publicToken.value
           await downloadAndDecryptV2({
             url,
+            // Una connessione che cade dopo la scadenza dell'indirizzo (15 minuti) ne chiede uno
+            // nuovo come «anteprima»: il download è già stato contato una volta.
+            refreshUrl: async () => {
+              const fresh = await downloadFile(token, 'preview')
+              if (!fresh) throw new DownloadError(error.value || 'L’indirizzo del file è scaduto e non si è potuto rinnovare: riprova.')
+              return fresh
+            },
             key: encryptionInfo.value.key,
             chunkSize: info.chunkSize,
             originalSize: info.originalSize,

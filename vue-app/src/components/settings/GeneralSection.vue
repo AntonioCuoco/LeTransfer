@@ -8,6 +8,7 @@ import SettingsInput from './SettingsInput.vue'
 import SettingsSelect from './SettingsSelect.vue'
 import RecoveryKeySetup from '@/src/components/RecoveryKeySetup.vue'
 import DeleteAccountDialog from './DeleteAccountDialog.vue'
+import RecoveryRotationDialog from './RecoveryRotationDialog.vue'
 import ExportDataPanel from './ExportDataPanel.vue'
 import TwoFactorPanel from './TwoFactorPanel.vue'
 import { useSettings } from '@/src/composables/useSettings'
@@ -22,6 +23,7 @@ const router = useRouter()
 
 const securityModalVisible = ref(false)
 const deleteModalVisible = ref(false)
+const rotationModalVisible = ref(false)
 const isSetupRequired = ref(true)
 
 // `?chiave=crea` arriva dalla patina sugli uploader (UploadVaultGate): chi ci clicca vuole
@@ -118,6 +120,17 @@ const onRecoveryComplete = () => {
         <span v-else class="font-mono text-[0.74rem] text-verified-400">attiva ✓</span>
       </div>
 
+      <div v-if="!isSetupRequired" class="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 py-4">
+        <div class="min-w-0">
+          <h4 class="m-0 font-medium text-haze-100">Cambia le 24 parole</h4>
+          <p class="m-0 mt-1 max-w-[64ch] text-xs leading-relaxed text-haze-400">
+            Se pensi che qualcuno le abbia viste, o le hai salvate in un posto che non ti convince.
+            I tuoi file e i link condivisi restano come sono.
+          </p>
+        </div>
+        <Button label="Cambia" severity="secondary" outlined size="small" @click="rotationModalVisible = true" />
+      </div>
+
       <div v-if="isSetupRequired" class="mb-2 rounded-field border border-warn-400/30 bg-warn-400/[0.07] p-3">
         <p class="m-0 text-sm leading-relaxed text-haze-200">
           Finché non la crei, la protezione end-to-end funziona solo su questo browser.
@@ -162,5 +175,7 @@ const onRecoveryComplete = () => {
     </Dialog>
 
     <DeleteAccountDialog v-model:visible="deleteModalVisible" />
+
+    <RecoveryRotationDialog v-model:visible="rotationModalVisible" @rotated="refreshRememberedDevice" />
   </div>
 </template>

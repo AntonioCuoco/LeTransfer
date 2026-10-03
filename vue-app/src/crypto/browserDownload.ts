@@ -1,4 +1,15 @@
-import { decryptToSink, DownloadCancelled, UserFacingError, technicalDetail, type EncryptedSource, type PlaintextSink } from './streamingDownload'
+import {
+  decryptRangesToSink,
+  decryptToSink,
+  DownloadCancelled,
+  RANGED_MIN_SIZE,
+  RangeNotSupported,
+  UserFacingError,
+  technicalDetail,
+  type PlaintextSink,
+  type PositionalSink,
+  type RangedSource,
+} from './streamingDownload'
 
 // I sink del BROWSER per il download di un file v2 (roadmap O3.1): l'unica parte del download che
 // conosce `window` e `document`. Il motore di decifratura è in streamingDownload.ts e non ne sa nulla.
@@ -17,8 +28,13 @@ import { decryptToSink, DownloadCancelled, UserFacingError, technicalDetail, typ
 interface SaveFilePickerOptions {
   suggestedName?: string
 }
+interface PositionedWrite {
+  type: 'write'
+  position: number
+  data: BufferSource
+}
 interface WritableFileStream {
-  write(data: BufferSource | Blob): Promise<void>
+  write(data: BufferSource | Blob | PositionedWrite): Promise<void>
   close(): Promise<void>
   abort?(): Promise<void>
 }
@@ -64,8 +80,11 @@ export class SaveError extends UserFacingError {
 
 const formatMB = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
-/** Sink su disco. Il picker va aperto PRIMA di scaricare: il browser lo concede solo dopo un gesto dell'utente. */
-async function openDiskSink(fileName: string): Promise<PlaintextSink> {
+/**
+ * Sink su disco. Il picker va aperto PRIMA di scaricare: il browser lo concede solo dopo un gesto
+ * dell'utente. Scrive in fila (`write`) o a una posizione (`writeAt`, per il download a tratti).
+ */
+async function openDiskSink(fileName: string): Promise<PlaintextSink & PositionalSink> {
   let writable: WritableFileStream
   try {
     const handle = await window.showSaveFilePicker!({ suggestedName: fileName })
@@ -75,15 +94,30 @@ async function openDiskSink(fileName: string): Promise<PlaintextSink> {
     throw new SaveError('Il browser non ha concesso di scrivere il file sul disco.', err)
   }
   let written = 0
-  return {
-    write: async (chunk) => {
+  let position = 0
+  // Una scrittura alla volta: lo stream del file non ne accetta due insieme, e i tratti del
+  // download parallelo arrivano quando vogliono. La coda tiene anche il passo: chi scarica aspetta
+  // che il disco abbia scritto prima di decifrare altro.
+  let queue: Promise<void> = Promise.resolve()
+  const writeAt = (at: number, chunk: Uint8Array<ArrayBuffer>): Promise<void> => {
+    const done = queue.then(async () => {
       try {
-        await writable.write(chunk)
+        await writable.write({ type: 'write', position: at, data: chunk })
       } catch (err) {
         // Disco pieno, permesso revocato, cartella sparita: il decifrato era giusto.
         throw new SaveError(`Scrittura sul disco interrotta dopo ${formatMB(written)} (disco pieno o permesso revocato?).`, err)
       }
       written += chunk.byteLength
+    })
+    queue = done.catch(() => {})
+    return done
+  }
+  return {
+    writeAt,
+    write: async (chunk) => {
+      const at = position
+      position += chunk.byteLength
+      await writeAt(at, chunk)
     },
     close: async () => {
       try {
@@ -135,11 +169,29 @@ function blobDownloadSink(fileName: string): PlaintextSink {
   }
 }
 
-export interface DownloadV2Options extends EncryptedSource {
+export interface DownloadV2Options extends RangedSource {
   fileName: string
 }
 
+/**
+ * Scarica e decifra un file v2. Su Chrome/Edge, per i file grandi, a tratti su più connessioni,
+ * scritti al loro posto sul disco; se il browser o lo storage non accettano le richieste `Range`,
+ * in fila su una connessione, come prima. Altrove sempre in fila.
+ */
 export async function downloadAndDecryptV2(options: DownloadV2Options): Promise<void> {
-  const sink = supportsStreamingToDisk() ? await openDiskSink(options.fileName) : blobDownloadSink(options.fileName)
+  if (!supportsStreamingToDisk()) {
+    await decryptToSink(options, blobDownloadSink(options.fileName))
+    return
+  }
+  const sink = await openDiskSink(options.fileName)
+  if (options.originalSize >= RANGED_MIN_SIZE) {
+    try {
+      await decryptRangesToSink(options, sink)
+      return
+    } catch (err) {
+      if (!(err instanceof RangeNotSupported)) throw err
+      console.info(`[download] ${err.message}: scarico su una connessione.`)
+    }
+  }
   await decryptToSink(options, sink)
 }
