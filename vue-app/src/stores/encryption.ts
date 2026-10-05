@@ -60,6 +60,28 @@ export const useEncryptionStore = defineStore('encryption', () => {
     }
   }
 
+  /**
+   * La chiave del file avvolta per quella s3Key, **senza** salvarla: per l'invio rapido, dove
+   * viaggia insieme all'apertura dell'upload e la salva il server. `null` se non si può (vault
+   * chiuso, errore): chi chiama ripiega su `storeKey`.
+   */
+  async function prepareKey(s3Key: string, keyData: EncryptionKeyData): Promise<{ wrappedKey: string; wrapIV: string; fileIV: string } | null> {
+    if (!masterKey.value) return null
+    try {
+      const rawKey = base64ToArrayBuffer(keyData.key)
+      const fileKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'])
+      const { wrappedKey, wrapIV } = await wrapFileKey(fileKey, masterKey.value, s3Key)
+      return { wrappedKey, wrapIV, fileIV: keyData.iv }
+    } catch {
+      return null
+    }
+  }
+
+  /** Dopo che il server ha salvato la chiave preparata: la tiene a portata come `storeKey`. */
+  function rememberKey(s3Key: string, keyData: EncryptionKeyData): void {
+    keyCache.value = { ...keyCache.value, [s3Key]: keyData }
+  }
+
   async function getKey(s3Key: string): Promise<EncryptionKeyData | null> {
     if (keyCache.value[s3Key]) return keyCache.value[s3Key]
     if (!masterKey.value) return null
@@ -88,5 +110,5 @@ export const useEncryptionStore = defineStore('encryption', () => {
     return !!keyCache.value[s3Key]
   }
 
-  return { masterKey, isUnlocked, setMasterKey, clearMasterKey, storeKey, getKey, removeKey, hasKey }
+  return { masterKey, isUnlocked, setMasterKey, clearMasterKey, storeKey, prepareKey, rememberKey, getKey, removeKey, hasKey }
 })

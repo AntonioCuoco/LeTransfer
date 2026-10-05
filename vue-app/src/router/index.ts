@@ -48,6 +48,7 @@ const router = createRouter({
         { path: 'utenti', component: () => import('@/src/pages/admin/AdminUsersPage.vue') },
         { path: 'utenti/:userId', component: () => import('@/src/pages/admin/AdminUserDetailPage.vue') },
         { path: 'metriche', component: () => import('@/src/pages/admin/AdminMetricsPage.vue') },
+        { path: 'costi', component: () => import('@/src/pages/admin/AdminCostsPage.vue') },
         { path: 'registro', component: () => import('@/src/pages/admin/AdminAuditPage.vue') },
       ],
     },

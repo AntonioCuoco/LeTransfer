@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import axios from 'axios'
 import { notifyApiError } from '@/src/utils/apiError'
+import type { GuestChannelOverview } from '@/src/composables/useAdminCosts'
 
 /**
  * Metriche (roadmap O1.4 fase 3).
@@ -36,6 +37,51 @@ export interface MetricsOverview {
   quarantinedLinks: number | null
   /** Percentuale: guest → account. `null` se non calcolabile (nessun dato). */
   claimRate: number | null
+  // ── O1.5 «Bolletta sotto controllo» ──
+  /** Spazio dei file free ancora in vita: si libera da solo alla scadenza. */
+  freeBytes: number | null
+  /** Quanto spazio free si libera, giorno per giorno. */
+  freeExpiring: { day: string; bytes: number }[]
+  /** Spazio degli invii da ospite ancora in vita. */
+  guestBytes: number | null
+  /** Quanti utenti per fascia di spazio occupato. */
+  storageBands: { label: string; users: number }[]
+  /** Utenti oltre l'80% della quota del LORO piano. */
+  nearQuota: number | null
+  cognitoTier: string | null
+  monthlyPayers: number | null
+  yearlyPayers: number | null
+  estimatedCostUsd: number
+  costs: CostEstimate
+  guest: GuestChannelOverview | null
+  /** Ripieghi su scan dall'avvio del server: se non è vuoto, manca un indice. */
+  indexFallbacks: IndexFallback[]
+}
+
+export interface CostLine {
+  key: string
+  label: string
+  usd: number
+  note: string
+}
+
+export interface CostEstimate {
+  lines: CostLine[]
+  totalUsd: number
+  alert: { thresholdUsd: number; ratio: number; level: 'ok' | 'warn' | 'over' }
+  revenue: { revenueEur: number; stripeFeesEur: number; marginEur: number }
+  /** Frazione del mese trascorsa (0–1): i numeri «del mese» sono proiettati a fine mese. */
+  monthProgress: number
+  pricesCheckedOn: string
+}
+
+export interface IndexFallback {
+  index: string
+  table: string
+  count: number
+  firstAt: string
+  lastAt: string
+  lastError: string | null
 }
 
 export const TIMESERIES_METRICS = [
@@ -50,6 +96,9 @@ export const TIMESERIES_METRICS = [
   'openReports',
   'paidPlans',
   'grantedPlans',
+  'freeBytes',
+  'guestBytes',
+  'estimatedCostUsd',
 ] as const
 export type TimeseriesMetric = (typeof TIMESERIES_METRICS)[number]
 

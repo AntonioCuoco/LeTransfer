@@ -105,6 +105,7 @@ const confirmDelete = (event: Event, id: string) => {
     <Column field="date" header="Data">
       <template #body="{ data }">
         <span class="font-mono text-[0.8rem] text-haze-300">{{ data.date }}</span>
+        <span v-if="data.expires" class="block font-mono text-[0.7rem] text-warn-400" title="I file del piano Free si cancellano da soli 7 giorni dopo il caricamento.">{{ data.expires }}</span>
       </template>
     </Column>
 

@@ -40,6 +40,10 @@ export interface InitUploadResponse {
   uploadId: string
   fileKey: string
   existingParts?: UploadedPart[]
+  /** Invio rapido accettato: la chiave del file è già salvata dal server. */
+  keyStored?: boolean
+  /** Invio rapido: gli URL delle prime parti. */
+  urls?: Record<number, string>
 }
 
 export interface GetPresignedUrlsResponse {

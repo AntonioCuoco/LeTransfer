@@ -354,6 +354,9 @@ onMounted(() => {
             </span>
             <span class="flex-1 truncate text-[0.88rem] text-haze-100" :title="file.fileName">{{ file.fileName }}</span>
             <span class="flex-none font-mono text-[0.72rem] text-haze-400">{{ relativeDate(file.uploadedAt) }}</span>
+            <span v-if="file.expiresAt" class="flex-none font-mono text-[0.68rem] text-warn-400" title="I file del piano Free si cancellano da soli 7 giorni dopo il caricamento.">
+              scade il {{ new Date(file.expiresAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' }) }}
+            </span>
           </li>
         </ul>
       </section>

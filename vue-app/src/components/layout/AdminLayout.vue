@@ -32,6 +32,7 @@ const navItems = [
   { path: '/admin/moderazione', icon: 'pi pi-flag', label: 'Moderazione' },
   { path: '/admin/utenti', icon: 'pi pi-users', label: 'Utenti' },
   { path: '/admin/metriche', icon: 'pi pi-chart-line', label: 'Metriche' },
+  { path: '/admin/costi', icon: 'pi pi-wallet', label: 'Costi e limiti' },
   { path: '/admin/registro', icon: 'pi pi-history', label: 'Registro' },
 ]
 

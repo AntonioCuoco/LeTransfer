@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { http, store } = vi.hoisted(() => ({
   http: { post: vi.fn(), put: vi.fn() },
-  store: { isUnlocked: true, storeKey: vi.fn(), removeKey: vi.fn() },
+  store: { isUnlocked: true, storeKey: vi.fn(), removeKey: vi.fn(), prepareKey: vi.fn(), rememberKey: vi.fn() },
 }))
 
 vi.mock('axios', () => ({ default: { create: () => http } }))
@@ -21,6 +21,7 @@ vi.mock('@/src/stores/encryption', () => ({ useEncryptionStore: () => store }))
 vi.mock('@/src/composables/useUpgradePrompt', () => ({
   useUpgradePrompt: () => ({ promptForFileSize: vi.fn(), promptWithReason: vi.fn() }),
 }))
+vi.mock('@/src/utils/getCurrentUser', () => ({ getCurrentUser: () => ({ sub: 'sub-di-prova' }) }))
 vi.mock('@/src/utils/notify', () => ({
   notify: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
@@ -33,9 +34,30 @@ const FILE_KEY = 'uploads/files/sub-di-prova/1700000000000-file'
 /** Cosa è uscito dal browser, nell'ordine. È l'oggetto di questi test. */
 const order: string[] = []
 
-async function backend(url: string) {
-  if (url.endsWith('/init')) { order.push('init'); return { data: { uploadId: 'upload-1', fileKey: FILE_KEY } } }
-  if (url.endsWith('/urls')) { order.push('urls'); return { data: { urls: { 1: 'https://storage.test/parte-1' } } } }
+/** Un backend che conosce l'invio rapido? Se sì, `init` con la chiave allegata la salva. */
+let quickBackend = false
+/** Il prefisso del piano dell'account nei test: permanente, come FILE_KEY del backend «vecchio». */
+let planPrefix = 'files'
+
+async function backend(url: string, body?: Record<string, unknown>) {
+  if (url.endsWith('/init')) {
+    order.push('init')
+    if (quickBackend && body?.uploadToken) {
+      if (body.storagePrefix !== planPrefix) {
+        order.push('init-prefisso-sbagliato')
+        throw { response: { status: 409, data: { errorCode: 'STORAGE_PREFIX_MISMATCH', expectedPrefix: planPrefix } } }
+      }
+      const fileKey = `uploads/${planPrefix}/sub-di-prova/${body.uploadTime}-${body.uploadToken}-file`
+      const urls = Object.fromEntries((body.partNumbers as number[]).map((n) => [n, `https://storage.test/parte-${n}`]))
+      return { data: { uploadId: 'upload-1', fileKey, keyStored: true, urls } }
+    }
+    return { data: { uploadId: 'upload-1', fileKey: FILE_KEY } }
+  }
+  if (url.endsWith('/urls')) {
+    order.push('urls')
+    const parts = (body?.partNumbers as number[]) ?? [1]
+    return { data: { urls: Object.fromEntries(parts.map((n) => [n, `https://storage.test/parte-${n}`])) } }
+  }
   if (url.endsWith('/complete')) { order.push('complete'); return { data: {} } }
   if (url.endsWith('/abort')) { order.push('abort'); return { data: {} } }
   throw new Error(`chiamata inattesa: ${url}`)
@@ -45,6 +67,8 @@ const contratto = () => new File([new Uint8Array(2048)], 'contratto.pdf', { type
 
 beforeEach(() => {
   order.length = 0
+  quickBackend = false
+  planPrefix = 'files'
   http.post.mockReset().mockImplementation(backend)
   http.put.mockReset().mockImplementation(async () => {
     order.push('put')
@@ -56,6 +80,9 @@ beforeEach(() => {
     return true
   })
   store.removeKey.mockReset().mockResolvedValue(undefined)
+  // Di default la chiave non si prepara: si prova il giro classico.
+  store.prepareKey.mockReset().mockResolvedValue(null)
+  store.rememberKey.mockReset()
   vi.mocked(notify.warning).mockReset()
 })
 
@@ -131,5 +158,70 @@ describe('useS3MultipartUpload — uploadFileAndWait', () => {
     const { uploadFileAndWait } = useS3MultipartUpload()
 
     expect(await uploadFileAndWait(contratto())).toBeNull()
+  })
+})
+
+/**
+ * Invio rapido e URL a lotti: meno chiamate al server, stessa regola (la chiave prima dei byte).
+ */
+describe('useS3MultipartUpload — meno chiamate al server', () => {
+  const wrapped = { wrappedKey: 'avvolta', wrapIV: 'iv-avvolgimento', fileIV: 'iv-file' }
+
+  it('gli URL di cinque parti arrivano con una richiesta sola', async () => {
+    const { uploadFile, state } = useS3MultipartUpload({ chunkSize: 1024 })
+
+    await uploadFile(new File([new Uint8Array(5 * 1024)], 'cinque.bin'))
+    await vi.waitFor(() => expect(state.value.status).toBe('completed'))
+
+    expect(order.filter((e) => e === 'urls')).toHaveLength(1)
+    expect(order.filter((e) => e === 'put')).toHaveLength(5)
+  })
+
+  it('con l’invio rapido la chiave viaggia con l’apertura: init, byte, complete', async () => {
+    quickBackend = true
+    store.prepareKey.mockResolvedValue(wrapped)
+    const { uploadFile, state } = useS3MultipartUpload()
+
+    await uploadFile(contratto())
+    await vi.waitFor(() => expect(state.value.status).toBe('completed'))
+
+    expect(order).toEqual(['init', 'put', 'complete'])
+    expect(store.storeKey).not.toHaveBeenCalled()
+    const init = http.post.mock.calls.find(([url]) => String(url).endsWith('/init'))![1]
+    expect(init.wrappedFileKey).toEqual(wrapped)
+    // La chiave è legata proprio alla s3Key che il server usa.
+    const proposed = store.prepareKey.mock.calls[0][0]
+    expect(proposed).toBe(`uploads/files/sub-di-prova/${init.uploadTime}-${init.uploadToken}-file`)
+    expect(state.value.fileKey).toBe(proposed)
+    expect(store.rememberKey).toHaveBeenCalledWith(proposed, expect.objectContaining({ key: expect.any(String) }))
+  })
+
+  it('con un backend vecchio torna al giro di prima e salva la chiave a parte', async () => {
+    store.prepareKey.mockResolvedValue(wrapped)
+    const { uploadFile, state } = useS3MultipartUpload()
+
+    await uploadFile(contratto())
+    await vi.waitFor(() => expect(state.value.status).toBe('completed'))
+
+    expect(order).toEqual(['init', 'storeKey', 'urls', 'put', 'complete'])
+    expect(store.storeKey).toHaveBeenCalledWith(FILE_KEY, expect.any(Object))
+  })
+})
+
+describe('useS3MultipartUpload — il prefisso del piano', () => {
+  it('con un prefisso sbagliato riprova una volta con quello giusto, e lega la chiave a lui', async () => {
+    // L'ultimo upload era su un account permanente; adesso l'account è free.
+    quickBackend = true
+    planPrefix = 'free'
+    store.prepareKey.mockResolvedValue({ wrappedKey: 'a', wrapIV: 'b', fileIV: 'c' })
+    const { uploadFile, state } = useS3MultipartUpload()
+
+    await uploadFile(contratto())
+    await vi.waitFor(() => expect(state.value.status).toBe('completed'))
+
+    expect(order).toEqual(['init', 'init-prefisso-sbagliato', 'init', 'put', 'complete'])
+    const proposte = store.prepareKey.mock.calls.map(([key]) => String(key).split('/')[1])
+    expect(proposte).toEqual(['files', 'free'])
+    expect(state.value.fileKey).toMatch(/^uploads\/free\/sub-di-prova\//)
   })
 })

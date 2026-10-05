@@ -79,6 +79,43 @@ describe('composizione della coda', () => {
   })
 })
 
+/**
+ * La scala ospite → Free → Pro (2026-10-05): senza account si manda al volo fino a 1 GB. Oltre,
+ * il widget lo dice **prima** di cifrare e propone l'account gratuito. Sbagliare qui in un
+ * senso fa cifrare per minuti un invio che il server rifiuterà; nell'altro blocca invii
+ * che il server accetterebbe.
+ */
+describe('limite senza account', () => {
+  /** Un file del peso dichiarato, senza allocarne davvero i byte. */
+  function fileOf(bytes: number, name: string) {
+    const file = new File(['contenuto'], name, { type: 'video/mp4' })
+    Object.defineProperty(file, 'size', { value: bytes })
+    return file
+  }
+
+  it('dice sempre fin dove si arriva senza account, e cosa dà un account gratuito', () => {
+    expect(mountWidget().get('[data-testid="guest-limit-hint"]').text()).toBe('senza account fino a 1 GB per invio · gratis con un account fino a 5 GB')
+  })
+
+  it('oltre 1 GB blocca prima di cifrare e propone l’account gratuito', async () => {
+    const wrapper = mountWidget()
+    await chooseFiles(wrapper, [fileOf(700 * 1024 ** 2, 'parte1.mp4'), fileOf(500 * 1024 ** 2, 'parte2.mp4')])
+
+    const nudge = wrapper.get('[data-testid="guest-over-limit"]').text()
+    expect(nudge).toContain('Senza account si manda fino a 1 GB alla volta')
+    expect(nudge).toContain('5 GB per file e 50 GB al mese')
+    expect(sendButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('a 1 GB esatto si manda ancora: il controllo non è più severo del server', async () => {
+    const wrapper = mountWidget()
+    await chooseFiles(wrapper, [fileOf(1024 ** 3, 'video.mp4')])
+
+    expect(wrapper.find('[data-testid="guest-over-limit"]').exists()).toBe(false)
+    expect(sendButton(wrapper).attributes('disabled')).toBeUndefined()
+  })
+})
+
 describe('controllo pre-invio', () => {
   it('blocca l’invio davanti a un travestimento, finché non lo confermi', async () => {
     const wrapper = mountWidget()

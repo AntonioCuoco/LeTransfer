@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlan } from '@/src/composables/usePlan'
-import { useBilling } from '@/src/composables/useBilling'
+import { useBilling, type BillingInterval } from '@/src/composables/useBilling'
+import BillingIntervalChoice from './BillingIntervalChoice.vue'
 import {
   PLAN_CATALOG,
   formatBytes,
@@ -44,6 +45,7 @@ const suggested = computed(() => {
 })
 
 const billing = computed(() => availability())
+const interval = ref<BillingInterval>('month')
 
 function close() { emit('update:visible', false) }
 
@@ -54,7 +56,7 @@ function act() {
     router.push('/prezzi')
     return
   }
-  void startCheckout(target)
+  void startCheckout(target, interval.value)
 }
 </script>
 
@@ -92,6 +94,8 @@ function act() {
         Questo file supera anche il piano più capiente. Per trasferimenti di queste dimensioni
         scrivici: si può fare, ma va impostato insieme.
       </p>
+
+      <BillingIntervalChoice v-if="suggested && suggested !== 'free' && billing.ready" v-model="interval" :plan="suggested" />
 
       <p v-if="!billing.ready && billing.reason" class="m-0 text-xs leading-relaxed text-haze-400">
         {{ billing.reason }}

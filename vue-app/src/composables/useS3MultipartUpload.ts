@@ -9,12 +9,23 @@ import { ENCRYPT_FILENAMES } from '@/src/utils/fileNames'
 import { parsePlanLimitError } from '@/src/utils/planLimitError'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
 
 const DEFAULT_CONFIG: MultipartUploadConfig = {
   chunkSize: 10 * 1024 * 1024,
   concurrency: 3,
   apiBaseUrl: import.meta.env.VITE_API_URL || '/api',
 }
+
+/** URL chiesti per volta (il backend ne accetta fino a 100 con l'apertura). */
+const URL_BATCH = 20
+/** Gli URL presigned valgono un'ora: si rinnovano prima. */
+const URL_TTL_MS = 50 * 60 * 1000
+
+/** Dove finiscono i file: `free` scadono, `files` restano (Pro). */
+type StoragePrefix = 'free' | 'files'
+/** L'ultimo prefisso usato dal server: quasi tutti gli account sono free. */
+let guessedPrefix: StoragePrefix = 'free'
 
 const VAULT_LOCKED_MESSAGE =
   'Sblocca le tue chiavi, o crea le 24 parole, prima di caricare: senza, il file non si potrebbe più aprire.'
@@ -56,6 +67,11 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
   let isPaused = false
   // Dimensione totale del file CIFRATO (v2 = originale + 28 byte per chunk): base dei progressi.
   let totalEncryptedBytes = 0
+  // URL presigned delle parti: si chiedono a lotti (prima uno per parte, una chiamata al server per
+  // ogni 10 MB) e si tengono finché sono sicuramente validi. Una richiesta alla volta: le parti che
+  // ne hanno bisogno insieme aspettano lo stesso lotto.
+  let partUrls = new Map<number, { url: string; at: number }>()
+  let pendingUrls: Promise<void> | null = null
   // La fileKey di cui la chiave è già sul server, finché l'upload non è completato: se
   // l'upload muore prima, quella chiave va tolta.
   let storedKeyFor: string | null = null
@@ -177,16 +193,32 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
     }
   }
 
-  const uploadPart = async (part: PendingPart, uploadId: string, fileKey: string): Promise<void> => {
-    const headers = await getHeaders()
-    const { data } = await api.post<GetPresignedUrlsResponse>('/upload/multipart/urls', {
-      fileKey,
-      uploadId,
-      partNumbers: [part.partNumber],
-    }, { headers })
+  /** L'URL di una parte: dalla memoria se è ancora valido, altrimenti con un lotto nuovo. */
+  const urlFor = async (partNumber: number, uploadId: string, fileKey: string): Promise<string> => {
+    for (let round = 0; round < 3; round++) {
+      const cached = partUrls.get(partNumber)
+      if (cached && Date.now() - cached.at < URL_TTL_MS) return cached.url
+      if (pendingUrls) {
+        await pendingUrls
+        continue
+      }
+      // Questa parte e le prossime in coda che non hanno ancora un URL.
+      const wanted = [partNumber, ...partsQueue.value.map((p) => p.partNumber).filter((n) => n !== partNumber && !partUrls.has(n))].slice(0, URL_BATCH)
+      pendingUrls = (async () => {
+        const headers = await getHeaders()
+        const { data } = await api.post<GetPresignedUrlsResponse>('/upload/multipart/urls', { fileKey, uploadId, partNumbers: wanted }, { headers })
+        const now = Date.now()
+        for (const [n, url] of Object.entries(data.urls)) partUrls.set(Number(n), { url, at: now })
+      })().finally(() => { pendingUrls = null })
+      await pendingUrls
+    }
+    const url = partUrls.get(partNumber)?.url
+    if (!url) throw new Error(`No presigned URL for part ${partNumber}`)
+    return url
+  }
 
-    const url = data.urls[part.partNumber]
-    if (!url) throw new Error(`No presigned URL for part ${part.partNumber}`)
+  const uploadPart = async (part: PendingPart, uploadId: string, fileKey: string): Promise<void> => {
+    const url = await urlFor(part.partNumber, uploadId, fileKey)
 
     const key = encryptionKeyRef.value
     if (!key) throw new Error('Chiave di cifratura non disponibile')
@@ -208,6 +240,8 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       signal: abortController.value?.signal,
     })
 
+    // Un URL usato non serve più: se la parte va riprovata, se ne chiede uno fresco.
+    partUrls.delete(part.partNumber)
     const eTag = response.headers['etag']
     if (!eTag) throw new Error('Missing ETag from S3 response')
 
@@ -258,6 +292,8 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
 
         if (part.retries < 3 && !abortController.value?.signal.aborted) {
           part.retries++
+          // Un 403 dello storage è un URL scaduto: al nuovo tentativo se ne chiede un altro.
+          partUrls.delete(part.partNumber)
           partsQueue.value = [part, ...partsQueue.value]
           processQueue(context)
         } else {
@@ -291,6 +327,8 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
 
     fileRef = file
     storedKeyFor = null
+    partUrls = new Map()
+    pendingUrls = null
     abortController.value = new AbortController()
     partsQueue.value = []
     uploadedParts.value = []
@@ -325,19 +363,51 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       const totalParts = Math.max(1, Math.ceil(file.size / chunkSize))
       totalEncryptedBytes = encryptedSizeV2(file.size, chunkSize)
 
+      const keyData = { key: await exportKeyToBase64(encryptionKey), iv: exportIVToBase64(encryptionIV) }
+
+      // ⚡ Invio rapido: la s3Key nasce da un identificativo scelto qui, quindi la chiave le si lega
+      // subito e viaggia con l'apertura, insieme alla richiesta dei primi URL. Il server la salva
+      // prima di qualunque byte. Se qualcosa manca, o il server non lo conosce, giro di prima.
+      const owner = getCurrentUser()?.sub
+      // Il prefisso dipende dal piano (`free`: i file scadono). Se è sbagliato il server lo dice
+      // prima di aprire niente, e si riprova una volta con l'altro.
+      let proposedKey: string | null = null
+      const openUpload = async (prefix: StoragePrefix) => {
+        const uploadToken = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : null
+        const uploadTime = Date.now()
+        proposedKey = owner && uploadToken ? `uploads/${prefix}/${owner}/${uploadTime}-${uploadToken}-file` : null
+        const wrappedFileKey = proposedKey ? await encryptionStore.prepareKey(proposedKey, keyData) : null
+        const quick = proposedKey && wrappedFileKey
+          ? { uploadToken, uploadTime, wrappedFileKey, storagePrefix: prefix, partNumbers: Array.from({ length: Math.min(totalParts, URL_BATCH) }, (_, i) => i + 1) }
+          : {}
+        if (!wrappedFileKey) proposedKey = null
+        const headers = await getHeaders()
+        return api.post<InitUploadResponse>('/upload/multipart/init', {
+          // Col nome cifrato `init` non ha motivo di conoscerlo: gli serve solo ad aprire il
+          // multipart, e il nome definitivo arriva a `complete`.
+          fileName: ENCRYPT_FILENAMES ? 'file' : file.name,
+          fileType: file.type,
+          fileSize: totalEncryptedBytes,
+          originalSize: file.size,
+          isEncrypted: true,
+          formatVersion: FILE_FORMAT_VERSION,
+          chunkSize,
+          userId: finalConfig.userId,
+          ...quick,
+        }, { headers })
+      }
+      let initData: InitUploadResponse
+      try {
+        initData = (await openUpload(guessedPrefix)).data
+      } catch (err) {
+        const body = (err as { response?: { status?: number; data?: { errorCode?: string; expectedPrefix?: StoragePrefix } } }).response
+        if (body?.status !== 409 || body.data?.errorCode !== 'STORAGE_PREFIX_MISMATCH') throw err
+        guessedPrefix = body.data.expectedPrefix === 'files' ? 'files' : 'free'
+        initData = (await openUpload(guessedPrefix)).data
+      }
+      // Il prefisso della chiave dice il piano: il prossimo upload lo propone già giusto.
+      guessedPrefix = initData.fileKey.startsWith('uploads/free/') ? 'free' : 'files'
       const headers = await getHeaders()
-      const { data: initData } = await api.post<InitUploadResponse>('/upload/multipart/init', {
-        // Col nome cifrato `init` non ha motivo di conoscerlo: gli serve solo ad aprire il
-        // multipart, e il nome definitivo arriva a `complete`.
-        fileName: ENCRYPT_FILENAMES ? 'file' : file.name,
-        fileType: file.type,
-        fileSize: totalEncryptedBytes,
-        originalSize: file.size,
-        isEncrypted: true,
-        formatVersion: FILE_FORMAT_VERSION,
-        chunkSize,
-        userId: finalConfig.userId,
-      }, { headers })
 
       state.value.uploadId = initData.uploadId
       state.value.fileKey = initData.fileKey
@@ -345,10 +415,14 @@ export const useS3MultipartUpload = (config: Partial<MultipartUploadConfig> = {}
       // ⚠️ La chiave va al server PRIMA dei byte. Prima si salvava a fine upload: se il
       // salvataggio falliva, o il vault era chiuso, il file restava sul server senza chiave,
       // illeggibile per sempre e senza un errore. `complete` ora la pretende (409).
-      const stored = await encryptionStore.storeKey(initData.fileKey, {
-        key: await exportKeyToBase64(encryptionKey),
-        iv: exportIVToBase64(encryptionIV),
-      })
+      // Con l'invio rapido accettato è già salvata, sulla s3Key proposta.
+      const quickAccepted = !!initData.keyStored && initData.fileKey === proposedKey
+      if (quickAccepted) {
+        encryptionStore.rememberKey(initData.fileKey, keyData)
+        const now = Date.now()
+        for (const [n, url] of Object.entries(initData.urls ?? {})) partUrls.set(Number(n), { url, at: now })
+      }
+      const stored = quickAccepted || await encryptionStore.storeKey(initData.fileKey, keyData)
       if (!stored) {
         // Il toast lo ha già mostrato storeKey. Si chiude il multipart appena aperto.
         await api

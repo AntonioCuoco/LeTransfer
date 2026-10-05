@@ -30,6 +30,21 @@ export type PlanId = 'free' | 'pro' | 'business'
 /** Base decimale, coerente con il formattatore già in uso nell'app (1 GB = 1e9 byte). */
 const GB = 1e9
 
+/**
+ * Invio senza account: la porta d'ingresso della scala ospite → Free → Pro (decisa il
+ * 2026-10-05). File piccoli, al volo; per file grossi o tanti file insieme c'è il Free.
+ *
+ * `maxTransferBytes` è in base **binaria**, come il backend (`GUEST_MAX_FILE_SIZE` = 1 GiB):
+ * il controllo nel browser non deve mai rifiutare ciò che il server accetterebbe. Più file
+ * diventano uno zip, che conta per intero.
+ */
+export const GUEST_LIMITS = {
+  maxTransferBytes: 1024 ** 3,
+  maxTransferLabel: '1 GB',
+  dailyLabel: '5 GB',
+  expiryDays: 7,
+} as const
+
 export interface PlanLimits {
   /** Dimensione massima del singolo trasferimento, in byte. */
   maxFileBytes: number
@@ -54,7 +69,14 @@ export interface PlanCatalogEntry {
   tagline: string
   /** Prezzo mensile in euro. `null` = non a listino (si passa dal contatto). */
   monthlyEur: number | null
+  /**
+   * Prezzo dell'abbonamento annuale in euro, pagato in una volta. `null` = niente annuale.
+   * Pro: €90 (deciso il 2026-10-04), cioè 12 mesi al prezzo di 10.
+   */
+  yearlyEur: number | null
   limits: PlanLimits
+  /** Quanto restano i file caricati: il Free è un trasferimento, il Pro un archivio. */
+  fileRetention: string
   features: string[]
   featured?: boolean
 }
@@ -78,12 +100,14 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     name: 'Free',
     tagline: 'Per mandare qualcosa, adesso.',
     monthlyEur: 0,
+    yearlyEur: 0,
     limits: {
-      maxFileBytes: 2 * GB,
+      maxFileBytes: 5 * GB,
       maxExpiryHours: 168,
       maxStoredBytes: 10 * GB,
-      maxMonthlyBytes: 10 * GB,
+      maxMonthlyBytes: 50 * GB,
     },
+    fileRetention: '7 giorni',
     features: [
       'Invio senza account',
       'Cifratura end-to-end',
@@ -96,12 +120,14 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     name: 'Pro',
     tagline: 'Per chi manda file di lavoro tutti i giorni.',
     monthlyEur: 9,
+    yearlyEur: 90,
     limits: {
       maxFileBytes: 20 * GB,
       maxExpiryHours: 720,
       maxStoredBytes: 200 * GB,
       maxMonthlyBytes: 200 * GB,
     },
+    fileRetention: 'finché vuoi',
     features: [
       'Tutto di Free',
       'Storico e gestione dei link',
@@ -127,12 +153,14 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     name: 'Business',
     tagline: 'Per team che scambiano materiale pesante.',
     monthlyEur: null,
+    yearlyEur: null,
     limits: {
       maxFileBytes: 100 * GB,
       maxExpiryHours: 8760,
       maxStoredBytes: 1000 * GB,
       maxMonthlyBytes: 1000 * GB,
     },
+    fileRetention: 'finché vuoi',
     features: [
       'Tutto di Pro',
       'Più utenti sotto un’unica fatturazione',

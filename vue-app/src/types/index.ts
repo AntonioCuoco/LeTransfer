@@ -5,6 +5,8 @@ export * from './transfer'
 
 export interface DynamoDBFile {
   fileId: string
+  /** File di un account free: quando sparisce (ISO). Assente = non scade. */
+  expiresAt?: string
   fileName: string
   originalName: string
   fileSize: string
@@ -72,6 +74,8 @@ export interface TableFile {
   size: string
   status: 'uploaded' | 'downloaded' | 'sent' | 'received' | 'archived' | 'deleted'
   date: string
+  /** File di un account free: «scade il 12 ott». Assente = non scade. */
+  expires?: string
   recipient?: string
   originalFile?: DynamoDBFile
   sharedWith?: SharedRecipient[]

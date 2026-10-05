@@ -16,6 +16,7 @@ import { fileBadge } from '@/src/utils/fileBadge'
 import { notify } from '@/src/utils/notify'
 import { withDetail } from '@/src/utils/errorDetail'
 import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
+import { GUEST_LIMITS, PLAN_CATALOG, formatBytes } from '@/src/types/plan'
 
 /**
  * Widget d'invio "senza account": aggiungi → configura → invia.
@@ -108,7 +109,26 @@ const stateLabel = computed(() => {
 })
 const stateLabelClass = computed(() => (view.value === 'encrypting' ? 'text-[#724cf9]' : 'text-[#12b89a]'))
 
-const totalLabel = computed(() => formatSize(files.value.reduce((acc, f) => acc + f.size, 0)))
+const totalBytes = computed(() => files.value.reduce((acc, f) => acc + f.size, 0))
+const totalLabel = computed(() => formatSize(totalBytes.value))
+
+/**
+ * La scala ospite → Free → Pro (2026-10-05): senza account si manda al volo fino a 1 GB per
+ * invio (più file diventano uno zip, che conta per intero). Oltre lo si dice **qui**, prima di
+ * cifrare, insieme a ciò che si ottiene con un account gratuito: scoprirlo dal server dopo
+ * minuti di cifratura sarebbe il modo peggiore di incontrare il limite.
+ */
+const overGuestLimit = computed(() => totalBytes.value > GUEST_LIMITS.maxTransferBytes)
+const freeFileLabel = formatBytes(PLAN_CATALOG.free.limits.maxFileBytes)
+const freeMonthlyLabel = formatBytes(PLAN_CATALOG.free.limits.maxMonthlyBytes)
+
+function goToSignUp() {
+  if (!REGISTRATION_OPEN) {
+    notify.info(REGISTRATION_CLOSED_MESSAGE, 'Registrazione chiusa')
+    return
+  }
+  router.push('/register')
+}
 
 const linkBase = computed(() => (result.value ? result.value.shareUrl.split('#')[0].replace(/^https?:\/\//, '') : ''))
 const linkFragmentPreview = computed(() => {
@@ -179,7 +199,7 @@ function summarize(): string {
 }
 
 async function startUpload() {
-  if (files.value.length === 0) return
+  if (files.value.length === 0 || overGuestLimit.value) return
   // I rilievi gravi non impediscono l'invio: chiedono di dire "so cosa sto mandando".
   if (needsAcknowledgement.value) return
   // Se TURNSTILE_SECRET è impostata sul backend, init richiede un token valido.
@@ -318,6 +338,9 @@ onMounted(() => {
           </button>
         </div>
         <div class="mt-2.5 text-center text-[0.8rem] text-[#9086ad]">oppure trascina qui file o cartelle</div>
+        <div class="mt-1 text-center font-mono text-[0.68rem] text-[#9086ad]" data-testid="guest-limit-hint">
+          senza account fino a {{ GUEST_LIMITS.maxTransferLabel }} per invio · gratis con un account fino a {{ freeFileLabel }}
+        </div>
       </div>
 
       <!-- Lista file (scrolla oltre l'altezza massima) -->
@@ -331,6 +354,19 @@ onMounted(() => {
       </div>
       <div v-if="files.length" class="flex justify-between px-1.5 pb-1 pt-2 font-mono text-[0.72rem] text-[#6a5f8c]">
         <span>{{ files.length }} file</span><span class="font-bold text-[#1b1140]">{{ totalLabel }}</span>
+      </div>
+
+      <!-- Oltre il limite degli ospiti: niente cifratura inutile, e il gradino successivo. -->
+      <div v-if="overGuestLimit" class="mt-2 rounded-[11px] border border-[#cdbff0] bg-[#f5f1fd] px-3 py-2.5" data-testid="guest-over-limit">
+        <p class="m-0 text-[0.84rem] font-semibold text-[#1b1140]">
+          Senza account si manda fino a {{ GUEST_LIMITS.maxTransferLabel }} alla volta: questo invio pesa {{ totalLabel }}.
+        </p>
+        <p class="m-0 mt-1 text-[0.78rem] leading-snug text-[#6a5f8c]">
+          Con un account gratuito arrivi a {{ freeFileLabel }} per file e {{ freeMonthlyLabel }} al mese, con la stessa cifratura.
+        </p>
+        <button type="button" class="mt-2 rounded-[9px] bg-[#724cf9] px-3 py-1.5 text-[0.8rem] font-semibold text-white transition hover:brightness-105" @click="goToSignUp">
+          Crea un account gratuito
+        </button>
       </div>
 
       <!-- Controllo pre-invio (F1.5): locale, prima della cifratura, e il risultato non
@@ -444,7 +480,7 @@ onMounted(() => {
 
       <!-- v-lift: il "cede alla pressione" sul bottone che avvia una cifratura
            potenzialmente lunga — è lì che serve la conferma tattile di aver premuto. -->
-      <button v-lift type="button" class="lt-btn mt-1" :disabled="files.length === 0 || needsAcknowledgement" @click="startUpload">
+      <button v-lift type="button" class="lt-btn mt-1" :disabled="files.length === 0 || needsAcknowledgement || overGuestLimit" @click="startUpload">
         {{ needsAcknowledgement ? 'Conferma per procedere' : 'Cifra e crea il link' }}
       </button>
     </div>

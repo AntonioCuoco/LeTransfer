@@ -84,6 +84,9 @@ const convertFilesToTableFormat = (files: DynamoDBFile[]): TableFile[] =>
     size: file.fileSize || 'N/A',
     status: (file.sharedWith?.length ? 'sent' : 'uploaded') as TableFile['status'],
     date: formatRowDate(file.uploadedAt),
+    expires: file.expiresAt
+      ? `scade il ${new Date(file.expiresAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}`
+      : undefined,
     recipient: file.sharedWith?.length ? file.sharedWith.map(r => r.email).join(', ') : '-',
     originalFile: file,
     sharedWith: file.sharedWith,

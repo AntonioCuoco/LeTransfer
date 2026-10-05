@@ -42,10 +42,11 @@ const CTA: Record<PlanId, string> = {
 
 const plans = computed(() => PLAN_ORDER.map((id) => PLAN_CATALOG[id]))
 
-// Sconto annuale: due mesi in regalo. Il prezzo mostrato resta sempre "al mese".
+// Annuale: il prezzo vero sta nel catalogo (`yearlyEur`, Pro €90 = 12 mesi al prezzo di 10).
+// Il prezzo mostrato resta sempre "al mese", per confrontarlo col mensile.
 function priceOf(plan: PlanCatalogEntry): number {
   if (!plan.monthlyEur) return 0
-  return yearly.value ? (plan.monthlyEur * 10) / 12 : plan.monthlyEur
+  return yearly.value && plan.yearlyEur ? plan.yearlyEur / 12 : plan.monthlyEur
 }
 
 const faq = [
@@ -123,6 +124,13 @@ const faq = [
               /mese{{ plan.id === 'business' ? ' · utente' : '' }}
             </span>
           </div>
+          <p
+            v-if="yearly && plan.yearlyEur"
+            class="mt-1.5 font-mono text-[0.7rem]"
+            :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'"
+          >
+            €{{ plan.yearlyEur }} in un'unica soluzione all'anno
+          </p>
 
           <!-- I due numeri che contano davvero, in mono e ben visibili -->
           <dl
@@ -133,6 +141,8 @@ const faq = [
             <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatBytes(plan.limits.maxFileBytes) }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">i link durano</dt>
             <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatRetention(plan.limits.maxExpiryHours) }}</dd>
+            <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">i file restano</dt>
+            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ plan.fileRetention }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">cifratura</dt>
             <dd class="text-right font-bold text-[#12b89a]">AES-256</dd>
           </dl>

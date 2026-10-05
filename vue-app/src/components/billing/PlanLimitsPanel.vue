@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import PlanBadge from './PlanBadge.vue'
+import BillingIntervalChoice from './BillingIntervalChoice.vue'
 import { usePlan } from '@/src/composables/usePlan'
-import { useBilling } from '@/src/composables/useBilling'
+import { useBilling, type BillingInterval } from '@/src/composables/useBilling'
 import {
   PLAN_CATALOG,
   PLAN_PRICES_PROVISIONAL,
@@ -29,6 +30,7 @@ onMounted(() => { void load() })
 
 const upgrade = computed(() => nextPlanAfter(plan.value))
 const billing = computed(() => availability())
+const interval = ref<BillingInterval>('month')
 
 const periodEnd = computed(() => {
   const iso = subscription.value?.currentPeriodEnd
@@ -45,7 +47,7 @@ function goToUpgrade() {
     router.push('/prezzi')
     return
   }
-  void startCheckout(target)
+  void startCheckout(target, interval.value)
 }
 </script>
 
@@ -80,6 +82,10 @@ function goToUpgrade() {
           @click="goToUpgrade"
         />
       </div>
+    </div>
+
+    <div v-if="upgrade && upgrade !== 'free' && billing.ready" class="mt-4 max-w-[420px]">
+      <BillingIntervalChoice v-model="interval" :plan="upgrade" />
     </div>
 
     <!-- I due limiti veri, negli stessi termini in cui il server li applica. -->
