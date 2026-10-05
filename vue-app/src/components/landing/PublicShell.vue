@@ -180,7 +180,7 @@ defineExpose({ surge, settle, calm, stampSeal })
 
       <div class="mt-9 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5 font-mono text-[0.7rem] text-[#6a5f8c]">
         <span>© {{ new Date().getFullYear() }} Novren</span>
-        <span>Dati in UE · client open-source · nessun log dei contenuti</span>
+        <span>Dati in UE · cifratura end-to-end · nessun log dei contenuti</span>
       </div>
     </footer>
   </div>

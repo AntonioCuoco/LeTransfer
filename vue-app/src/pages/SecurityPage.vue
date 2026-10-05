@@ -38,13 +38,56 @@ const RELEASES_URL = 'https://github.com/AntonioCuoco/LeTransfer/releases'
 const BUILD_NODE = '22.20.0'
 const BUILD_RUNNER = 'ubuntu-24.04 · linux x64'
 
+/**
+ * ⚠️ Ogni riga qui sotto è un'affermazione verificabile: corrisponde a `src/crypto` (e al suo
+ * README) e allo stato della produzione. Ricontrollata il 2026-10-05: post-quantum già in
+ * produzione, nomi dei file cifrati, repository ancora privato. Se lo stato cambia, cambia qui.
+ */
 const primitives = [
-  { what: 'Contenuto dei file', how: 'AES-256-GCM', note: 'chiave per trasferimento, generata nel browser' },
+  { what: 'Contenuto dei file', how: 'AES-256-GCM', note: 'chiave per trasferimento, generata nel tuo dispositivo' },
   { what: 'Blocchi', how: 'IV a 96 bit per blocco + tag 128 bit', note: 'AAD = indice, blocca riordino e sostituzione' },
-  { what: 'Chiavi tra utenti', how: 'RSA-OAEP 4096 + X-Wing (ML-KEM-768 + X25519)', note: 'ibrido post-quantum: servono entrambe le chiavi per aprire; RSA-OAEP da solo per chi non ha ancora la chiave X-Wing' },
-  { what: 'Recovery key', how: 'mnemonica 24 parole (256 bit)', note: 'PBKDF2-SHA256, 100.000 iterazioni' },
+  { what: 'Nome del file', how: 'AES-256-GCM, AAD separata', note: 'cifrato con la chiave del file: lo legge solo chi può aprirlo' },
+  { what: 'Chiavi tra utenti', how: 'RSA-OAEP 4096 + X-Wing (ML-KEM-768 + X25519)', note: 'ibrido post-quantum: servono entrambe le chiavi per aprire; RSA-OAEP da solo verso chi non ha ancora la chiave X-Wing' },
+  { what: 'Impronta del destinatario', how: 'SHA-256 · RFC 7638', note: 'si confronta a voce: rivela una chiave pubblica sostituita' },
+  { what: 'Recovery key', how: 'mnemonica 24 parole (256 bit)', note: 'PBKDF2-SHA256, 100.000 iterazioni · si possono cambiare in ogni momento' },
+  { what: 'Chiavi dei tuoi file', how: 'AES-256-GCM con la master key', note: 'AAD = il file a cui appartengono: non si possono scambiare fra file' },
   { what: 'Password dei link', how: 'Argon2 lato server', note: 'gate d’accesso, non chiave di cifratura' },
   { what: 'Trasporto', how: 'TLS 1.3', note: 'in aggiunta alla cifratura, non al posto suo' },
+]
+
+const covered = [
+  'Chi gestisce i nostri server legge i tuoi file o i loro nomi',
+  'Una fuga di dati dallo storage o dal database espone i contenuti',
+  'Un blocco del file viene sostituito o riordinato di nascosto',
+  'Il server ti consegna la chiave sbagliata di un destinatario, se ne confronti l’impronta',
+  '«Raccogli oggi, decifra domani» con un computer quantistico, per i file mandati a un utente',
+]
+
+const notCovered = [
+  {
+    title: 'Chi ha il link, ha il file',
+    body: 'La chiave è nel link. Se lo inoltri in un gruppo, hai dato il file al gruppo. Password, scadenza, download massimi e revoca servono a questo.',
+  },
+  {
+    title: 'Il dispositivo compromesso',
+    body: 'Se il dispositivo di chi invia o di chi riceve è infetto, la cifratura end-to-end non serve: i dati sono in chiaro prima e dopo il nostro pezzo di strada.',
+  },
+  {
+    title: 'I metadati minimi',
+    body: 'Vediamo dimensione, orario, tipo di file e indirizzo IP di chi carica: servono a scadenze, limiti e contro gli abusi. Il nome del file no, è cifrato. Non vendiamo niente, ma non possiamo dire di non avere questi dati.',
+  },
+  {
+    title: 'Il codice che ti serviamo',
+    body: 'Nel browser la cifratura avviene nel codice che ti mandiamo noi: chi compromettesse la nostra distribuzione potrebbe servirti codice ostile. È il limite strutturale di ogni E2E via browser. La contromisura è un sorgente pubblico con build riproducibili: non l’abbiamo ancora, ed è scritto qui sotto.',
+  },
+  {
+    title: 'La prima chiave di un destinatario',
+    body: 'L’impronta rivela una chiave che cambia. Se la prima chiave che ricevi è già falsa, lo scopri solo confrontando l’impronta con il destinatario, fuori da Novren.',
+  },
+  {
+    title: 'I limiti del post-quantum',
+    body: 'Copre lo scambio di chiavi fra utenti, non tutto: i file condivisi prima, o con chi non ha ancora una chiave X-Wing, restano protetti dal solo RSA. I link pubblici non ne hanno bisogno (la chiave è nel link, e AES-256 è già considerato resistente). La libreria X-Wing non ha ancora un audit indipendente: per questo si usa insieme a RSA, mai al suo posto.',
+  },
 ]
 
 const { root: head } = usePageEnter()
@@ -78,23 +121,49 @@ const { root: head } = usePageEnter()
         </div>
       </section>
 
+      <!-- Modello di minaccia: la colonna di destra è quella che conta -->
+      <section v-reveal class="mt-[clamp(48px,7vh,84px)] grid gap-8 md:grid-cols-2">
+        <div>
+          <h2 class="mb-1.5 text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tracking-[-0.03em]">Da cosa ti protegge</h2>
+          <p class="mb-5 text-[0.92rem] leading-relaxed text-[#8d7fb8]">Scenari coperti dal modo in cui è costruito il prodotto.</p>
+          <ul class="flex flex-col gap-3">
+            <li v-for="item in covered" :key="item" class="flex items-baseline gap-3 leading-relaxed text-[#b9ace2]">
+              <span class="font-mono text-[#37e7c4]">✓</span>{{ item }}
+            </li>
+          </ul>
+        </div>
+
+        <div class="rounded-[18px] border border-[#e0b34a]/25 bg-[#e0b34a]/[0.06] p-6">
+          <h2 class="mb-1.5 text-[clamp(1.4rem,2.6vw,1.85rem)] font-bold tracking-[-0.03em]">Da cosa non ti protegge</h2>
+          <p class="mb-5 text-[0.92rem] leading-relaxed text-[#c0a878]">Scritto da noi, prima che lo scopra qualcun altro.</p>
+          <div class="flex flex-col gap-5">
+            <div v-for="item in notCovered" :key="item.title">
+              <p class="mb-1 font-mono text-[0.78rem] uppercase tracking-[0.1em] text-[#e0b34a]">{{ item.title }}</p>
+              <p class="text-[0.92rem] leading-relaxed text-[#d9cffa]">{{ item.body }}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Stato attuale: niente vanterie non verificabili -->
       <section v-reveal class="mt-[clamp(48px,7vh,84px)]">
         <h2 class="mb-7 text-[clamp(1.5rem,3vw,2.2rem)] font-bold tracking-[-0.03em]">A che punto siamo</h2>
         <dl class="grid grid-cols-[1fr_auto] gap-x-6 border-t border-white/10 font-mono text-[0.8rem]">
-          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Client open-source</dt>
-          <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Nucleo crittografico isolato e specificato</dt>
           <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì · <span class="font-mono">src/crypto</span></dd>
+          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Nomi dei file cifrati</dt>
+          <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì</dd>
+          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Crittografia post-quantistica</dt>
+          <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì · chiavi tra utenti</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Dati e storage in Unione Europea</dt>
           <dd class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì</dd>
+          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Codice sorgente pubblico</dt>
+          <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">non ancora</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Audit crittografico indipendente</dt>
           <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">non ancora</dd>
           <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Build riproducibili del client</dt>
           <dd v-if="shortCommit" class="border-b border-white/10 py-3.5 text-right font-bold text-[#37e7c4]">sì · verificabile</dd>
           <dd v-else class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">in lavorazione</dd>
-          <dt class="border-b border-white/10 py-3.5 text-[#d9cffa]">Crittografia post-quantistica</dt>
-          <dd class="border-b border-white/10 py-3.5 text-right text-[#e0b34a]">in roadmap</dd>
         </dl>
       </section>
 

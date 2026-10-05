@@ -45,7 +45,7 @@ export function useBilling() {
     if (PLAN_PRICES_PROVISIONAL) {
       return {
         ready: false,
-        reason: 'I prezzi non sono ancora definitivi: il pagamento si accende quando lo sono.',
+        reason: 'Il pagamento online non è ancora attivo: lo accendiamo a breve.',
       }
     }
     if (isUnavailable.value) {

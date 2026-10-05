@@ -6,7 +6,7 @@ import { usePageEnter } from '@/src/composables/useMotion'
 import {
   PLAN_CATALOG,
   PLAN_ORDER,
-  PLAN_PRICES_PROVISIONAL,
+  GUEST_LIMITS,
   formatBytes,
   formatRetention,
   type PlanCatalogEntry,
@@ -35,7 +35,7 @@ const { root: head } = usePageEnter()
 // Le CTA sono l'unica cosa specifica di questa pagina: il catalogo descrive i piani,
 // non cosa deve succedere quando ci clicchi sopra da qui.
 const CTA: Record<PlanId, string> = {
-  free: 'Inizia senza account',
+  free: 'Crea un account gratis',
   pro: 'Passa a Pro',
   business: 'Parliamone',
 }
@@ -139,6 +139,10 @@ const faq = [
           >
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">file max</dt>
             <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatBytes(plan.limits.maxFileBytes) }}</dd>
+            <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">invii al mese</dt>
+            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatBytes(plan.limits.maxMonthlyBytes) }}</dd>
+            <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">spazio</dt>
+            <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatBytes(plan.limits.maxStoredBytes) }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">i link durano</dt>
             <dd class="text-right font-bold" :class="plan.featured ? 'text-[#1b1140]' : 'text-[#F2ECFF]'">{{ formatRetention(plan.limits.maxExpiryHours) }}</dd>
             <dt :class="plan.featured ? 'text-[#6a5f8c]' : 'text-[#8d7fb8]'">i file restano</dt>
@@ -160,22 +164,26 @@ const faq = [
             :class="plan.featured
               ? 'bg-[linear-gradient(140deg,#724cf9,#5a30eb)] text-white shadow-[0_14px_30px_-12px_rgba(90,48,235,0.85)] hover:brightness-105'
               : 'border border-white/15 bg-white/[0.06] text-[#F2ECFF] hover:border-white/30'"
-            :disabled="plan.id !== 'free' && !REGISTRATION_OPEN"
-            :title="plan.id !== 'free' && !REGISTRATION_OPEN ? REGISTRATION_CLOSED_MESSAGE : undefined"
-            @click="router.push(plan.id === 'free' ? '/' : '/register')"
+            :disabled="!REGISTRATION_OPEN"
+            :title="!REGISTRATION_OPEN ? REGISTRATION_CLOSED_MESSAGE : undefined"
+            @click="router.push('/register')"
           >
             {{ CTA[plan.id] }}
           </button>
         </div>
       </div>
 
+      <!-- La porta d'ingresso della scala ospite → Free → Pro (2026-10-05): chi vuole solo mandare
+           un file al volo non deve pensare che serva un account. -->
+      <p class="mt-5 text-[0.92rem] text-[#b9ace2]" data-testid="guest-entry">
+        Vuoi solo mandare un file al volo?
+        <button type="button" class="font-semibold text-[#F2ECFF] underline decoration-[#724cf9] underline-offset-4 hover:decoration-2" @click="router.push('/')">
+          Fino a {{ GUEST_LIMITS.maxTransferLabel }} anche senza account →
+        </button>
+      </p>
+
       <p class="mt-4 font-mono text-[0.7rem] text-[#8d7fb8]">
         Prezzi IVA esclusa. I limiti sono quelli applicati davvero dal server, non promesse di brochure.
-      </p>
-      <!-- Finché gli importi non sono decisi, dirlo è l'unica cosa corretta: chi legge sta
-           valutando una spesa, e merita di sapere che la cifra può ancora cambiare. -->
-      <p v-if="PLAN_PRICES_PROVISIONAL" class="mt-2 rounded-[10px] border border-[#e0b34a]/30 bg-[#e0b34a]/[0.08] px-3.5 py-2.5 font-mono text-[0.7rem] text-[#e0b34a]">
-        Gli importi sono ancora provvisori e l’acquisto non è attivo. I limiti qui sopra, invece, sono già quelli veri.
       </p>
 
       <!-- Domande scomode -->

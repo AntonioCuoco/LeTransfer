@@ -30,7 +30,7 @@ const rows = computed<Row[]>(() =>
     ? [
         { label: 'Il server ha visto', value: '████ ciphertext', tone: 'cipher' },
         { label: 'Non ha mai visto', value: 'file · chiave · nome', tone: 'verified' },
-        { label: 'Verificabile', value: 'SHA-256 ✓ open-source', tone: 'plain' },
+        { label: 'Cifrato', value: 'qui, sul tuo dispositivo', tone: 'plain' },
       ]
     : [
         { label: 'Il server ha mandato', value: '████ ciphertext', tone: 'cipher' },

@@ -98,7 +98,7 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
   free: {
     id: 'free',
     name: 'Free',
-    tagline: 'Per mandare qualcosa, adesso.',
+    tagline: 'Per chi manda file spesso, gratis.',
     monthlyEur: 0,
     yearlyEur: 0,
     limits: {
@@ -108,11 +108,14 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
       maxMonthlyBytes: 50 * GB,
     },
     fileRetention: '7 giorni',
+    // ⚠️ Solo ciò che un account Free ha davvero (verificato il 2026-10-05: nessuna funzione è
+    // riservata al Pro, il Pro differisce per capienza e durata). Niente notifiche email qui:
+    // sono costruite ma spente in produzione (O1.2).
     features: [
-      'Invio senza account',
-      'Cifratura end-to-end',
-      'Password e max download',
-      'Revoca del link',
+      'Storico e gestione dei tuoi link',
+      'Condivisione cifrata con altri utenti',
+      'Richieste file: fatti mandare documenti',
+      'Password, download massimi e revoca',
     ],
   },
   pro: {
@@ -130,9 +133,9 @@ export const PLAN_CATALOG: Record<PlanId, PlanCatalogEntry> = {
     fileRetention: 'finché vuoi',
     features: [
       'Tutto di Free',
-      'Storico e gestione dei link',
-      'Notifiche al download',
-      'Condivisione tra utenti (RSA-4096)',
+      'File che restano finché vuoi',
+      'Link che durano fino a 30 giorni',
+      'Abbonamento annuale: 2 mesi in regalo',
     ],
     featured: true,
   },

@@ -57,11 +57,15 @@ const steps = [
  * ricezione lo mostra *prima* di decifrare — quindi non potrebbe essere altrimenti.
  * Come renderlo vero davvero: FRONTEND_WORKORDER_ROADMAP §F2 "nome del file cifrato".
  */
+// Aggiornato il 2026-10-05: da O2.2 il nome **è cifrato** con la chiave del file
+// (`encryptFileName`, `nameVersion: 2`), anche negli invii senza account. Il tipo di file
+// invece si vede: serve ad anteprime e icone, ed è l'eccezione che va detta.
 const serverKnows = [
   ['Blocchi cifrati', 'sì — sono l’unica cosa che riceve', false],
   ['Dimensione e data', 'sì — servono a far scadere il link', false],
   ['Indirizzo IP di chi carica', 'sì — serve contro gli abusi', false],
-  ['Il nome del file', 'sì — lo mostriamo a chi riceve, prima di decifrare', false],
+  ['Il tipo di file', 'sì — serve ad anteprime e icone', false],
+  ['Il nome del file', 'no — è cifrato con la chiave del file', true],
   ['Il contenuto del file', 'no', true],
   ['La chiave di cifratura', 'no — non l’ha mai vista', true],
 ]
