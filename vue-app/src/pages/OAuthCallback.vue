@@ -5,6 +5,7 @@ import { setAuthCookie } from '@/src/utils/cookieStore'
 import { postLoginPath } from '@/src/utils/cliAuthorization'
 import { notify } from '@/src/utils/notify'
 import { withDetail } from '@/src/utils/errorDetail'
+import { requestWelcomeEmail } from '@/src/utils/welcomeEmail'
 
 const router = useRouter()
 
@@ -67,6 +68,9 @@ onMounted(async () => {
     setAuthCookie('idToken', data.id_token, 1 / 24)
     if (data.refresh_token) setAuthCookie('refreshToken', data.refresh_token, 30)
     sessionStorage.removeItem('pkce_verifier')
+    // Il primo accesso con Google È la registrazione: il server manda il benvenuto solo a un
+    // account nuovo, e una volta sola, quindi chiamarlo a ogni accesso non costa niente.
+    requestWelcomeEmail()
     router.replace(postLoginPath())
   } catch (err) { fail(withDetail(describeOAuthError(), err)) }
 })

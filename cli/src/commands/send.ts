@@ -1,6 +1,6 @@
 import { ApiError, guestRevoke } from '../api'
 import { forgetCredentials, loadSends, saveSends } from '../config'
-import { send as upload, type SendResult } from '../send'
+import { send as upload, type MemoryContent, type SendResult } from '../send'
 import { isEmail } from '../share'
 import { askSecret, info, interactive } from '../ui'
 import { requireCredentials } from './account'
@@ -16,6 +16,8 @@ import { UserError } from './get'
 
 export interface SendCommandOptions {
   paths: string[]
+  /** Al posto di `paths`, un contenuto in memoria: lo usa `novren secret`. */
+  content?: MemoryContent
   askPassword?: boolean
   expiresInHours?: string
   maxDownloads?: string
@@ -31,7 +33,7 @@ function positiveInt(value: string | undefined, what: string): number | undefine
 }
 
 export async function send(options: SendCommandOptions): Promise<SendResult> {
-  if (options.paths.length === 0) throw new UserError('Cosa invio? Esempio: novren send documento.pdf')
+  if (options.paths.length === 0 && !options.content) throw new UserError('Cosa invio? Esempio: novren send documento.pdf')
   const expiresInHours = positiveInt(options.expiresInHours, '--expires')
   const maxDownloads = positiveInt(options.maxDownloads, '--max-downloads')
   const mail = options.mail?.trim()
@@ -47,7 +49,7 @@ export async function send(options: SendCommandOptions): Promise<SendResult> {
 
   const credentials = await requireCredentials()
   try {
-    const result = await upload({ paths: options.paths, credentials, password, expiresInHours, maxDownloads })
+    const result = await upload({ paths: options.paths, content: options.content, credentials, password, expiresInHours, maxDownloads })
     if (result.expiresAt) info(`Scade il ${new Date(result.expiresAt).toLocaleString('it-IT')}.`)
     if (result.claimed) info('Aggiunto al tuo account: lo trovi fra i tuoi link sul sito.')
     return result

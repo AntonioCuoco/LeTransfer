@@ -22,6 +22,8 @@ export interface SharedTransfer {
   name: string
   expiresAt: string | null
   passwordProtected: boolean
+  /** Un segreto a lettura unica (`novren secret`): il messaggio lo dice. */
+  secret?: boolean
 }
 
 export interface ShareOptions {
@@ -43,6 +45,18 @@ function expiryText(expiresAt: string | null): string | null {
 
 /** Il testo che accompagna il link nell'email. */
 export function composeMessage(t: SharedTransfer): string {
+  if (t.secret) {
+    return [
+      'Ti ho mandato un segreto con Novren:',
+      '',
+      t.link,
+      '',
+      'Si apre una volta sola, nel browser o con «novren get»: dopo la prima lettura il link non funziona più.',
+      'È cifrato end-to-end, e la chiave è solo in questo link.',
+      ...(t.passwordProtected ? ['È protetto da una password: te la mando a parte.'] : []),
+      ...(expiryText(t.expiresAt) ? [expiryText(t.expiresAt)!] : []),
+    ].join('\n')
+  }
   return [
     `Ti ho mandato «${t.name}» con Novren:`,
     '',
@@ -66,7 +80,7 @@ const mailEncode = (text: string) => encodeURIComponent(text.replace(/\r?\n/g, '
 
 export function mailtoUrl(t: SharedTransfer, to: string): string {
   if (to && !isEmail(to)) throw new UserError(`«${to}» non sembra un indirizzo email.`)
-  const subject = `«${t.name}» — tramite Novren`
+  const subject = t.secret ? 'Un segreto — tramite Novren' : `«${t.name}» — tramite Novren`
   return `mailto:${to}?subject=${mailEncode(subject)}&body=${mailEncode(composeMessage(t))}`
 }
 

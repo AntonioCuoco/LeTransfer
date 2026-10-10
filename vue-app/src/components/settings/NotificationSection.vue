@@ -52,18 +52,23 @@ const { settings, updateNotifications, preferencesAreAuthoritative } = useSettin
       </p>
       <SettingsToggle
         label="File Ricevuto"
-        description="Notifica quando ricevi un file condiviso"
+        description="Quando ricevi un file condiviso o caricato su una tua richiesta, e quando una richiesta si chiude"
         :model-value="settings.notifications.shareReceived"
         :disabled="!settings.notifications.emailNotifications"
         @update:model-value="(v) => updateNotifications({ shareReceived: v })"
       />
       <SettingsToggle
         label="Link in Scadenza"
-        description="Avviso quando un link sta per scadere"
+        description="Quando un link sta per scadere, e il giorno prima che scadano i file del piano Free"
         :model-value="settings.notifications.linkExpiring"
         :disabled="!settings.notifications.emailNotifications"
         @update:model-value="(v) => updateNotifications({ linkExpiring: v })"
       />
+
+      <p class="m-0 -mt-1 pl-1 text-xs leading-relaxed text-haze-400">
+        Gli avvisi di sicurezza (24 parole cambiate, verifica in due passaggi, nuovo dispositivo
+        collegato) arrivano sempre, anche con le notifiche spente.
+      </p>
 
       <!-- Meglio dirlo che farlo scoprire aspettando un'email che non arriva. -->
       <div

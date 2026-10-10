@@ -33,6 +33,25 @@ novren send foto.zip --qr                            # mostralo come QR code
 novren send preventivo.pdf --mail mario@example.com  # apri la posta con il messaggio pronto
 ```
 
+### Segreti a lettura unica
+
+Per una chiave API, una password o un `.env`: si apre **una volta sola**, poi il link non
+funziona più. Scade dopo 1 ora (`--expires`, al massimo 24), fino a 64 KB.
+
+```bash
+echo "$STRIPE_KEY" | novren secret     # da stdin
+novren secret .env                     # da un file
+novren secret                          # lo scrivi qui, senza che si veda
+```
+
+Il segreto non si passa mai come argomento: resterebbe nella cronologia della shell. Chi lo
+riceve lo apre nel browser oppure con `novren get`, che lo stampa senza scriverlo su disco:
+
+```bash
+novren get "<link>"            # sul terminale
+novren get "<link>" > .env     # in un file, perché l'hai chiesto tu
+```
+
 ### Ricevere
 
 ```bash

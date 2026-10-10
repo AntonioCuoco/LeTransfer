@@ -38,6 +38,8 @@ const MESSAGES: Record<string, string> = {
   LINK_EXPIRED: 'Il link è scaduto: chiedi a chi te l’ha mandato di inviarlo di nuovo.',
   LINK_REVOKED: 'Il mittente ha ritirato questo link.',
   DOWNLOAD_LIMIT_REACHED: 'Il link ha raggiunto il numero massimo di download.',
+  SECRET_ALREADY_READ: 'Questo segreto è già stato letto: si apre una volta sola. Chiedi a chi te l’ha mandato di rimandarlo.',
+  SECRET_TOO_LARGE: 'Un segreto può essere al massimo di 64 KB. Per un file usa «novren send».',
   PASSWORD_REQUIRED: 'Questo link è protetto da una password.',
   INVALID_PASSWORD: 'Password errata.',
   RATE_LIMITED: 'Troppe richieste ravvicinate: riprova fra qualche minuto.',

@@ -121,6 +121,8 @@ export async function startFakeNovren(): Promise<FakeNovren> {
   const stored = new Map<string, Stored>()
   const expired = new Set<string>()
   const revoked = new Set<string>()
+  /** Segreti già letti: come il backend, la lettura è una sola (anche come «anteprima»). */
+  const secretsRead = new Set<string>()
   const requests: string[] = []
   let base = ''
 
@@ -343,6 +345,8 @@ export async function startFakeNovren(): Promise<FakeNovren> {
     if (!entry) return send(404, { success: false, code: 'LINK_NOT_FOUND', message: 'Link not found' })
     if (expired.has(token!)) return send(410, { success: false, code: 'LINK_EXPIRED', message: 'Link expired' })
     if (revoked.has(token!)) return send(410, { success: false, code: 'LINK_REVOKED', message: 'Link revoked' })
+    const isSecret = entry.info.fileType === 'application/vnd.novren.secret'
+    if (isSecret && secretsRead.has(token!)) return send(410, { success: false, errorCode: 'SECRET_ALREADY_READ', error: 'Secret already read' })
 
     if (!action && req.method === 'GET') return send(200, { success: true, data: entry.info })
 
@@ -357,6 +361,7 @@ export async function startFakeNovren(): Promise<FakeNovren> {
 
     if (action === '/file' && req.method === 'GET') {
       if (req.headers.authorization !== `Bearer session-${token}`) return send(401, { success: false })
+      if (isSecret) secretsRead.add(token!)
       return send(200, { success: true, data: { url: `${base}/storage/${token}` } })
     }
     send(404, { success: false })

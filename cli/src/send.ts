@@ -60,8 +60,17 @@ const MIME: Record<string, string> = {
 }
 const mimeOf = (name: string) => MIME[extname(name).toLowerCase()] ?? 'application/octet-stream'
 
+/** Un contenuto già in memoria (un segreto): un file solo, senza nome sul disco. */
+export interface MemoryContent {
+  name: string
+  data: Uint8Array
+  type: string
+}
+
 export interface SendOptions {
   paths: string[]
+  /** Al posto di `paths`: ciò che si invia è già in memoria (vedi `novren secret`). */
+  content?: MemoryContent
   credentials: Credentials
   password?: string
   expiresInHours?: number
@@ -118,6 +127,7 @@ async function walk(dir: string, root: string): Promise<{ path: string; name: st
 
 type Source =
   | { kind: 'single'; path: string; name: string; size: number }
+  | { kind: 'memory'; name: string; data: Uint8Array; type: string; size: number }
   | { kind: 'archive'; name: string; files: { path: string; name: string; size: number; lastModified: Date }[] }
 
 async function planSource(paths: string[]): Promise<Source> {
@@ -152,20 +162,23 @@ async function planSource(paths: string[]): Promise<Source> {
 export async function send(options: SendOptions): Promise<SendResult> {
   const { credentials } = options
   const token = credentials.token
-  const source = await planSource(options.paths)
+  const source: Source = options.content
+    ? { kind: 'memory', ...options.content, size: options.content.data.byteLength }
+    : await planSource(options.paths)
+  const fileType = source.kind === 'single' ? mimeOf(source.name) : source.kind === 'memory' ? source.type : 'application/zip'
 
   const key = await generateAESKey()
   // «IV di file»: vestigiale in v2 (gli IV veri sono per chunk), ma sta nel frammento del link
   // come nel sito, così un link della CLI è identico a uno del sito.
   const iv = generateIV()
 
-  const displaySize = source.kind === 'single' ? source.size : source.files.reduce((n, f) => n + f.size, 0)
+  const displaySize = source.kind === 'archive' ? source.files.reduce((n, f) => n + f.size, 0) : source.size
   info(`${source.name} · ${formatBytes(displaySize)}`)
 
   const init = await guestInit(token, {
     fileName: 'file',
-    fileType: source.kind === 'single' ? mimeOf(source.name) : 'application/zip',
-    fileSize: source.kind === 'single' ? encryptedSizeV2(source.size, CHUNK_SIZE) : displaySize,
+    fileType,
+    fileSize: source.kind === 'archive' ? displaySize : encryptedSizeV2(source.size, CHUNK_SIZE),
   })
 
   const bar = progress('cifro e carico')
@@ -175,6 +188,9 @@ export async function send(options: SendOptions): Promise<SendResult> {
     if (source.kind === 'single') {
       plainSize = source.size
       parts = await uploadFile(token, init, source.path, source.size, key, bar.update)
+    } else if (source.kind === 'memory') {
+      plainSize = source.size
+      parts = await uploadMemory(token, init, source.data, key, bar.update)
     } else {
       const uploaded = await uploadArchive(token, init, source.files, key, displaySize, bar.update)
       parts = uploaded.parts
@@ -198,7 +214,7 @@ export async function send(options: SendOptions): Promise<SendResult> {
     fileName: await encryptFileName(source.name, key),
     nameVersion: FILENAME_VERSION,
     fileSize: plainSize,
-    fileType: source.kind === 'single' ? mimeOf(source.name) : 'application/zip',
+    fileType,
     formatVersion: FILE_FORMAT_VERSION,
     chunkSize: CHUNK_SIZE,
     originalSize: plainSize,
@@ -266,6 +282,23 @@ async function uploadFile(
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, totalParts) }, worker))
   } finally {
     await handle.close()
+  }
+  return parts
+}
+
+/** Un contenuto in memoria: a chunk come un file, così chi lo apre usa lo stesso percorso. */
+async function uploadMemory(
+  token: string,
+  init: { fileKey: string; uploadId: string },
+  data: Uint8Array,
+  key: CryptoKey,
+  onProgress: (done: number, total: number) => void,
+): Promise<Part[]> {
+  const parts: Part[] = []
+  for (let index = 0, offset = 0; index === 0 || offset < data.byteLength; index++, offset += CHUNK_SIZE) {
+    const chunk = data.slice(offset, Math.min(offset + CHUNK_SIZE, data.byteLength))
+    parts.push(await putPart(token, init.fileKey, init.uploadId, index + 1, await encryptChunkFramed(chunk.buffer, key, index)))
+    onProgress(Math.min(offset + CHUNK_SIZE, data.byteLength), data.byteLength)
   }
   return parts
 }

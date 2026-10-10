@@ -52,7 +52,7 @@ function priceOf(plan: PlanCatalogEntry): number {
 const faq = [
   {
     q: 'Se smetto di pagare, perdo i file?',
-    a: 'I link già creati arrivano alla loro scadenza naturale. Poi il piano torna a Free, con i limiti di Free. Non cancelliamo niente prima del tempo che ti avevamo promesso.',
+    a: 'No, non tutti. Fino alla fine del periodo pagato non cambia niente. Poi hai 14 giorni per scegliere quali file tenere, fino allo spazio del Free (10 GB): quelli restano. Gli altri vengono cancellati alla fine dei 14 giorni, e fino ad allora puoi scaricare tutto. Se non scegli, teniamo i più recenti. Se torni Pro prima, non si cancella niente.',
   },
   {
     q: 'Potete recuperare un file se perdo il link?',

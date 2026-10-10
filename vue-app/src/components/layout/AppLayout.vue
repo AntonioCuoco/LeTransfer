@@ -5,6 +5,8 @@ import AppSidebar from './AppSidebar.vue'
 import UploadQueueManager from '@/src/components/UploadQueueManager.vue'
 import AppSecurityPrompt from '@/src/components/AppSecurityPrompt.vue'
 import UpgradeDialog from '@/src/components/billing/UpgradeDialog.vue'
+import PlanDowngradeNotice from '@/src/components/billing/PlanDowngradeNotice.vue'
+import PlanUpgradeDialog from '@/src/components/billing/PlanUpgradeDialog.vue'
 import { useUpgradePrompt } from '@/src/composables/useUpgradePrompt'
 import { useTokenManager } from '@/src/composables/useTokenManager'
 import { redeemPendingClaim } from '@/src/composables/usePendingClaim'
@@ -39,5 +41,10 @@ onMounted(() => { void redeemPendingClaim() })
       :reason="upgradeReason"
       @update:visible="(v: boolean) => { if (!v) closeUpgrade() }"
     />
+    <!-- Da Pro a Free: avviso e scelta dei file da tenere durante la grazia. Non mostra
+         niente se non c'è un passaggio in corso. -->
+    <PlanDowngradeNotice />
+    <!-- Da Free a Pro: proposta di rendere permanenti i file caricati da Free. -->
+    <PlanUpgradeDialog />
   </div>
 </template>

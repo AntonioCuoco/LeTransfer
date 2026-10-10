@@ -221,8 +221,9 @@ export interface SharedLinkFileResponse {
 
 export interface SharedLinkError {
   success: false
-  code: 'LINK_NOT_FOUND' | 'LINK_EXPIRED' | 'LINK_REVOKED' | 'INVALID_PASSWORD' | 'INVALID_SESSION' | 'DOWNLOAD_LIMIT_REACHED'
-  message: string
+  code?: 'LINK_NOT_FOUND' | 'LINK_EXPIRED' | 'LINK_REVOKED' | 'INVALID_PASSWORD' | 'INVALID_SESSION' | 'DOWNLOAD_LIMIT_REACHED' | 'SECRET_ALREADY_READ'
+  errorCode?: string
+  message?: string
 }
 
 // ==================== API RESPONSE TYPES ====================

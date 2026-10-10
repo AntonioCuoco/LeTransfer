@@ -33,7 +33,13 @@ export const useFileKeysAPI = () => {
       const { data } = await axios.get(
         `${import.meta.env.VITE_API_URL}/user/file-keys/${encodeURIComponent(s3Key)}`
       )
-      return data.data
+      // ⚠️ Il backend risponde con la chiave **al primo livello** (`{ s3Key, wrappedKey, wrapIV,
+      // fileIV }`, routes/e2e.js), non dentro `data`. Qui si leggeva `data.data`, cioè sempre
+      // `undefined`: dopo un ricaricamento nessuna chiave salvata si apriva (nomi «non
+      // disponibili», download dei propri file bloccati). Corretto il 2026-10-09; si accettano
+      // entrambe le forme, così un futuro `{ data: … }` del server non lo rompe di nuovo.
+      const body = (data && typeof data === 'object' && 'data' in data ? data.data : data) as WrappedKeyData | undefined
+      return body && body.wrappedKey && body.wrapIV ? body : null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number } }
       if (e.response?.status === 404) return null

@@ -1,5 +1,6 @@
-import { stat } from 'node:fs/promises'
+import { stat, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { stdout } from 'node:process'
 import {
   decryptFile,
   decryptFileName,
@@ -8,11 +9,14 @@ import {
   importKeyFromBase64,
 } from '../../../vue-app/src/crypto/crypto'
 import { assertStorageResponse, decryptToSink, DownloadError } from '../../../vue-app/src/crypto/streamingDownload'
-import { accessLink, downloadUrl, getLinkInfo } from '../api'
+import { accessLink, downloadUrl, getLinkInfo, type LinkInfo } from '../api'
 import { FALLBACK_NAME, safeFileName } from '../filename'
 import { parseLink } from '../link'
 import { createFileSink, freePath } from '../sink'
 import { ask, askSecret, formatBytes, info, interactive, progress } from '../ui'
+
+/** Deve coincidere con `SECRET_FILE_TYPE` del backend (vedi anche `commands/secret.ts`). */
+const SECRET_FILE_TYPE = 'application/vnd.novren.secret'
 
 /**
  * `novren get <link>` — scarica un invio e lo decifra **qui**, su questo computer.
@@ -22,6 +26,9 @@ import { ask, askSecret, formatBytes, info, interactive, progress } from '../ui'
  *
  * Esce su stdout **solo il percorso del file salvato**: tutto il resto va su stderr, così
  * il comando si compone in uno script.
+ *
+ * Un **segreto** (`novren secret`) è diverso: si decifra in memoria e si scrive su stdout,
+ * senza toccare il disco — a meno che non lo si chieda con `-o` o con `> file`.
  */
 
 export class UserError extends Error {
@@ -45,7 +52,8 @@ export interface GetOptions {
  */
 const DEFAULT_VISITOR_NAME = 'Novren CLI'
 
-export async function get(options: GetOptions): Promise<string> {
+/** Il percorso del file salvato, oppure `null` se il contenuto (un segreto) è andato su stdout. */
+export async function get(options: GetOptions): Promise<string | null> {
   let rawLink = options.link
   if (!rawLink) {
     if (!interactive()) throw new UserError('Manca il link. Uso: novren get "<link>"')
@@ -74,6 +82,7 @@ export async function get(options: GetOptions): Promise<string> {
   if (!dirStat?.isDirectory()) throw new UserError(`La cartella «${outputDir}» non esiste.`)
 
   const linkInfo = await getLinkInfo(link.publicToken)
+  const isSecret = linkInfo.fileType === SECRET_FILE_TYPE
 
   // Con `nameVersion: 2` il nome è ciphertext e si apre con la stessa chiave del file. Se non
   // si apre, si scarica comunque con un nome di ripiego: il contenuto non dipende dal nome.
@@ -98,6 +107,8 @@ export async function get(options: GetOptions): Promise<string> {
   if (access.downloadAllowed === false) throw new UserError('Il mittente non consente il download di questo file.')
 
   const url = await downloadUrl(link.publicToken, access.sessionToken)
+  if (isSecret) return readSecret(url, key, linkInfo, options.output ? await freePath(outputDir, fileName) : null)
+
   const target = await freePath(outputDir, fileName)
   const sink = await createFileSink(target)
 
@@ -147,4 +158,36 @@ export async function get(options: GetOptions): Promise<string> {
   }
 
   return sink.path
+}
+
+/**
+ * Un segreto: l'unica lettura è già stata consumata chiedendo l'indirizzo, quindi da qui in
+ * poi un errore lo perde. Si decifra tutto in memoria (è piccolo) e solo alla fine si scrive.
+ */
+async function readSecret(url: string, key: CryptoKey, linkInfo: LinkInfo, target: string | null): Promise<string | null> {
+  if (linkInfo.formatVersion !== 2 || !linkInfo.chunkSize || linkInfo.originalSize == null) {
+    throw new UserError('Questo segreto è in un formato che la CLI non conosce: aprilo dal browser.')
+  }
+  const parts: Uint8Array[] = []
+  try {
+    await decryptToSink(
+      { url, key, chunkSize: linkInfo.chunkSize, originalSize: linkInfo.originalSize },
+      { write: (chunk) => { parts.push(new Uint8Array(chunk)) }, close: () => {} },
+    )
+  } catch (error) {
+    if (error instanceof DownloadError) throw error
+    throw new UserError('Il segreto non si decifra con questa chiave: il link è incompleto o è stato alterato.')
+  }
+  const data = Buffer.concat(parts)
+
+  if (target) {
+    await writeFile(target, data, { mode: 0o600 })
+    info('Segreto salvato. Il link ora non funziona più.')
+    return target
+  }
+  stdout.write(data)
+  // In un terminale si va a capo; in una pipe o in un file si scrive esattamente il segreto.
+  if (stdout.isTTY && data.at(-1) !== 0x0a) stdout.write('\n')
+  info('Era a lettura unica: il link ora non funziona più.')
+  return null
 }

@@ -14,6 +14,7 @@ import FieldInput from '@/src/components/ui/FieldInput.vue'
 import GoogleLoginButton from '@/src/components/GoogleLoginButton.vue'
 import ConfirmEmailForm from '@/src/components/auth/ConfirmEmailForm.vue'
 import { REGISTRATION_OPEN, REGISTRATION_CLOSED_MESSAGE } from '@/src/utils/registration'
+import { requestWelcomeEmail } from '@/src/utils/welcomeEmail'
 
 /**
  * Registrazione — stessa carta chiara delle altre superfici pubbliche.
@@ -105,6 +106,7 @@ const onConfirmed = (tokens: AuthenticationResultType | null) => {
     setAuthCookie('accessToken', tokens.AccessToken, 1 / 24)
     setAuthCookie('idToken', tokens.IdToken, 1 / 24)
     setAuthCookie('refreshToken', tokens.RefreshToken, 30)
+    requestWelcomeEmail()
     router.push(postLoginPath())
     return
   }

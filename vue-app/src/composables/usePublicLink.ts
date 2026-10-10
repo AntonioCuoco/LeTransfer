@@ -4,13 +4,14 @@ import type { SharedLinkAccessInfo, SharedLinkAccessRequest, SharedLinkAccessRes
 import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
 import { unexpectedResponse } from '@/src/utils/errorDetail'
 
-export type LinkStatus = 'loading' | 'valid' | 'expired' | 'revoked' | 'not_found' | 'download_limit' | 'error'
+export type LinkStatus = 'loading' | 'valid' | 'expired' | 'revoked' | 'not_found' | 'download_limit' | 'secret_read' | 'error'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 const mapErrorToStatus = (code: string): LinkStatus => {
   const map: Record<string, LinkStatus> = {
     LINK_NOT_FOUND: 'not_found', LINK_EXPIRED: 'expired', LINK_REVOKED: 'revoked', DOWNLOAD_LIMIT_REACHED: 'download_limit',
+    SECRET_ALREADY_READ: 'secret_read',
   }
   return map[code] || 'error'
 }
@@ -43,9 +44,11 @@ export const usePublicLink = () => {
       return null
     } catch (err: unknown) {
       const e = err as { response?: { status?: number; data?: SharedLinkError }; message?: string }
-      if (e.response?.data?.code) {
-        linkStatus.value = mapErrorToStatus(e.response.data.code)
-        error.value = e.response.data.message
+      // Il backend manda `errorCode` su queste rotte; `code` resta per compatibilità.
+      const code = e.response?.data?.code ?? e.response?.data?.errorCode
+      if (code) {
+        linkStatus.value = mapErrorToStatus(code)
+        error.value = e.response?.data?.message ?? null
       } else if (e.response?.status === 404) {
         linkStatus.value = 'not_found'; error.value = 'Link non trovato'
       } else if (e.response?.status === 410) {

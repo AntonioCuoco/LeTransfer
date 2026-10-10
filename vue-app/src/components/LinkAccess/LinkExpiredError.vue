@@ -35,6 +35,11 @@ const CONFIG: Record<string, { eyebrow: string; title: string; description: stri
     title: 'Questo link era a numero chiuso.',
     description: 'Ha raggiunto il numero massimo di download consentiti dal mittente.',
   },
+  secret_read: {
+    eyebrow: 'Segreto già letto',
+    title: 'È stato letto, e non si riapre.',
+    description: 'Era un segreto a lettura unica: qualcuno l’ha già aperto. Se non sei stato tu, avvisa chi te l’ha mandato, perché lo cambi.',
+  },
   error: {
     eyebrow: 'Errore',
     title: 'Non riusciamo ad aprirlo.',

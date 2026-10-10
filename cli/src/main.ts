@@ -4,6 +4,7 @@ import { InvalidLink } from './link'
 import { get, UserError } from './commands/get'
 import { login, logout, status } from './commands/account'
 import { revoke, send } from './commands/send'
+import { secret } from './commands/secret'
 import { shareLink } from './share'
 import { DownloadError } from '../../vue-app/src/crypto/streamingDownload'
 
@@ -31,7 +32,16 @@ Uso:
       --mail <indirizzo>       apri il tuo programma di posta con il messaggio pronto
       --no-menu                stampa solo il link, senza chiedere niente
 
+  novren secret [file]         un segreto a lettura unica (chiave API, password, .env):
+                               da file, da stdin (echo "$TOKEN" | novren secret) o scritto
+                               qui, nascosto. Mai come argomento: resterebbe nella cronologia
+      --expires <ore>          scadenza in ore (default 1, massimo 24)
+      --password               protegge il link con una password
+    e --copy, --qr, --mail, --no-menu come per send
+
   novren get [link]            scarica e decifra un invio (senza link: te lo chiede)
+                               un segreto si stampa su stdout e non tocca il disco
+                               (novren get "<link>" > .env per salvarlo)
       -o, --output <cartella>  dove salvarlo (default: la cartella corrente)
       --name <nome>            come presentarti al mittente (default: «Novren CLI»)
 
@@ -76,7 +86,8 @@ export async function main(argv: string[]): Promise<number> {
           throw new UsageError('Un link alla volta. Se il link contiene spazi o «&», mettilo fra virgolette.')
         }
         const path = await get({ link: positionals[0], output: values.output, visitorName: values.name })
-        process.stdout.write(`${path}\n`)
+        // `null`: era un segreto, ed è già uscito su stdout.
+        if (path !== null) process.stdout.write(`${path}\n`)
         return 0
       }
       case 'send': {
@@ -108,6 +119,25 @@ export async function main(argv: string[]): Promise<number> {
           mail: values.mail,
           noMenu: values['no-menu'],
         })
+        return 0
+      }
+      case 'secret': {
+        const { values, positionals } = parseArgs({
+          args: rest,
+          allowPositionals: true,
+          options: {
+            password: { type: 'boolean' },
+            expires: { type: 'string' },
+            copy: { type: 'boolean' },
+            qr: { type: 'boolean' },
+            mail: { type: 'string' },
+            'no-menu': { type: 'boolean' },
+          },
+        })
+        if (positionals.length > 1) throw new UsageError('Un segreto alla volta: un solo file, oppure stdin.')
+        const sent = await secret({ file: positionals[0], askPassword: values.password, expiresInHours: values.expires })
+        process.stdout.write(`${sent.link}\n`)
+        await shareLink({ ...sent, secret: true }, { copy: values.copy, qr: values.qr, mail: values.mail, noMenu: values['no-menu'] })
         return 0
       }
       case 'login': {

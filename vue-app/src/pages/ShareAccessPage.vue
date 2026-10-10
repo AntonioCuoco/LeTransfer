@@ -3,6 +3,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { notify } from '@/src/utils/notify'
 import { usePublicLink } from '@/src/composables/usePublicLink'
+import { SECRET_FILE_TYPE } from '@/src/utils/secrets'
 import PublicShell from '@/src/components/landing/PublicShell.vue'
 import BrandSeal from '@/src/components/landing/BrandSeal.vue'
 import PrivacyReceipt from '@/src/components/landing/PrivacyReceipt.vue'
@@ -11,6 +12,7 @@ import FilePreviewCard from '@/src/components/LinkAccess/FilePreviewCard.vue'
 import LinkExpiredError from '@/src/components/LinkAccess/LinkExpiredError.vue'
 import ReportLinkDialog from '@/src/components/LinkAccess/ReportLinkDialog.vue'
 import HandoffCard from '@/src/components/LinkAccess/HandoffCard.vue'
+import SecretRevealCard from '@/src/components/LinkAccess/SecretRevealCard.vue'
 import { isHandoff, shareableLink, stripHandoffFromAddressBar } from '@/src/utils/linkHandoff'
 import { fileBadge } from '@/src/utils/fileBadge'
 import { parseKeyFromHash, importKeyFromBase64, importIVFromBase64, decryptFile } from '@/src/crypto/crypto'
@@ -61,8 +63,17 @@ const leaveHandoff = () => {
 // ── Copy: la relazione umana prima del form ────────────────────────────────────
 const senderName = computed(() => linkInfo.value?.ownerName?.trim() || '')
 
+/** Un segreto a lettura unica (`novren secret`): si legge qui, non si scarica. */
+const isSecret = computed(() => linkInfo.value?.fileType === SECRET_FILE_TYPE)
+const secretText = ref<string | null>(null)
+const isRevealing = ref(false)
+
 const headline = computed(() => {
   if (handoff.value) return 'Il link è pronto. Mandalo tu.'
+  if (isSecret.value) {
+    if (secretText.value !== null) return 'Letto. Ora esiste solo qui.'
+    return senderName.value ? `${senderName.value} ti ha mandato un segreto.` : 'Ti hanno mandato un segreto.'
+  }
   if (isDone.value) return 'Decifrato. È tuo.'
   return senderName.value ? `${senderName.value} ti ha mandato un file.` : 'Ti hanno mandato un file.'
 })
@@ -70,6 +81,9 @@ const headline = computed(() => {
 const subline = computed(() => {
   if (handoff.value) {
     return 'Inoltralo da questo telefono con l’app che vuoi: chi lo riceve apre il file nel browser. Il link porta con sé la chiave — noi non l’abbiamo mai vista.'
+  }
+  if (isSecret.value) {
+    return 'Una password, una chiave, un file di configurazione: si apre una volta sola, qui nel tuo browser. Il nostro server non ha mai avuto la chiave per leggerlo.'
   }
   if (isDone.value) {
     return 'Il file è stato decifrato qui, nel tuo browser. Il nostro server non ha mai avuto la chiave per aprirlo.'
@@ -227,6 +241,33 @@ const handleDownload = async () => {
   isDownloading.value = false
 }
 
+/**
+ * Un segreto: chiedere l'indirizzo del ciphertext consuma l'unica lettura (lo conta il server),
+ * quindi si decifra tutto in memoria e si mostra. Se qualcosa va storto dopo, non si riapre.
+ */
+const revealSecret = async () => {
+  const info = linkInfo.value
+  if (!publicToken.value || !encryptionInfo.value || !info?.chunkSize || info.originalSize == null) {
+    notify.error('Al link manca la chiave: senza, il segreto non si può leggere.', 'Link incompleto')
+    return
+  }
+  isRevealing.value = true
+  try {
+    const url = await downloadFile(publicToken.value, 'download')
+    if (!url) {
+      notify.error(error.value || 'Il segreto non è più disponibile.', 'Segreto non disponibile')
+      return
+    }
+    const blob = await decryptToBlob({ url, key: encryptionInfo.value.key, chunkSize: info.chunkSize, originalSize: info.originalSize })
+    secretText.value = await blob.text()
+    markDecrypted()
+  } catch (err) {
+    notify.error(downloadErrorMessage(err, 'Il segreto non si è decifrato con la chiave del link.'), 'Segreto non leggibile')
+  } finally {
+    isRevealing.value = false
+  }
+}
+
 // Climax speculare a quello dell'invio: il campo si calma e il sigillo si stampa.
 function markDecrypted() {
   decryptProgress.value = 100
@@ -323,7 +364,7 @@ const handlePreview = () => {
           <div class="flex items-center justify-between px-3.5 pb-3 pt-3.5">
             <div class="flex items-center gap-2.5 text-[1.04rem] font-bold tracking-[-0.01em]">
               <BrandSeal :size="19" :variant="isDone ? 'check' : 'plain'" />
-              {{ handoff ? 'Da inoltrare' : isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
+              {{ handoff ? 'Da inoltrare' : isSecret ? (isDone ? 'Segreto letto' : 'Segreto in arrivo') : isDone ? 'Trasferimento aperto' : 'File in arrivo' }}
             </div>
             <div class="font-mono text-[0.66rem] font-semibold tracking-[0.04em]" :class="stateLabelClass">
               {{ stateLabel }}
@@ -354,7 +395,7 @@ const handlePreview = () => {
               <div class="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono text-[0.72rem] text-[#6a5f8c]">
                 <span class="font-bold text-[#1b1140]">{{ linkInfo.fileSize }}</span>
                 <span class="text-[#cdbff0]">·</span>
-                <span class="truncate">{{ linkInfo.fileType }}</span>
+                <span class="truncate">{{ isSecret ? 'segreto · si legge una volta' : linkInfo.fileType }}</span>
                 <template v-if="expiryLabel">
                   <span class="text-[#cdbff0]">·</span>
                   <span>{{ expiryLabel }}</span>
@@ -381,6 +422,13 @@ const handlePreview = () => {
                 :is-loading="isLoading"
                 :error="error"
                 @submit="handleAccessSubmit"
+              />
+              <SecretRevealCard
+                v-else-if="isSecret"
+                :text="secretText"
+                :file-name="displayName"
+                :is-revealing="isRevealing"
+                @reveal="revealSecret"
               />
               <FilePreviewCard
                 v-else

@@ -63,7 +63,8 @@ export type SettingsSection = 'notifications' | 'privacy' | 'appearance' | 'tran
 export const DEFAULT_SETTINGS: UserSettings = {
   notifications: {
     emailNotifications: true,
-    uploadComplete: true,
+    // Spenta di default, come sul server: chi carica vede già la barra arrivare in fondo.
+    uploadComplete: false,
     downloadComplete: false,
     shareReceived: true,
     linkExpiring: true,
