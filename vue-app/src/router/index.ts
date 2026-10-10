@@ -21,6 +21,11 @@ const router = createRouter({
     { path: '/cli/device', component: () => import('@/src/pages/CliDevicePage.vue') },
     // Pagina pubblica: chi carica non ha un account e spesso non sa cos'è Novren.
     { path: '/richiesta/:publicToken', component: () => import('@/src/pages/RequestUploadPage.vue') },
+    // Feedback e aiuto senza account: ogni messaggio lo legge una persona.
+    { path: '/feedback', component: () => import('@/src/pages/FeedbackPage.vue') },
+    // Centro assistenza: articoli in content/help.ts. L'app desktop rimanda a slug precisi.
+    { path: '/aiuto', component: () => import('@/src/pages/HelpCenterPage.vue') },
+    { path: '/aiuto/:slug', component: () => import('@/src/pages/HelpArticlePage.vue') },
 
     // Protected routes (dashboard) — spostate sotto /app
     {
@@ -32,6 +37,7 @@ const router = createRouter({
         { path: 'profile', component: () => import('@/src/pages/Profile.vue') },
         { path: 'richieste', component: () => import('@/src/pages/RequestsPage.vue') },
         { path: 'settings', component: () => import('@/src/pages/SettingsPage.vue') },
+        { path: 'feedback', component: () => import('@/src/pages/AppFeedbackPage.vue') },
         // Ritorno da Stripe. Il path è cablato anche in useBilling.BILLING_RETURN_PATH,
         // che è ciò che il backend deve usare per `success_url`/`cancel_url`.
         { path: 'abbonamento/esito', component: () => import('@/src/pages/BillingReturnPage.vue') },
@@ -50,6 +56,7 @@ const router = createRouter({
         { path: 'metriche', component: () => import('@/src/pages/admin/AdminMetricsPage.vue') },
         { path: 'costi', component: () => import('@/src/pages/admin/AdminCostsPage.vue') },
         { path: 'registro', component: () => import('@/src/pages/admin/AdminAuditPage.vue') },
+        { path: 'feedback', component: () => import('@/src/pages/admin/AdminFeedbackPage.vue') },
       ],
     },
 

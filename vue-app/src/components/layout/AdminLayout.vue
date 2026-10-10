@@ -34,6 +34,7 @@ const navItems = [
   { path: '/admin/metriche', icon: 'pi pi-chart-line', label: 'Metriche' },
   { path: '/admin/costi', icon: 'pi pi-wallet', label: 'Costi e limiti' },
   { path: '/admin/registro', icon: 'pi pi-history', label: 'Registro' },
+  { path: '/admin/feedback', icon: 'pi pi-comment', label: 'Feedback' },
 ]
 
 const isCurrent = (path: string) => route.path.startsWith(path)

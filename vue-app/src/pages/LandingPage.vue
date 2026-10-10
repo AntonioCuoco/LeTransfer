@@ -67,6 +67,17 @@ onMounted(() => {
       />
     </div>
 
+    <!-- Feedback: esplicito, non solo un indirizzo nel footer. -->
+    <div class="mb-[clamp(18px,4vh,40px)] flex w-full flex-wrap items-center justify-between gap-4 rounded-[22px] border border-white/10 bg-white/[0.03] px-[clamp(18px,3vw,28px)] py-4">
+      <p class="m-0 max-w-[70ch] text-[0.95rem] leading-relaxed text-[#b9ace2]">
+        <strong class="text-[#F2ECFF]">Novren cresce con chi lo usa.</strong>
+        Idee, problemi, domande: leggiamo ogni messaggio, e i vostri feedback decidono cosa costruiamo dopo.
+      </p>
+      <RouterLink to="/feedback" class="rounded-full border border-[#8b6bff]/60 px-5 py-2.5 text-sm font-semibold text-[#F2ECFF] transition-colors hover:bg-[#724cf9]/25">
+        Lascia un feedback
+      </RouterLink>
+    </div>
+
     <!-- Striscia di fiducia -->
     <template #footer>
       <div class="relative z-[2] border-t border-white/10 px-[clamp(20px,5vw,64px)] py-4">

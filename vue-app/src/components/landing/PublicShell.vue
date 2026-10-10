@@ -26,6 +26,7 @@ const NAV = [
   { to: '/come-funziona', label: 'Come funziona' },
   { to: '/prezzi', label: 'Prezzi' },
   { to: '/sicurezza', label: 'Sicurezza' },
+  { to: '/aiuto', label: 'Aiuto' },
 ]
 
 const cipherField = ref<InstanceType<typeof CipherField> | null>(null)
@@ -171,6 +172,13 @@ defineExpose({ surge, settle, calm, stampSeal })
           <a href="mailto:security@novren.net" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
             security@novren.net
           </a>
+          <span class="mt-2 font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Feedback e aiuto</span>
+          <RouterLink to="/aiuto" class="text-[0.88rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
+            Centro assistenza
+          </RouterLink>
+          <RouterLink to="/feedback" class="text-[0.88rem] text-[#F2ECFF] underline-offset-4 transition-colors hover:underline">
+            Dicci cosa ne pensi →
+          </RouterLink>
           <span class="mt-2 font-mono text-[0.64rem] uppercase tracking-[0.18em] text-[#6a5f8c]">Contattami</span>
           <a href="mailto:info@novren.net" class="font-mono text-[0.82rem] text-[#b9ace2] transition-colors hover:text-[#F2ECFF]">
             info@novren.net
