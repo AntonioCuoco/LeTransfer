@@ -8,7 +8,7 @@ import { HELP_ARTICLES, HELP_CATEGORIES, findArticle, searchArticles } from './h
  */
 
 /** Gli slug a cui rimanda l'app desktop: non si rinominano mai. */
-const LINKED_FROM_APPS = ['nearby-non-vede-dispositivi']
+const LINKED_FROM_APPS = ['nearby-non-vede-dispositivi', 'nearby-telefono-non-apre-pagina', 'antivirus-blocca-novren']
 const PUBLIC_ROUTES = ['/prezzi', '/sicurezza', '/feedback', '/come-funziona', '/aiuto']
 
 describe('centro assistenza', () => {

@@ -30,7 +30,7 @@ const { root: head } = usePageEnter()
       </p>
 
       <!-- Ricerca: filtra mentre scrivi, senza mandare niente a nessuno -->
-      <label data-enter class="mt-9 flex max-w-[640px] items-center gap-3 rounded-[18px] border border-white/15 bg-white/[0.06] px-5 py-4 focus-within:border-[#37e7c4]">
+      <label data-enter class="mt-9 flex w-full items-center gap-3 rounded-[18px] border border-white/15 bg-white/[0.06] px-5 py-4 focus-within:border-[#37e7c4]">
         <svg viewBox="0 0 24 24" class="h-5 w-5 flex-none text-[#b9ace2]" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
           <circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" />
         </svg>

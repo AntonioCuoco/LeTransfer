@@ -33,9 +33,9 @@ const navItems: (NavLink | { kind: 'products' })[] = [
   { kind: 'link', path: '/app', icon: 'pi pi-home', label: 'Home', exact: true },
   { kind: 'link', path: '/app/profile', icon: 'pi pi-folder', label: 'I tuoi file', exact: false },
   { kind: 'link', path: '/app/richieste', icon: 'pi pi-inbox', label: 'Richiedi file', exact: false },
-  { kind: 'products' },
   { kind: 'link', path: '/app/settings', icon: 'pi pi-cog', label: 'Impostazioni', exact: false },
   { kind: 'link', path: '/app/feedback', icon: 'pi pi-comment', label: 'Feedback e aiuto', exact: false },
+  { kind: 'products' },
 ]
 
 const isCurrent = (item: NavLink) =>

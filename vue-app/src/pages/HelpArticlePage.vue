@@ -14,7 +14,15 @@ import { HELP_CATEGORIES, articlesIn, findArticle } from '@/src/content/help'
 const route = useRoute()
 const article = computed(() => findArticle(String(route.params.slug ?? '')))
 const category = computed(() => HELP_CATEGORIES.find((c) => c.id === article.value?.category))
-const related = computed(() => (article.value ? articlesIn(article.value.category).filter((a) => a.slug !== article.value!.slug) : []))
+/** Gli articoli già linkati nel testo (blocchi `related`): non si ripetono sotto. */
+const linkedInText = computed(() =>
+  new Set((article.value?.blocks ?? []).flatMap((b) => (b.type === 'related' ? [b.to.split('/').pop() ?? ''] : []))),
+)
+const related = computed(() =>
+  article.value
+    ? articlesIn(article.value.category).filter((a) => a.slug !== article.value!.slug && !linkedInText.value.has(a.slug))
+    : [],
+)
 const updated = computed(() =>
   article.value ? new Date(article.value.updated).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' }) : '',
 )
@@ -86,13 +94,19 @@ watch(
           </template>
         </article>
 
-        <section v-if="related.length" class="mt-14 border-t border-white/10 pt-8">
-          <h2 class="mb-4 text-[1.1rem] font-bold">Nella stessa sezione</h2>
-          <ul class="grid gap-2">
-            <li v-for="a in related" :key="a.slug">
-              <RouterLink :to="`/aiuto/${a.slug}`" class="text-[#e6defb] underline-offset-4 hover:text-[#F2ECFF] hover:underline">{{ a.title }}</RouterLink>
-            </li>
-          </ul>
+        <section v-if="related.length" class="mt-14 border-t border-white/10 pt-8" data-test="help-related">
+          <p class="mb-4 font-mono text-[0.72rem] uppercase tracking-[0.22em] text-[#37e7c4]">Nella stessa sezione</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <RouterLink
+              v-for="a in related"
+              :key="a.slug"
+              :to="`/aiuto/${a.slug}`"
+              class="group flex flex-col gap-1.5 rounded-[18px] border border-[#37e7c4]/25 bg-[#37e7c4]/[0.05] p-4 transition-colors hover:border-[#37e7c4]/60 hover:bg-[#37e7c4]/[0.09]"
+            >
+              <span class="font-semibold text-[#37e7c4] group-hover:underline group-hover:underline-offset-4">{{ a.title }} →</span>
+              <span class="text-[0.9rem] leading-snug text-[#b9ace2]">{{ a.summary }}</span>
+            </RouterLink>
+          </div>
         </section>
 
         <section class="mt-10 flex flex-wrap items-center justify-between gap-4 rounded-[20px] border border-white/10 bg-white/[0.04] p-5">

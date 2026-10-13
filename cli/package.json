@@ -1,6 +1,6 @@
 {
   "name": "@novren/cli",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Novren da terminale: file cifrati end-to-end, la chiave non lascia mai il tuo computer.",
   "license": "FSL-1.1-ALv2",
   "author": "Antonio Cuoco",
