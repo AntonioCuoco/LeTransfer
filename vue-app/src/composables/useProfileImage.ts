@@ -27,35 +27,8 @@ export const useProfileImage = () => {
     }
   }
 
-  const uploadProfileImage = async (file: File): Promise<string | undefined> => {
-    if (!user?.sub) { error.value = 'Utente non autenticato'; return }
-    isLoading.value = true
-    error.value = null
-    try {
-      if (!file.type.startsWith('image/')) throw new Error("Il file deve essere un'immagine")
-      if (file.size > 5 * 1024 * 1024) throw new Error("L'immagine deve essere inferiore a 5MB")
-
-      const formData = new FormData()
-      formData.append('profileImage', file)
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/upload-profile-image`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-
-      if (response.data?.profileImage?.location) {
-        profileImageUrl.value = response.data.profileImage.location
-        setTimeout(loadProfileImage, 500)
-        return response.data.profileImage.location
-      }
-      throw new Error(response.data.error || "Errore durante l'upload")
-    } catch (err: unknown) {
-      const e = err as { isAxiosError?: boolean; message?: string }
-      const msg = apiErrorMessage(err) ?? (!e.isAxiosError && e.message ? e.message : withDetail('Caricamento della foto non riuscito.', err))
-      error.value = msg
-      throw new Error(msg)
-    } finally {
-      isLoading.value = false
-    }
-  }
+  // Il caricamento della foto è stato tolto il 17-10-2026: nessun componente lo usava, e la rotta
+  // del backend che chiamava (`/upload-profile-image`) non esisteva nemmeno a quell'indirizzo.
 
   const deleteProfileImage = async () => {
     if (!user?.sub) { error.value = 'Utente non autenticato'; return }
@@ -90,5 +63,5 @@ export const useProfileImage = () => {
     if (refreshInterval) clearInterval(refreshInterval)
   })
 
-  return { profileImageUrl, isLoading, error, uploadProfileImage, deleteProfileImage, refreshProfileImage: loadProfileImage }
+  return { profileImageUrl, isLoading, error, deleteProfileImage, refreshProfileImage: loadProfileImage }
 }

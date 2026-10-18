@@ -1,5 +1,7 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
+import { test as base, expect, type Page, type Route } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 
 /**
  * Il percorso critico, in un browser vero: **cifra → carica → link → decifra**.
@@ -17,7 +19,7 @@ const PLAINTEXT = 'contenuto riservato — 0123456789 — fine'
 const PUBLIC_TOKEN = 'tok3n-e2e'
 
 /** I byte davvero caricati, catturati al volo dalle PUT verso lo "storage". */
-type Capture = { parts: Buffer[]; apiBodies: string[] }
+type Capture = { parts: Buffer[]; apiBodies: string[]; storageUrl: string }
 
 const CORS_PREFLIGHT = {
   'access-control-allow-origin': '*',
@@ -30,6 +32,32 @@ const CORS_RESPONSE = {
   'access-control-allow-origin': '*',
   'access-control-expose-headers': 'ETag',
 }
+
+// Si catturano i byte HTTP veri: WebKit non espone sempre i corpi Blob a postDataBuffer().
+const test = base.extend<{ wireStorage: { url: string; parts: Buffer[] } }>({
+  wireStorage: async ({}, use) => {
+    const parts: Buffer[] = []
+    const server = createServer(async (request, response) => {
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204, CORS_PREFLIGHT).end()
+        return
+      }
+      const match = request.url?.match(/^\/part\/(\d+)$/)
+      if (request.method !== 'PUT' || !match) { response.writeHead(404).end(); return }
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      parts[Number(match[1]) - 1] = Buffer.concat(chunks)
+      response.writeHead(200, { etag: '"etag-e2e"', ...CORS_RESPONSE }).end()
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    try {
+      await use({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, parts })
+    } finally {
+      server.closeAllConnections()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+    }
+  },
+})
 
 async function stubUpload(page: Page, capture: Capture) {
   await page.route('**/api/guest/upload/init', async (route: Route) => {
@@ -48,7 +76,7 @@ async function stubUpload(page: Page, capture: Capture) {
   await page.route('**/api/guest/upload/urls', async (route: Route) => {
     capture.apiBodies.push(route.request().postData() ?? '')
     const body = JSON.parse(route.request().postData() ?? '{}') as { partNumbers: number[] }
-    const urls = Object.fromEntries(body.partNumbers.map((n) => [n, `https://storage.test/part/${n}`]))
+    const urls = Object.fromEntries(body.partNumbers.map((n) => [n, `${capture.storageUrl}/part/${n}`]))
     await route.fulfill({ json: { urls } })
   })
 
@@ -59,22 +87,7 @@ async function stubUpload(page: Page, capture: Capture) {
     })
   })
 
-  await page.route('https://storage.test/part/**', async (route: Route) => {
-    // Un PUT cross-origin con `application/octet-stream` non è una richiesta "semplice":
-    // il browser manda prima un preflight. Lo stub lo riproduce di proposito, perché è
-    // la stessa configurazione che il bucket vero deve avere — **`ETag` esposto
-    // compreso**, senza il quale il multipart non può ricomporre l'oggetto
-    // (BACKEND_API_DOCS §5-bis, punto 2 del cutover R2).
-    if (route.request().method() === 'OPTIONS') {
-      await route.fulfill({ status: 204, headers: CORS_PREFLIGHT })
-      return
-    }
-    capture.parts.push(route.request().postDataBuffer() ?? Buffer.alloc(0))
-    await route.fulfill({
-      status: 200,
-      headers: { etag: '"etag-e2e"', ...CORS_RESPONSE },
-    })
-  })
+
 }
 
 async function stubReceive(page: Page, ciphertext: Buffer, originalSize: number) {
@@ -124,19 +137,27 @@ async function stubReceive(page: Page, ciphertext: Buffer, originalSize: number)
   })
 }
 
-test.beforeEach(async ({ page, context }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-
-  // Chromium headless espone `showSaveFilePicker`, che aprirebbe un selettore e
-  // bloccherebbe il test. Togliendolo si esercita il percorso di ripiego (blob +
-  // ancora), che è anche quello che ricevono davvero gli utenti di Firefox e Safari.
-  await page.addInitScript(() => {
+test.beforeEach(async ({ page, context, browserName }) => {
+  // Solo Chromium espone questi permessi a Playwright. Negli altri motori si osserva
+  // il confine appunti: questo e2e prova i byte e la crittografia, non gli appunti OS.
+  if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.addInitScript(({ simulateClipboard }) => {
     Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, configurable: true })
-  })
+    if (simulateClipboard) {
+      let copied = ''
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => { copied = value },
+          readText: async () => copied,
+        },
+      })
+    }
+  }, { simulateClipboard: browserName !== 'chromium' })
 })
 
-test('un file inviato senza account torna identico a chi lo riceve', async ({ page }) => {
-  const capture: Capture = { parts: [], apiBodies: [] }
+test('un file inviato senza account torna identico a chi lo riceve', async ({ page, wireStorage }) => {
+  const capture: Capture = { parts: wireStorage.parts, apiBodies: [], storageUrl: wireStorage.url }
   await stubUpload(page, capture)
 
   // ── Invio ────────────────────────────────────────────────────────────────────

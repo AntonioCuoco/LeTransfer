@@ -373,12 +373,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
         '**Dati mobili e VPN spenti**, almeno per la prova.',
         'Prova ad aprire nel browser del telefono la pagina del router (di solito **192.168.1.1** o **192.168.0.1**): se si apre, il telefono è sulla rete di casa.',
         'Il router si apre, Novren no, e sul PC è tutto a posto? Il router tiene separati i dispositivi Wi-Fi («isolamento client» o «AP isolation» nelle sue impostazioni, sempre attivo sulle reti ospiti). Prova un’altra rete o l’hotspot del telefono.',
+        '**La prova che decide:** accendi l’hotspot del telefono, collega il PC all’hotspot e mostra un QR nuovo. Se così si apre, Novren funziona e il blocco è nel router: nelle sue impostazioni Wi-Fi (di solito **192.168.1.1**) disattiva «isolamento client», «AP isolation» o «separazione dispositivi», su tutte le reti (2,4 e 5 GHz).',
       ] },
 
       { type: 'h', text: '3 · Cosa dice il telefono' },
       { type: 'list', items: [
         '**Carica all’infinito**, poi «tempo scaduto»: quasi sempre l’antivirus o il firewall del PC (punto 1).',
-        '**«Indirizzo non raggiungibile»** (ERR_ADDRESS_UNREACHABLE): il telefono non arriva al PC. Rete diversa o isolata (punto 2), oppure un firewall del PC che risponde «no» (punto 1).',
+        '**«Indirizzo non raggiungibile»** (ERR_ADDRESS_UNREACHABLE): il telefono non trova proprio il PC sulla rete. Se sul PC è tutto a posto, è quasi sempre il router che isola i dispositivi Wi-Fi, o il telefono su un’altra rete (punto 2, con la prova dell’hotspot).',
         '**iPhone con Chrome, Firefox o Edge**: Impostazioni → Privacy e sicurezza → **Rete locale** → attiva il browser. Oppure apri il QR con Safari.',
         '**«La sessione è chiusa»**: si chiude da sola dopo 30 minuti senza attività, o quando la chiudi dal PC. Mostra un QR nuovo.',
         '**«Il collegamento non è valido»**: il QR va inquadrato di nuovo, intero: l’indirizzo contiene anche la chiave che cifra i file.',
