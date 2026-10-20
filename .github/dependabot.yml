@@ -1,0 +1,23 @@
+# Aggiornamenti delle dipendenze (revisione di sicurezza del 20-10-2026).
+# Le correzioni di sicurezza arrivano subito come PR a sé (vanno attivati «Dependabot alerts» e
+# «Dependabot security updates» nelle impostazioni del repository); qui c'è il giro settimanale
+# delle versioni, raggruppato per non riempire le PR.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /vue-app
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      minori:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /cli
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      minori:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
