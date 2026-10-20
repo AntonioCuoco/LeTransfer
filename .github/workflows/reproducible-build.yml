@@ -145,7 +145,7 @@ jobs:
       # che la pagina /sicurezza indica a chi vuole verificare.
       - name: Pubblica la release con il manifesto
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: vue-app/SHA256SUMS.txt
           body: |
