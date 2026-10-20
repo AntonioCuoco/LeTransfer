@@ -39,7 +39,7 @@ jobs:
         working-directory: vue-app
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Toolchain fissata: la versione di Node fa parte dell'input della build.
       - uses: actions/setup-node@v4
