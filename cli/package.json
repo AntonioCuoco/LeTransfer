@@ -33,7 +33,7 @@
     "prepack": "npm run verify"
   },
   "devDependencies": {
-    "@types/node": "^22.14.1",
+    "@types/node": "^26.6.5",
     "@vitest/coverage-v8": "^3.2.7",
     "client-zip": "^2.5.0",
     "esbuild": "^0.28.2",
