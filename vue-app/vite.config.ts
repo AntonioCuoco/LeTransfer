@@ -1,9 +1,10 @@
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import Components from 'unplugin-vue-components/vite'
 import { PrimeVueResolver } from '@primevue/auto-import-resolver'
 import path from 'path'
+import fs from 'fs'
 
 // Origini da cui l'app può incorporare la stanza del captcha, **in sviluppo**.
 //
@@ -54,7 +55,51 @@ function devSecurityHeaders(): Plugin {
   }
 }
 
-export default defineConfig({
+// CSP dello **staging**, ricavata da quella di produzione.
+//
+// `public/_headers` è scritto per la produzione: `connect-src` ammette `api.novren.net`,
+// `frame-src` solo `captcha.novren.net`, e la pagina del captcha si lascia incorniciare solo
+// da `novren.net`. Copiato tale e quale su novren-staging.pages.dev, il browser blocca ogni
+// chiamata all'API di staging e l'iframe del captcha (verificato il 2026-11-03).
+//
+// Con `--mode staging` questo plugin riscrive `dist/_headers` dopo il build, con i valori di
+// `.env.staging`. Con qualsiasi altro mode non fa nulla: il build di produzione resta identico
+// byte per byte, e la build riproducibile non cambia.
+// Se una sostituzione non trova il testo atteso il build **fallisce**: meglio un errore qui
+// che una CSP di staging che punta in silenzio alla produzione.
+function stagingHeaders(env: Record<string, string>): Plugin {
+  let outDir = 'dist'
+  return {
+    name: 'novren-staging-headers',
+    apply: 'build',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir)
+    },
+    closeBundle() {
+      const apiOrigin = new URL(env.VITE_API_URL).origin
+      const frontendOrigin = new URL(env.VITE_FRONTEND_URL).origin
+      // Senza VITE_CAPTCHA_ORIGIN il captcha gira sulla stessa origine dell'app (useTurnstile.ts).
+      const captchaSource = env.VITE_CAPTCHA_ORIGIN ? new URL(env.VITE_CAPTCHA_ORIGIN).origin : "'self'"
+
+      const file = path.join(outDir, '_headers')
+      let text = fs.readFileSync(file, 'utf8')
+      const sostituzioni: Array<[string, string]> = [
+        ['https://api.novren.net', apiOrigin],
+        ['frame-src https://captcha.novren.net', `frame-src ${captchaSource}`],
+        ['frame-ancestors https://novren.net', `frame-ancestors ${frontendOrigin}`],
+      ]
+      for (const [da, a] of sostituzioni) {
+        if (!text.includes(da)) {
+          throw new Error(`[novren-staging-headers] "${da}" non trovato in _headers: aggiorna vite.config.ts`)
+        }
+        text = text.split(da).join(a)
+      }
+      fs.writeFileSync(file, text)
+    },
+  }
+}
+
+export default defineConfig(({ mode }) => ({
   plugins: [
     vue(),
     tailwindcss(),
@@ -65,6 +110,7 @@ export default defineConfig({
       dts: 'components.d.ts',
     }),
     devSecurityHeaders(),
+    ...(mode === 'staging' ? [stagingHeaders(loadEnv(mode, __dirname, 'VITE_'))] : []),
   ],
   server: {
     // `true` = ascolta anche sull'IP della LAN, non solo su localhost. Serve perché
@@ -87,4 +133,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))
