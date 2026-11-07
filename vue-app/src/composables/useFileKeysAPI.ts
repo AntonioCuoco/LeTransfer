@@ -8,7 +8,7 @@ export const useFileKeysAPI = () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
-  const getAuthToken = () => Cookies.get('idToken')
+  const getAuthToken = () => Cookies.get('accessToken')
 
   const saveFileKey = async (data: WrappedKeyData): Promise<boolean> => {
     isLoading.value = true

@@ -31,7 +31,7 @@ import { getCurrentUser } from '@/src/utils/getCurrentUser'
  * |---|---|---|
  * | `notifications` | **Server** (con ripiego locale) | È il backend che deve mandare le email: se la preferenza resta nel browser, nessuno la legge |
  * | `privacy`, `appearance`, `transfer` | `localStorage` | Preferenze di questo browser, non riguardano nessun altro |
- * | `profile` | Cognito (sola lettura qui) | |
+ * | `profile` | email da Novren ID (sola lettura); nome e cognome in `localStorage` | Novren ID non li chiede |
  * | `password` | **Da nessuna parte** — vedi sotto | |
  *
  * ⚠️ **La password non viene mai persistita.** I tre campi del form di cambio password
@@ -80,8 +80,9 @@ function withCurrentUser(base: UserSettings): UserSettings {
   return {
     ...base,
     profile: {
-      name: user?.name?.split(' ')[0] || '',
-      surname: user?.name?.split(' ')[1] || '',
+      // Novren ID non chiede nome e cognome: si scrivono qui, e restano in questo browser.
+      name: '',
+      surname: '',
       email: user?.email || '',
     },
   }

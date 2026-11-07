@@ -18,6 +18,12 @@ import { ref } from 'vue'
  */
 export type RecoveryKeyStatus = 'unknown' | 'present' | 'absent' | 'error'
 
+/**
+ * «Ricorda su questo dispositivo», scelto nel dialogo prima di partire per Novren ID: lo legge la
+ * pagina di ritorno (`AccessPage.vue`), che apre la master key e la salva.
+ */
+export const REMEMBER_REQUEST_KEY = 'novren-id/remember-device'
+
 const isPromptOpen = ref(false)
 const canUnlock = ref(false)
 const recoveryKeyStatus = ref<RecoveryKeyStatus>('unknown')

@@ -1,24 +1,13 @@
 /**
- * Registrazione chiusa temporaneamente (deciso il 2026-09-16).
+ * Registrazione chiusa temporaneamente (deciso il 2026-09-16): si riapre quando la fatturazione è
+ * pronta.
  *
- * Gli account li crea l'amministratore dal pannello admin; si riapre quando la fatturazione
- * è pronta.
- *
- * ⚠️ **Questo interruttore spegne solo l'interfaccia.** La pagina di registrazione parla
- * direttamente con Cognito (`SignUpCommand`), non con il nostro backend. Il blocco vero sta in
- * Cognito: `AdminCreateUserConfig.AllowAdminCreateUserOnly = true` sul User Pool, l'unico punto
- * che nessun client può aggirare (revisione di sicurezza del 18-10-2026,
- * `novren-desktop/docs/SICUREZZA.md`).
- *
- * ── Per RIAPRIRE la registrazione, tutte e tre le cose ─────────────────────────────────────────
- *  1. Cognito, produzione e staging: `AllowAdminCreateUserOnly = false`. Senza, `SignUp` risponde
- *     «NotAuthorizedException: SignUp is not permitted for this user pool».
- *  2. Qui: `REGISTRATION_OPEN = true` (pulsanti, pagina /register).
- *  3. ⚠️ Prima di farlo, decidere la protezione: con il self sign-up aperto chiunque può
- *     iscriversi chiamando Cognito senza passare dal sito (niente Turnstile, niente limiti
- *     nostri). La via sicura è una rotta del backend con Turnstile e limiti che crea l'utente
- *     (`AdminCreateUser`) lasciando il punto 1 chiuso, oppure un trigger «pre sign-up» di Cognito
- *     che verifica Turnstile. Vedi SICUREZZA.md, «La registrazione chiusa è aperta su Cognito».
+ * ⚠️ **Con Novren ID questo interruttore spegne solo l'interfaccia.** Gli account nascono in
+ * Novren ID (account.novren.net/registrati), una volta per tutta la famiglia: chiunque abbia un
+ * Novren ID può collegarsi a Novren. Per tenere Novren davvero chiuso serve un filtro nel server
+ * di Novren (per esempio una lista di inviti per email, controllata in `middleware/auth.js`):
+ * decisione aperta, vedi novrenID/docs/STATO.md §7.2. E «crea account» dal pannello admin non
+ * esiste più (gli account non si creano per conto d'altri).
  */
 export const REGISTRATION_OPEN = false
 

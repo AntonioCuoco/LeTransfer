@@ -6,11 +6,9 @@ import FileStatsGrid, { type StatTile } from '@/src/components/FileStatsGrid.vue
 import FilesTable from '@/src/components/FilesTable.vue'
 import SharedLinksTable from '@/src/components/SharedLinksTable.vue'
 import ShareFileModal from '@/src/components/ShareFileModal.vue'
-import RecoveryKeySetup from '@/src/components/RecoveryKeySetup.vue'
 import { useFileFromDynamoDB } from '@/src/composables/useFileFromDynamoDB'
 import { useShareFile } from '@/src/composables/useShareFile'
 import { useSharedLinks } from '@/src/composables/useSharedLinks'
-import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
 import { useDownloadActivity } from '@/src/composables/useDownloadActivity'
 import type { DynamoDBFile, TableFile, SharedFile } from '@/src/types'
 import { useEncryptionStore } from '@/src/stores/encryption'
@@ -32,11 +30,8 @@ const fileTypeOptions = [
 const { files: dynamoFiles, isLoading: hookLoading, loadFiles: loadFilesFromDynamo, deleteFile: deleteFileFromDynamo, downloadFile } = useFileFromDynamoDB()
 const { sharedFiles, isLoadingShared, getSharedWithMe, downloadSharedFile } = useShareFile()
 const { links: sharedLinks, isLoading: isLinksLoading, fetchLinks, revokeLink, regenerateLink, updateLink, deleteLink } = useSharedLinks()
-const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
 const { markSeen: markDownloadsSeen } = useDownloadActivity()
 
-const isSetupRequired = ref(false)
-const securitySetupVisible = ref(false)
 const currentPage = ref(1)
 const totalFiles = ref(0)
 const pageSize = 10
@@ -215,8 +210,6 @@ onMounted(async () => {
   loadFiles(1)
   loadSharedFiles()
   fetchLinks()
-  const status = await getRecoveryKeyStatus()
-  isSetupRequired.value = !status?.hasRecoveryKey
 })
 
 // Questa è la pagina in cui i download si guardano davvero (la tabella dei link li mostra
@@ -236,25 +229,6 @@ watch(sharedLinks, (list) => {
     <ProfileHeader />
 
     <div class="lt-page space-y-8">
-      <!-- Recovery key mancante: è il punto in cui gli utenti E2E perdono i file per sempre,
-           quindi il tono è serio ma spiegato, non un rettangolo rosso da errore di sistema. -->
-      <div v-if="isSetupRequired" class="rounded-panel border border-warn-400/30 bg-warn-400/[0.07] p-5">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="flex items-start gap-3">
-            <i class="pi pi-shield mt-0.5 text-xl text-warn-400" />
-            <div>
-              <h4 class="m-0 font-semibold text-haze-100">Non hai ancora una chiave di recupero</h4>
-              <p class="m-0 mt-1 max-w-[70ch] text-sm leading-relaxed text-haze-300">
-                I tuoi file si aprono solo con la chiave che vive in questo browser. Se perdi il dispositivo
-                e non hai una chiave di recupero, <b class="text-haze-100">nessuno può recuperarli — nemmeno noi</b>.
-                Sono 24 parole da conservare fuori dal computer.
-              </p>
-            </div>
-          </div>
-          <Button label="Creala ora" @click="securitySetupVisible = true" />
-        </div>
-      </div>
-
       <FileStatsGrid :tiles="statTiles" />
 
       <div class="rounded-panel border border-white/10 bg-white/[0.03]">
@@ -341,18 +315,5 @@ watch(sharedLinks, (list) => {
       :on-link-generated="fetchLinks"
     />
 
-    <Dialog
-      v-model:visible="securitySetupVisible"
-      modal
-      :closable="false"
-      :dismissable-mask="false"
-      :style="{ width: '800px' }"
-      :pt="{ header: '!hidden', content: '!p-8' }"
-    >
-      <RecoveryKeySetup
-        @complete="() => { securitySetupVisible = false; isSetupRequired = false; notify.success('Sicurezza configurata!') }"
-        @cancel="securitySetupVisible = false"
-      />
-    </Dialog>
   </div>
 </template>

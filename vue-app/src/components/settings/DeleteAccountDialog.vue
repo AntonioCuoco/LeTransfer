@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { notify } from '@/src/utils/notify'
 import { useAccountDeletion } from '@/src/composables/useAccountDeletion'
+import { useEncryptionStore } from '@/src/stores/encryption'
+import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 
 /**
  * Cancellazione dell'account — la finestra che deve spiegare, non convincere.
@@ -28,18 +30,18 @@ const { preview, isLoadingPreview, isDeleting, loadPreview, requestDeletion, wip
 const visible = defineModel<boolean>('visible', { default: false })
 
 const step = ref<1 | 2>(1)
-const password = ref('')
 const phrase = ref('')
+const encryption = useEncryptionStore()
+const { requestUnlock } = useSecurityPrompt()
 const pendingEmail = ref<string | null>(null)
 
 const canConfirm = computed(
-  () => password.value.length > 0 && phrase.value.trim().toUpperCase() === CONFIRM_PHRASE,
+  () => encryption.isUnlocked && phrase.value.trim().toUpperCase() === CONFIRM_PHRASE,
 )
 
 watch(visible, (open) => {
   if (open) {
     step.value = 1
-    password.value = ''
     phrase.value = ''
     pendingEmail.value = null
     loadPreview()
@@ -47,7 +49,7 @@ watch(visible, (open) => {
 })
 
 async function confirm() {
-  const outcome = await requestDeletion(password.value)
+  const outcome = await requestDeletion()
 
   switch (outcome.status) {
     case 'deleted':
@@ -63,9 +65,13 @@ async function confirm() {
       pendingEmail.value = outcome.email ?? null
       break
 
-    case 'wrong_password':
-      notify.error(outcome.message ?? 'Password non corretta.', 'Cancellazione non avviata')
-      password.value = ''
+    case 'invalid_proof':
+      notify.error(outcome.message ?? 'La conferma non corrisponde a questo account.', 'Cancellazione non avviata')
+      break
+
+    case 'locked':
+      notify.info('Prima sblocca i tuoi file con Novren ID: è la conferma che sei tu.', 'Serve lo sblocco')
+      requestUnlock()
       break
 
     case 'unavailable':
@@ -174,20 +180,15 @@ function close() {
 
       <template v-else>
         <p class="m-0 text-sm leading-relaxed text-haze-200">
-          Ultimo passo. Ti chiediamo due cose: la password, perché nessuno che non sia tu possa
-          farlo; e di scrivere la frase, perché non succeda per sbaglio.
+          Ultimo passo. Ti chiediamo due cose: i file sbloccati, perché solo tu (passando da Novren ID)
+          hai la chiave che lo conferma; e di scrivere la frase, perché non succeda per sbaglio.
+          Si cancella il tuo spazio su Novren; l'account Novren ID resta, per NovrenPass e Drive.
         </p>
 
-        <div class="flex flex-col gap-1.5">
-          <label for="del-pwd" class="text-xs font-medium text-haze-300">La tua password</label>
-          <Password
-            id="del-pwd"
-            v-model="password"
-            :feedback="false"
-            toggle-mask
-            fluid
-            autocomplete="current-password"
-          />
+        <div v-if="!encryption.isUnlocked" class="rounded-field border border-warn-400/30 bg-warn-400/[0.07] p-3 text-sm text-haze-200">
+          I tuoi file sono chiusi a chiave su questo dispositivo.
+          <button type="button" class="font-semibold text-verified-400 hover:underline" @click="requestUnlock()">Sbloccali con Novren ID</button>
+          per poter confermare.
         </div>
 
         <div class="flex flex-col gap-1.5">

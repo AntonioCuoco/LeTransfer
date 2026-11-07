@@ -1,124 +1,82 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { notify } from '@/src/utils/notify'
 import { withDetail } from '@/src/utils/errorDetail'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useRecoveryKeyAPI } from '@/src/composables/useRecoveryKeyAPI'
-import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
-import { deriveMasterKeyFromMnemonic, verifyMasterKey } from '@/src/crypto/recovery-key'
-import { loadRememberedMasterKey, rememberMasterKey, forgetMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
+import { useSecurityPrompt, REMEMBER_REQUEST_KEY } from '@/src/composables/useSecurityPrompt'
+import { loadRememberedMasterKey, forgetMasterKey, REMEMBER_DAYS } from '@/src/crypto/rememberedDevice'
+import { masterKeyMatches } from '@/src/crypto/novrenIdMasterKey'
 import { getCurrentUser } from '@/src/utils/getCurrentUser'
-import { base64ToArrayBuffer } from '@/src/crypto/crypto'
+import { startLogin } from '@/src/utils/novrenId'
 import novrenIcon from '@/src/assets/novren-icon.png'
 
 /**
- * Sblocco del vault con la chiave di recupero (roadmap F5).
+ * Sblocco dei file, con **Novren ID**.
  *
- * ⚠️ Qui le 24 parole SONO materiale crittografico: si inseriscono tutte e da esse
- * si deriva la master key. Incollarle è legittimo e previsto — l'utente le sta
- * prendendo dal suo gestore password o dal file che ha conservato. È il caso opposto
- * a RecoveryKeySetup, dove la digitazione a campione serve a verificare l'umano.
+ * La master key di Novren vive solo in memoria: dopo una ricarica, o su un dispositivo nuovo, non
+ * c'è. Si riapre passando da Novren ID (che consegna la chiave del prodotto, con cui la master key
+ * si apre in `AccessPage.vue`), oppure da sola se l'utente aveva chiesto di ricordare questo
+ * dispositivo: in quel caso si usa solo se apre la prova dell'account (`masterKeyMatches`).
  *
- * Il dialogo si può chiudere (l'app resta utilizzabile, ma i file cifrati no) e si
- * riapre dalla barra laterale — vedi useSecurityPrompt.
+ * Le 24 parole non si chiedono più qui: sono di Novren ID, e servono solo a recuperare l'account
+ * là. Il dialogo si può chiudere (l'app resta utilizzabile, i file cifrati no) e si riapre dalla
+ * barra laterale — vedi useSecurityPrompt.
  */
 
+const route = useRoute()
 const encryptionStore = useEncryptionStore()
 const { getRecoveryKeyStatus } = useRecoveryKeyAPI()
 const { isPromptOpen, setUnlockAvailable, setRecoveryKeyStatus, close, open } = useSecurityPrompt()
 
-const mnemonic = ref('')
-const verifying = ref(false)
-const saltBase64 = ref('')
-const verificationHash = ref('')
 // Non spuntata di default: ricordare il dispositivo è una scelta, non il comportamento normale.
 const rememberDevice = ref(false)
-
-const WORDS_MISMATCH = 'Le parole non corrispondono. Controlla di averle copiate tutte e 24, in ordine.'
+const leaving = ref(false)
 
 onMounted(async () => {
   if (encryptionStore.isUnlocked) return
   const status = await getRecoveryKeyStatus()
-  // Serve anche a chi blocca gli upload: senza chiave di recupero si crea, con la chiave si sblocca.
   setRecoveryKeyStatus(status ? (status.hasRecoveryKey ? 'present' : 'absent') : 'error')
-  if (status?.hasRecoveryKey && status.salt && status.verificationHash) {
-    saltBase64.value = status.salt
-    verificationHash.value = status.verificationHash
-    if (await unlockFromRememberedDevice(status.verificationHash)) return
-    setUnlockAvailable(true)
-    open()
-  }
+  if (!status) return
+  if (status.hasRecoveryKey && status.wrappedProof && (await unlockFromRememberedDevice(status.wrappedProof))) return
+  // Con o senza master key sul server: si passa da Novren ID (se manca, la pagina di ritorno la crea).
+  setUnlockAvailable(true)
+  open()
 })
 
-/**
- * Dispositivo ricordato: la master key è già in questo browser. Si usa solo se apre il blob
- * di verifica dell'account; se non lo apre più, il record è inutile e si cancella.
- */
-async function unlockFromRememberedDevice(hash: string): Promise<boolean> {
+/** Dispositivo ricordato: la master key è già in questo browser. Vale solo se apre la prova. */
+async function unlockFromRememberedDevice(wrappedProof: string): Promise<boolean> {
+  const sub = getCurrentUser()?.sub
   try {
-    const remembered = await loadRememberedMasterKey({ sub: getCurrentUser()?.sub })
-    if (!remembered) return false
-    if (await verifyMasterKey(remembered, hash)) {
+    const remembered = await loadRememberedMasterKey({ sub })
+    if (!remembered || !sub) return false
+    if (await masterKeyMatches(remembered, wrappedProof, sub)) {
       encryptionStore.setMasterKey(remembered)
       return true
     }
-    await forgetMasterKey({ sub: getCurrentUser()?.sub })
+    await forgetMasterKey({ sub })
   } catch {
-    // IndexedDB non disponibile (es. navigazione privata): si chiedono le parole, come prima.
+    // IndexedDB non disponibile (es. navigazione privata): si passa da Novren ID, come sempre.
   }
   return false
 }
 
-const handleVerify = async () => {
-  if (!mnemonic.value.trim()) return
-  verifying.value = true
+async function unlockWithNovrenId() {
+  leaving.value = true
   try {
-    const salt = new Uint8Array(base64ToArrayBuffer(saltBase64.value))
-
-    // Parole non valide (checksum) e parole valide ma di un altro account sono lo stesso
-    // errore per chi le digita: in entrambi i casi vanno ricontrollate.
-    let masterKey: CryptoKey
-    try {
-      masterKey = await deriveMasterKeyFromMnemonic(mnemonic.value.trim(), salt)
-    } catch (err) {
-      // Checksum sbagliato è il caso normale, ma non l'unico (salt illeggibile, Web Crypto
-      // assente): la frase resta quella per chi digita, il dettaglio dice quale dei due.
-      notify.error(withDetail(WORDS_MISMATCH, err), 'Parole non valide')
-      return
-    }
-    if (!(await verifyMasterKey(masterKey, verificationHash.value))) {
-      notify.error(WORDS_MISMATCH, 'Parole non valide')
-      return
-    }
-
-    encryptionStore.setMasterKey(masterKey)
-    setUnlockAvailable(false)
-    if (rememberDevice.value) {
-      try {
-        await rememberMasterKey(masterKey, { sub: getCurrentUser()?.sub })
-      } catch (err) {
-        notify.warning(
-          withDetail('I file sono sbloccati, ma questo browser non ci permette di ricordarlo: alla prossima sessione ti chiederemo di nuovo le 24 parole.', err),
-          'Dispositivo non ricordato',
-        )
-      }
-    }
-    notify.success('File sbloccati.')
-    close()
-    mnemonic.value = ''
+    if (rememberDevice.value) sessionStorage.setItem(REMEMBER_REQUEST_KEY, '1')
+    else sessionStorage.removeItem(REMEMBER_REQUEST_KEY)
+    await startLogin(route.fullPath)
   } catch (err) {
-    notify.error(withDetail('La verifica delle parole non è andata a buon fine.', err), 'Sblocco non riuscito')
-  } finally {
-    verifying.value = false
+    leaving.value = false
+    notify.error(withDetail('Non siamo riusciti ad aprire Novren ID. Riprova tra poco.', err), 'Sblocco non avviato')
   }
 }
 
 // Si può chiudere: l'app resta usabile, ma i file cifrati restano illeggibili.
 // Il rientro è dall'indicatore del vault nella barra laterale.
-const handleCancel = () => {
-  mnemonic.value = ''
-  close()
-}
+const handleCancel = () => close()
 </script>
 
 <template>
@@ -142,27 +100,10 @@ const handleCancel = () => {
 
     <div class="flex flex-col gap-5">
       <p class="m-0 leading-relaxed text-haze-300">
-        La chiave che apre i tuoi file non è mai uscita dal browser in cui l'hai creata, quindi qui non
-        c'è. Inserisci le <b class="text-haze-100">24 parole</b> della chiave di recupero: da quelle la
-        ricostruiamo, in locale.
+        La chiave che apre i tuoi file vive solo in memoria, quindi qui non c'è. Te la riconsegna
+        <b class="text-haze-100">Novren ID</b>: un passaggio veloce dall'area account (password, o passkey) e
+        torni qui con i file aperti.
       </p>
-
-      <div class="flex flex-col gap-2">
-        <label class="lt-label !text-haze-400">Chiave di recupero</label>
-        <Textarea
-          v-model="mnemonic"
-          :rows="4"
-          placeholder="parola1 parola2 parola3 …"
-          class="font-mono"
-          fluid
-          autocapitalize="off"
-          spellcheck="false"
-          @keydown.enter.ctrl="handleVerify"
-        />
-        <p class="m-0 font-mono text-[0.72rem] text-haze-400">
-          tutte e 24, separate da spazio · incollarle dal gestore password va benissimo
-        </p>
-      </div>
 
       <label class="flex cursor-pointer items-start gap-2.5 text-[0.9rem] text-haze-200">
         <input v-model="rememberDevice" type="checkbox" class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brand-500)]" />
@@ -177,7 +118,7 @@ const handleCancel = () => {
 
       <div class="flex flex-wrap justify-end gap-3 pt-1">
         <Button label="Più tardi" severity="secondary" outlined @click="handleCancel" />
-        <Button label="Sblocca i file" :loading="verifying" :disabled="!mnemonic.trim()" @click="handleVerify" />
+        <Button label="Sblocca con Novren ID" :loading="leaving" @click="unlockWithNovrenId" />
       </div>
 
       <p class="m-0 border-t border-white/10 pt-4 text-[0.82rem] leading-relaxed text-haze-400">

@@ -150,7 +150,7 @@ export const useShareFile = () => {
     isLoadingShared.value = true
     shareError.value = null
     try {
-      const token = Cookies.get('idToken')
+      const token = Cookies.get('accessToken')
       if (!token) throw new Error('Token di autenticazione non trovato')
       const { data } = await axios.get<{ files: SharedFile[] }>(`${API_BASE_URL}/shared-files`)
       const files = data.files || []

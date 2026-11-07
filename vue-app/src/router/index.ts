@@ -12,8 +12,12 @@ const router = createRouter({
     { path: '/prezzi', component: () => import('@/src/pages/PricingPage.vue') },
     { path: '/sicurezza', component: () => import('@/src/pages/SecurityPage.vue') },
     { path: '/login', component: () => import('@/src/pages/LoginPage.vue') },
+    // Il ritorno da Novren ID (redirect_uri del client `novren-web`): apre le chiavi e fa entrare.
+    { path: '/accesso', component: () => import('@/src/pages/AccessPage.vue') },
+    // La registrazione è di Novren ID: la pagina porta là.
     { path: '/register', component: () => import('@/src/pages/RegisterPage.vue') },
-    { path: '/oauth2/callback', component: () => import('@/src/pages/OAuthCallback.vue') },
+    // Il ritorno dell'accesso con Google (Cognito) non c'è più.
+    { path: '/oauth2/callback', redirect: '/login' },
     { path: '/share/:publicToken', component: () => import('@/src/pages/ShareAccessPage.vue') },
     // Autorizzare la CLI (`novren login`): pubbliche, perché chi arriva può non avere ancora
     // una sessione. Senza l'interruttore del backend dicono «non ancora disponibile».

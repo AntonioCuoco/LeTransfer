@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
-import axios from 'axios'
 import novrenIcon from '@/src/assets/novren-icon.png'
-import { clearAuthCookies } from '@/src/utils/cookieStore'
+import { signOut } from '@/src/utils/novrenId'
 import { useEncryptionStore } from '@/src/stores/encryption'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 import { forgetMasterKey } from '@/src/crypto/rememberedDevice'
@@ -71,22 +70,17 @@ const vault = computed(() => {
 })
 
 const handleLogout = async () => {
-  try {
-    // L'accessToken è iniettato dall'interceptor axios globale (vedi decisione #8).
-    await axios.post(`${import.meta.env.VITE_API_URL}/logout`, {})
-  } catch {
-    // si esce comunque: la pulizia locale è la parte che conta
-  }
-
   // Chi esce non vuole lasciare i file apribili su questo browser. PRIMA dei cookie: il nome
-  // del record dipende dall'utente, che si legge dall'idToken.
+  // del record dipende dall'utente, che si legge dal token d'accesso.
   try {
     await forgetMasterKey({ sub: getCurrentUser()?.sub })
   } catch {
     // IndexedDB non disponibile: non c'era niente da dimenticare.
   }
 
-  clearAuthCookies()
+  // Chiude la catena di token in Novren ID (il server di Novren la rifiuta in pochi secondi) e
+  // toglie i cookie. Se la rete non c'è, i cookie vanno via lo stesso.
+  await signOut().catch(() => {})
   // Azzera la master key (+ cache) in RAM: nessun vault sbloccato dopo il logout.
   encryptionStore.clearMasterKey()
   notify.success('Sessione chiusa. A presto!')

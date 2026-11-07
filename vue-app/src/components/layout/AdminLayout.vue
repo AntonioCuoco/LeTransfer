@@ -10,8 +10,8 @@ import { checkAdminAccess, useAdminIdentity } from '@/src/composables/useAdmin'
  * dichiaratamente a due stadi. `requiresAuth` (nel router) filtra chi non ha nemmeno una
  * sessione; questo componente chiama `/admin/whoami` e nasconde tutto se risponde 403.
  *
- * Perché non basta un flag nel token: il gruppo Cognito e la 2FA sono verificati **dal
- * server a ogni richiesta**, non decodificati qui — un token valido non basta a decidere
+ * Perché non basta un flag nel token: l'elenco degli amministratori (ADMIN_ACCOUNT_IDS) e la
+ * 2FA in Novren ID sono verificati **dal server a ogni richiesta**, non decodificati qui — un token valido non basta a decidere
  * se mostrare il pannello, e provarci lato client sarebbe solo un'illusione di controllo
  * (ogni endpoint sotto `/admin/*` fa comunque la stessa verifica da sé).
  *

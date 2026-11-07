@@ -48,7 +48,6 @@ export interface MetricsOverview {
   storageBands: { label: string; users: number }[]
   /** Utenti oltre l'80% della quota del LORO piano. */
   nearQuota: number | null
-  cognitoTier: string | null
   monthlyPayers: number | null
   yearlyPayers: number | null
   estimatedCostUsd: number

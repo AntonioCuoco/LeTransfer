@@ -7,7 +7,7 @@ import { useProfileImage } from '@/src/composables/useProfileImage'
  * Intestazione della pagina "I tuoi file" (roadmap F5).
  *
  * ⚠️ Qui c'era "Membro dal {{ joinDate }}" calcolato da `auth_time`, che nel token
- * Cognito è l'orario dell'**ultimo accesso**, non della registrazione: mostrava
+ * (allora Cognito) è l'orario dell'**ultimo accesso**, non della registrazione: mostrava
  * quindi la data di oggi a chiunque. Nel token non esiste nessuna claim con la data
  * di iscrizione, quindi il dato è stato tolto invece che corretto — meglio niente
  * che un numero sbagliato.
@@ -19,10 +19,8 @@ import { useProfileImage } from '@/src/composables/useProfileImage'
 const user = getCurrentUser()
 const { profileImageUrl } = useProfileImage()
 
-const initials = computed(() => {
-  const parts = (user?.name || '').split(' ').filter(Boolean)
-  return parts.map((part) => part[0]).join('').toUpperCase().slice(0, 2) || '?'
-})
+// Novren ID non chiede il nome: le iniziali vengono dall'email.
+const initials = computed(() => (user?.email || '').slice(0, 1).toUpperCase() || '?')
 </script>
 
 <template>
@@ -35,7 +33,7 @@ const initials = computed(() => {
 
       <div class="min-w-0">
         <h1 class="m-0 truncate text-2xl font-bold tracking-[-0.02em] text-haze-100">
-          {{ user?.name || user?.username || 'Il tuo spazio' }}
+          Il tuo spazio
         </h1>
         <p v-if="user?.email" class="m-0 mt-0.5 truncate font-mono text-[0.8rem] text-haze-400">{{ user.email }}</p>
       </div>

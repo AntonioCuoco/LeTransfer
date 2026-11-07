@@ -32,7 +32,7 @@ export const useFileFromDynamoDB = () => {
   // un percorso di upload in chiaro pronto all'uso è un rischio anche da spento. L'unico
   // upload dell'area autenticata è useS3MultipartUpload.
 
-  const getToken = () => Cookies.get('idToken')
+  const getToken = () => Cookies.get('accessToken')
 
   const loadFiles = async (options?: LoadFilesOptions) => {
     isLoading.value = true

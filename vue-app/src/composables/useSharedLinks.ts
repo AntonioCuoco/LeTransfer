@@ -28,7 +28,7 @@ export const useSharedLinks = () => {
   const isCreating = ref(false)
   const error = ref<string | null>(null)
 
-  const getToken = () => Cookies.get('idToken')
+  const getToken = () => Cookies.get('accessToken')
 
   const fetchLinks = async () => {
     isLoading.value = true

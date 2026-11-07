@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import { useUploadAvailability } from '@/src/composables/useUploadAvailability'
 import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
 
 /**
  * Patina sopra i contenitori da cui parte un upload, finché il vault non è sbloccato.
  *
- * **Perché esiste.** Un utente appena registrato non ha ancora le 24 parole, quindi non ha
- * una master key: i file che caricava arrivavano sul server cifrati con una chiave che non
- * veniva salvata da nessuna parte. Qui lo si ferma prima, e gli si dice cosa fare.
+ * **Perché esiste.** Senza la master key aperta (dopo una ricarica, o al primo accesso non
+ * completato) i file caricati arriverebbero sul server cifrati con una chiave che non si salva da
+ * nessuna parte. Qui lo si ferma prima: la master key la riconsegna Novren ID (e al primo
+ * accesso la crea la pagina di ritorno, `AccessPage.vue`).
  *
  * ⚠️ È un blocco di **interfaccia**, non la garanzia: la garanzia è in useS3MultipartUpload
  * (niente upload senza vault) e nel backend (`init` senza chiave di recupero → 403,
@@ -17,7 +17,6 @@ import { useSecurityPrompt } from '@/src/composables/useSecurityPrompt'
  * l'utente a quegli errori.
  */
 
-const router = useRouter()
 const { availability } = useUploadAvailability()
 const { requestUnlock } = useSecurityPrompt()
 
@@ -26,16 +25,11 @@ const isLocked = computed(() => availability.value !== 'ready')
 const copy = computed(() => {
   switch (availability.value) {
     case 'needs-setup':
-      return {
-        title: 'Prima crea le 24 parole',
-        text: 'Finché non crei la chiave di recupero non potrai caricare file: le 24 parole sono l’unico modo per riaprirli, anche per te.',
-        action: 'Crea le 24 parole',
-      }
     case 'locked':
       return {
         title: 'Sblocca le tue chiavi',
-        text: 'Per caricare inserisci le 24 parole della chiave di recupero: servono a salvare la chiave del file, senza nessuno potrebbe più aprirlo.',
-        action: 'Inserisci le 24 parole',
+        text: 'Per caricare serve la chiave dei tuoi file: te la riconsegna Novren ID, con un passaggio veloce. Senza, nessuno potrebbe più aprire il file.',
+        action: 'Sblocca con Novren ID',
       }
     case 'unknown':
       return {
@@ -49,8 +43,7 @@ const copy = computed(() => {
 })
 
 function act() {
-  if (availability.value === 'needs-setup') router.push({ path: '/app/settings', query: { chiave: 'crea' } })
-  else if (availability.value === 'locked') requestUnlock()
+  if (availability.value === 'needs-setup' || availability.value === 'locked') requestUnlock()
   else if (availability.value === 'unknown') window.location.reload()
 }
 </script>

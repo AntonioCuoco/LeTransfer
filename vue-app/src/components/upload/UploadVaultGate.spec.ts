@@ -55,15 +55,15 @@ describe('UploadVaultGate', () => {
     expect(wrapper.get('[data-testid="upload-content"]').attributes('inert')).toBeUndefined()
   })
 
-  it('senza chiave di recupero blocca l\'uploader e manda a creare le 24 parole', async () => {
+  it('senza master key blocca l\'uploader e porta allo sblocco con Novren ID (che la crea)', async () => {
     const wrapper = mountGate('needs-setup')
 
-    expect(wrapper.get('[role="status"]').text()).toContain('Finché non crei la chiave di recupero non potrai caricare')
+    expect(wrapper.get('[role="status"]').text()).toContain('te la riconsegna Novren ID')
     expect(wrapper.get('[data-testid="upload-content"]').attributes('inert')).toBeDefined()
 
     await wrapper.get('[role="status"] button').trigger('click')
-    expect(push).toHaveBeenCalledWith({ path: '/app/settings', query: { chiave: 'crea' } })
-    expect(requestUnlock).not.toHaveBeenCalled()
+    expect(requestUnlock).toHaveBeenCalledTimes(1)
+    expect(push).not.toHaveBeenCalled()
   })
 
   it('con la chiave già creata ma il vault chiuso apre lo sblocco', async () => {

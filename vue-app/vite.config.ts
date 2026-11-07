@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { defineConfig, searchForWorkspaceRoot, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import Components from 'unplugin-vue-components/vite'
@@ -117,6 +117,9 @@ export default defineConfig(({ mode }) => ({
     // l'origine isolata del captcha in sviluppo è un secondo indirizzo dello stesso
     // dev server (vedi VITE_CAPTCHA_ORIGIN in .env).
     host: true,
+    // L'SDK di Novren ID è collegato dal repository accanto (`file:../../novrenID/...`): in
+    // sviluppo Vite deve poterne servire i file. Quando sarà pubblicato su npm, va via.
+    fs: { allow: [searchForWorkspaceRoot(process.cwd()), path.resolve(__dirname, '../../novrenID/packages')] },
   },
   resolve: {
     alias: {

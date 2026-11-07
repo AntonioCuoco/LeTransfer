@@ -13,7 +13,7 @@ export const usePresignedUrl = () => {
     isLoading.value = true
     error.value = null
     try {
-      const token = Cookies.get('idToken')
+      const token = Cookies.get('accessToken')
       if (!token) throw new Error('Token di autenticazione non trovato')
 
       const base = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL

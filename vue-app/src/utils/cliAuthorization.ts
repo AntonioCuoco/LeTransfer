@@ -1,7 +1,7 @@
 /**
  * Autorizzare la CLI (`novren`) da questo sito — la logica senza interfaccia.
  *
- * La CLI non può risolvere Turnstile né digitare la password di Cognito: apre questo sito,
+ * La CLI non può risolvere Turnstile né accedere a Novren ID da sola: apre questo sito,
  * la persona sceglie (account o «senza account»), e il sito consegna alla CLI un codice
  * monouso che la CLI scambia per un token suo. Due modi:
  *

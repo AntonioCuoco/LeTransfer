@@ -1,49 +1,24 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAdminUsers, PLAN_GRANT_DAYS, type PlanGrantDays } from '@/src/composables/useAdminUsers'
+import { useAdminUsers } from '@/src/composables/useAdminUsers'
 
 /**
- * Elenco e ricerca utenti.
+ * Elenco e ricerca utenti di Novren (da Novren ID: solo chi ha usato Novren).
  *
- * `q` è un prefisso di email — è ciò che Cognito sa fare senza indici nostri, e coincide
- * con come si cerca davvero un utente partendo da un ticket di supporto.
+ * `q` è un prefisso di email — coincide con come si cerca davvero un utente partendo da un
+ * ticket di supporto. Gli account non si creano più qui: nascono in Novren ID, dalla persona
+ * stessa; a chi si è già collegato si regala un piano dalla sua scheda.
  */
 
 const router = useRouter()
-const { items, cursor, isLoading, isActing, search, createUser } = useAdminUsers()
+const { items, cursor, isLoading, search } = useAdminUsers()
 
 const q = ref('')
 search('')
 
 function goTo(userId: string | null) {
   if (userId) router.push(`/admin/utenti/${userId}`)
-}
-
-const createOpen = ref(false)
-const newEmail = ref('')
-const grantPlanOnCreate = ref(false)
-const newPlan = ref('pro')
-const newDays = ref<PlanGrantDays>(30)
-const createResult = ref<{ userId: string; note: string } | null>(null)
-
-async function submitCreate() {
-  const result = await createUser(
-    newEmail.value.trim(),
-    grantPlanOnCreate.value ? newPlan.value : undefined,
-    grantPlanOnCreate.value ? newDays.value : undefined,
-  )
-  if (result) {
-    createResult.value = result
-    search(q.value)
-  }
-}
-
-function closeCreate() {
-  createOpen.value = false
-  newEmail.value = ''
-  grantPlanOnCreate.value = false
-  createResult.value = null
 }
 </script>
 
@@ -52,9 +27,10 @@ function closeCreate() {
     <header class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="m-0 text-xl font-semibold text-haze-100">Utenti</h1>
-        <p class="m-0 mt-1 text-sm text-haze-400">Cerca per email, o crea un account.</p>
+        <p class="m-0 mt-1 text-sm text-haze-400">
+          Cerca per email. Gli account nascono in Novren ID: qui compare chi ha usato Novren almeno una volta.
+        </p>
       </div>
-      <Button label="Nuovo account" icon="pi pi-plus" size="small" @click="createOpen = true" />
     </header>
 
     <div class="flex gap-2">
@@ -99,42 +75,5 @@ function closeCreate() {
     <div v-if="cursor" class="flex justify-center">
       <Button label="Carica altri" text size="small" :loading="isLoading" @click="search(q, cursor)" />
     </div>
-
-    <Dialog v-model:visible="createOpen" modal header="Nuovo account" :style="{ width: 'min(480px, 94vw)' }" @hide="closeCreate">
-      <div v-if="createResult" class="flex flex-col gap-3">
-        <p class="m-0 text-sm text-haze-200">
-          Credenziale creata. Cognito ha mandato l'invito con la password temporanea a
-          <strong>{{ newEmail }}</strong>.
-        </p>
-        <p class="m-0 rounded-well border border-warn-400/25 bg-warn-400/[0.06] p-3 text-xs leading-relaxed text-haze-300">
-          {{ createResult.note }}
-        </p>
-      </div>
-      <div v-else class="flex flex-col gap-4">
-        <div class="flex flex-col gap-1.5">
-          <label class="text-xs font-medium text-haze-300">Email</label>
-          <InputText v-model="newEmail" type="email" placeholder="nome@esempio.it" fluid />
-        </div>
-        <div class="flex items-center gap-2">
-          <Checkbox v-model="grantPlanOnCreate" binary input-id="grant-on-create" />
-          <label for="grant-on-create" class="text-sm text-haze-300">Regala subito un piano</label>
-        </div>
-        <div v-if="grantPlanOnCreate" class="grid grid-cols-2 gap-3">
-          <Select v-model="newPlan" :options="['pro']" fluid />
-          <Select v-model="newDays" :options="[...PLAN_GRANT_DAYS]" fluid />
-        </div>
-        <p class="m-0 text-xs leading-relaxed text-haze-500">
-          Crea solo la credenziale d'accesso: le chiavi di cifratura nascono nel browser
-          dell'utente al primo login, quindi non potrà ricevere file finché non entra.
-        </p>
-      </div>
-      <template #footer>
-        <Button v-if="createResult" label="Chiudi" @click="closeCreate" />
-        <template v-else>
-          <Button label="Annulla" text @click="closeCreate" />
-          <Button label="Crea" :disabled="!newEmail.trim()" :loading="isActing" @click="submitCreate" />
-        </template>
-      </template>
-    </Dialog>
   </div>
 </template>

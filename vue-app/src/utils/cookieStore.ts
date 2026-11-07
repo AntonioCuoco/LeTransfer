@@ -1,7 +1,8 @@
 import Cookies from 'js-cookie'
 
-// Nomi dei cookie di autenticazione (Cognito).
-export const AUTH_COOKIES = ['accessToken', 'idToken', 'refreshToken'] as const
+// Nomi dei cookie di autenticazione (Novren ID). `idToken` è di Cognito: resta nell'elenco solo
+// perché il logout lo tolga dai browser che lo hanno ancora.
+export const AUTH_COOKIES = ['accessToken', 'refreshToken', 'userEmail', 'idToken'] as const
 
 // Opzioni di sicurezza applicate a TUTTI i cookie di auth.
 // - sameSite:'strict' → protezione CSRF, attivo sia in dev sia in prod.

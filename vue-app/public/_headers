@@ -23,15 +23,12 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://cognito-idp.eu-central-1.amazonaws.com https://eu-central-1rkwgxhzif.auth.eu-central-1.amazoncognito.com https://api.novren.net https://bb89a06a2f888c6d9ad7cc004340611e.eu.r2.cloudflarestorage.com; frame-src https://captcha.novren.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://id.novren.net https://api.novren.net https://bb89a06a2f888c6d9ad7cc004340611e.eu.r2.cloudflarestorage.com; frame-src https://captcha.novren.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
 # ── Già compilati (2026-08-13) ───────────────────────────────────────────────
-#   cognito-idp.eu-central-1.amazonaws.com    L'SDK Cognito chiama qui per login,
-#       registrazione e reset password. Senza, l'autenticazione muore in silenzio.
-#   eu-central-1rkwgxhzif.auth...amazoncognito.com   La Hosted UI (User Pool
-#       eu-central-1_RKWgXhZIf). /oauth2/callback ci fa una fetch per scambiare il
-#       codice con i token: senza, il login Google si ferma a metà, dopo che
-#       l'utente ha già dato il consenso.
+#   id.novren.net                             Novren ID (gli account): scambio del codice e
+#       rinnovo dei token, da questo sito. Senza, il login si ferma dopo il consenso, con
+#       l'utente già passato dall'area account. (Prima qui c'erano i due host di Cognito.)
 #   frame-src https://captcha.novren.net      L'origine isolata del widget.
 #   api.novren.net                            L'Express su Fly, dietro un sottodominio del
 #       frontend (A/AAAA verso gli IP Fly, **DNS only**). ⚠️ In `connect-src` va l'ORIGINE

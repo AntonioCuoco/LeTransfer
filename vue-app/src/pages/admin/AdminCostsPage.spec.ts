@@ -65,7 +65,7 @@ function makeOverview(partial: Partial<MetricsOverview> = {}): MetricsOverview {
     storedBytes: 12 * GB, monthlyBytes: 4 * GB, plans: { free: 2, pro: 1 }, paidPlans: 1, grantedPlans: 0,
     expiredGrants: 0, guestLinks: 1, accountLinks: 2, claims: 0, openReports: 0, quarantinedLinks: 0, claimRate: 0,
     freeBytes: 2 * GB, freeExpiring: [{ day: '2026-10-11', bytes: 2 * GB }], guestBytes: GB,
-    storageBands: [{ label: '0', users: 1 }], nearQuota: 1, cognitoTier: 'ESSENTIALS', monthlyPayers: 1, yearlyPayers: 0,
+    storageBands: [{ label: '0', users: 1 }], nearQuota: 1, monthlyPayers: 1, yearlyPayers: 0,
     estimatedCostUsd: 8.4,
     costs: {
       lines: [{ key: 'fly', label: 'Fly · server API', usd: 8.4, note: 'tetto' }],

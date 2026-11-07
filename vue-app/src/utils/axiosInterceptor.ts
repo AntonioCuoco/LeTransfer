@@ -1,9 +1,7 @@
 import axios, { type AxiosResponse, type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import Cookies from 'js-cookie'
-import { setAuthCookie, clearAuthCookies } from './cookieStore'
-import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
-import { cognitoClient, clientId } from './cognitoClient'
 import { withDetail } from './errorDetail'
+import { refreshSession } from './novrenId'
 
 /** Il motivo dell'ultimo rimando al login, per un solo giro (vedi `takeLoginNotice`). */
 export const LOGIN_NOTICE_KEY = 'login_notice'
@@ -25,7 +23,7 @@ export function takeLoginNotice(): string | null {
 declare module 'axios' {
   interface AxiosRequestConfig {
     /**
-     * Chiamata PUBBLICA (link guest): niente token Cognito in uscita, niente refresh né
+     * Chiamata PUBBLICA (link guest): niente token di Novren ID in uscita, niente refresh né
      * redirect a /login su 401.
      *
      * Serve perché per quegli endpoint un 401 non vuol dire "sessione scaduta" ma "password
@@ -51,28 +49,11 @@ const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue = []
 }
 
+/** Il token d'accesso rinnovato con Novren ID (`utils/novrenId.ts`); lancia se non si può. */
 const doRefreshToken = async (): Promise<string | null> => {
-  const refreshTokenValue = Cookies.get('refreshToken')
-  if (!refreshTokenValue) throw new Error('No refresh token available')
-
-  const command = new InitiateAuthCommand({
-    AuthFlow: 'REFRESH_TOKEN_AUTH',
-    ClientId: clientId,
-    AuthParameters: { REFRESH_TOKEN: refreshTokenValue },
-  })
-
-  try {
-    const response = await cognitoClient.send(command)
-    const { AccessToken, IdToken } = response.AuthenticationResult ?? {}
-    if (!AccessToken || !IdToken) throw new Error('Invalid refresh response')
-
-    setAuthCookie('accessToken', AccessToken, 1 / 24)
-    setAuthCookie('idToken', IdToken, 1 / 24)
-    return AccessToken
-  } catch (error) {
-    clearAuthCookies()
-    throw error
-  }
+  const token = await refreshSession()
+  if (!token) throw new Error('La sessione di Novren ID non vale più')
+  return token
 }
 
 export const setupRequestInterceptor = () => {

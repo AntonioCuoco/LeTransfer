@@ -8,7 +8,7 @@ export const useRecoveryKeyAPI = () => {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
-  const getAuthToken = () => Cookies.get('idToken')
+  const getAuthToken = () => Cookies.get('accessToken')
 
   const setupRecoveryKey = async (data: SetupRecoveryKeyRequest): Promise<boolean> => {
     isLoading.value = true

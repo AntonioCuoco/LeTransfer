@@ -367,9 +367,11 @@ export interface WrappedKeyData {
   wrapIV: string
 }
 
+/** La master key di Novren sotto la chiave del prodotto di Novren ID (`crypto/novrenIdMasterKey.ts`). */
 export interface SetupRecoveryKeyRequest {
-  salt: string
-  verificationHash: string
+  wrappedMasterKey: string
+  wrappedProof: string
+  proofHash: string
 }
 
 export interface VerifyRecoveryKeyRequest {
@@ -378,8 +380,10 @@ export interface VerifyRecoveryKeyRequest {
 
 export interface UserRecoveryKeyStatus {
   hasRecoveryKey: boolean
-  salt?: string
-  verificationHash?: string
+  /** `novren-id/v1`: la master key è in `wrappedMasterKey`; `legacy-words`: delle 24 parole di prima. */
+  format: 'novren-id/v1' | 'legacy-words' | null
+  wrappedMasterKey: string | null
+  wrappedProof: string | null
 }
 
 export type SaveFileKeyRequest = WrappedKeyData

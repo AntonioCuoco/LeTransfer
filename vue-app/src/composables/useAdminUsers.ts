@@ -202,36 +202,6 @@ export function useAdminUsers() {
     }
   }
 
-  /**
-   * Crea la credenziale. ⚠️ Non crea un account "pronto": le chiavi nascono nel browser
-   * dell'utente al primo accesso. Il chiamante deve mostrare questo limite, non solo il
-   * successo — è la stessa nota che il server allega alla risposta.
-   */
-  async function createUser(
-    email: string,
-    plan?: string,
-    days?: PlanGrantDays,
-  ): Promise<{ userId: string; note: string } | null> {
-    isActing.value = true
-    try {
-      const { data } = await axios.post<{ data?: { userId: string; note: string } }>(admin(''), {
-        email,
-        ...(plan ? { plan, days } : {}),
-      })
-      return data?.data ?? null
-    } catch (error) {
-      const status = (error as { response?: { status?: number } }).response?.status
-      notifyApiError(
-        error,
-        'Utente non creato',
-        status === 409 ? 'Esiste già un utente con questa email.' : 'Creazione non riuscita.',
-      )
-      return null
-    } finally {
-      isActing.value = false
-    }
-  }
-
   return {
     items,
     cursor,
@@ -247,6 +217,5 @@ export function useAdminUsers() {
     cancelDeletion,
     grantPlan,
     revokePlan,
-    createUser,
   }
 }

@@ -1,10 +1,9 @@
 import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Cookies from 'js-cookie'
-import { setAuthCookie, clearAuthCookies } from '@/src/utils/cookieStore'
-import { InitiateAuthCommand } from '@aws-sdk/client-cognito-identity-provider'
-import { cognitoClient, clientId, handleCognitoError } from '@/src/utils/cognitoClient'
+import { clearAuthCookies } from '@/src/utils/cookieStore'
 import { isTokenExpired } from '@/src/utils/getCurrentUser'
+import { refreshSession } from '@/src/utils/novrenId'
 import { useSessionNotifications } from './useSessionNotifications'
 
 export const useTokenManager = () => {
@@ -13,19 +12,12 @@ export const useTokenManager = () => {
   const isRefreshingRef = shallowRef(false) // anti-race-condition ref
 
   const router = useRouter()
-  const { showInfo, showError } = useSessionNotifications()
+  const { showError } = useSessionNotifications()
 
   const clearTokens = (reason = 'Sessione scaduta. Effettua nuovamente il login.') => {
     clearAuthCookies()
     isAuthenticated.value = false
     showError(reason)
-  }
-
-  const updateTokens = (accessToken: string, idToken: string, refreshToken?: string) => {
-    setAuthCookie('accessToken', accessToken, 1 / 24)
-    setAuthCookie('idToken', idToken, 1 / 24)
-    if (refreshToken) setAuthCookie('refreshToken', refreshToken, 30)
-    isAuthenticated.value = true
   }
 
   const ensureValidToken = async (): Promise<boolean> => {
@@ -62,26 +54,15 @@ export const useTokenManager = () => {
     isRefreshing.value = true
 
     try {
-      const command = new InitiateAuthCommand({
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        ClientId: clientId,
-        AuthParameters: { REFRESH_TOKEN: refreshTokenValue },
-      })
-      const response = await cognitoClient.send(command)
-      const { AccessToken, IdToken } = response.AuthenticationResult ?? {}
-
-      if (AccessToken && IdToken) {
-        updateTokens(AccessToken, IdToken)
-        showInfo('Sessione rinnovata con successo')
+      // Novren ID: il token di rinnovo cambia a ogni uso; `refreshSession` salva quello nuovo.
+      if (await refreshSession()) {
+        isAuthenticated.value = true
         return true
       }
-
       clearTokens()
       return false
-    } catch (error) {
-      // Il motivo vero (token scaduto, revocato, rete…) e un solo avviso: prima ne uscivano
-      // due, entrambi generici.
-      clearTokens(handleCognitoError(error))
+    } catch {
+      clearTokens('Novren ID non risponde: la sessione non si è potuta rinnovare. Accedi di nuovo.')
       return false
     } finally {
       isRefreshingRef.value = false

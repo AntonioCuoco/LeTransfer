@@ -3,6 +3,10 @@ import axios from 'axios'
 import Cookies from 'js-cookie'
 import { AUTH_COOKIES } from '@/src/utils/cookieStore'
 import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
+import { useEncryptionStore } from '@/src/stores/encryption'
+import { getCurrentUser } from '@/src/utils/getCurrentUser'
+import { openProof } from '@/src/crypto/novrenIdMasterKey'
+import type { UserRecoveryKeyStatus } from '@/src/types'
 
 /**
  * Cancellazione dell'account (GDPR art. 17).
@@ -43,9 +47,9 @@ import { apiErrorMessage, describeApiError } from '@/src/utils/apiError'
  *     body: { password }
  *     200 → { success: true, data: { status: 'deleted' } }
  *         | { success: true, data: { status: 'confirmation_sent', email } }   ← futuro
- *     401 → password errata
+ *     401 → prova della master key non valida · 409 → conferma non disponibile
  * Ordine di esecuzione lato server (conta): materiale crittografico → revoca link →
- * record → oggetti su R2 → Cognito **per ultimo**. Le chiavi per prime perché è lì che la
+ * record → oggetti su R2. L'account Novren ID resta: si chiude in Novren ID. Le chiavi per prime perché è lì che la
  * garanzia diventa vera: se il job muore a metà, i dati sono già irrecuperabili.
  * ────────────────────────────────────────────────────────────────────────────────
  */
@@ -86,7 +90,9 @@ export interface DeletionPreview {
 export type DeletionOutcome =
   | { status: 'deleted' }
   | { status: 'confirmation_sent'; email?: string }
-  | { status: 'wrong_password'; message?: string }
+  | { status: 'invalid_proof'; message?: string }
+  /** I file non sono sbloccati: senza la master key non c'è prova da mandare. */
+  | { status: 'locked' }
   | { status: 'unavailable'; message?: string }
   | { status: 'error'; message?: string }
 
@@ -185,12 +191,28 @@ export function useAccountDeletion() {
    * Avvia la cancellazione. Non fa la pulizia locale da sé: la decide il chiamante, che
    * sa se mostrare prima una schermata di commiato o navigare via.
    */
-  async function requestDeletion(password: string): Promise<DeletionOutcome> {
+  /**
+   * La conferma, al posto della password (che Novren non vede più: è di Novren ID). È la **prova
+   * della master key**: 32 byte cifrati sotto la master key, che solo chi ha aperto i propri file
+   * passando da Novren ID può aprire (`crypto/novrenIdMasterKey.ts`). Un token rubato non basta.
+   */
+  async function requestDeletion(): Promise<DeletionOutcome> {
+    const encryption = useEncryptionStore()
+    const sub = getCurrentUser()?.sub
+    if (!encryption.masterKey || !sub) return { status: 'locked' }
     isDeleting.value = true
     try {
+      let proof: string
+      try {
+        const { data: status } = await axios.get<UserRecoveryKeyStatus>(`${API_BASE_URL}/user/recovery-key/status`)
+        if (!status.wrappedProof) return { status: 'unavailable', message: 'Questo account non ha ancora la conferma di Novren ID: scrivici e la eseguiamo noi.' }
+        proof = await openProof(status.wrappedProof, encryption.masterKey, sub)
+      } catch (error) {
+        return { status: 'error', message: describeApiError(error, 'Non siamo riusciti a preparare la conferma.') }
+      }
       const { data } = await axios.post<{ data?: { status?: string; email?: string } }>(
         `${API_BASE_URL}/user/deletion`,
-        { password },
+        { proof },
       )
       if (data?.data?.status === 'confirmation_sent') {
         return { status: 'confirmation_sent', email: data.data.email }
@@ -200,10 +222,10 @@ export function useAccountDeletion() {
       const status = (error as { response?: { status?: number } }).response?.status
       // Il testo del server, se c'è, lo mostra il dialogo; altrimenti usa il suo.
       const message = apiErrorMessage(error) ?? undefined
-      if (status === 401 || status === 403) return { status: 'wrong_password', message }
-      // 404/501 = il backend non ha ancora l'endpoint. Non è un errore dell'utente e non
-      // va mostrato come tale: è una capacità che manca, e va detta con quelle parole.
-      if (status === 404 || status === 501) return { status: 'unavailable', message }
+      if (status === 401) return { status: 'invalid_proof', message }
+      // 404/409/501: la conferma non si può fare (endpoint assente, account senza prova). Non è
+      // un errore dell'utente e non va mostrato come tale.
+      if (status === 404 || status === 409 || status === 501) return { status: 'unavailable', message }
       return { status: 'error', message: describeApiError(error, 'Non siamo riusciti a completare la richiesta.') }
     } finally {
       isDeleting.value = false
